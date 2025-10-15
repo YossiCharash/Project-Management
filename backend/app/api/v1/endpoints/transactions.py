@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 
-from app.core.deps import DBSessionDep, require_roles
-from app.repositories.transaction_repository import TransactionRepository
-from app.repositories.project_repository import ProjectRepository
-from app.schemas.transaction import TransactionCreate, TransactionOut, TransactionUpdate
-from app.services.transaction_service import TransactionService
-from app.models.user import UserRole
+from backend.app.core.deps import DBSessionDep, require_roles
+from backend.app.repositories.transaction_repository import TransactionRepository
+from backend.app.repositories.project_repository import ProjectRepository
+from backend.app.schemas.transaction import TransactionCreate, TransactionOut, TransactionUpdate
+from backend.app.services.transaction_service import TransactionService
+from backend.app.models.user import UserRole
 
 router = APIRouter()
 

@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends
 from fastapi.security import OAuth2PasswordRequestForm
 
-from app.core.deps import DBSessionDep
-from app.schemas.auth import Token
-from app.schemas.user import UserOut
-from app.services.auth_service import AuthService
+from backend.app.core.deps import DBSessionDep
+from backend.app.schemas.auth import Token
+from backend.app.schemas.user import UserOut
+from backend.app.services.auth_service import AuthService
 
 router = APIRouter()
 

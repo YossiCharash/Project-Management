@@ -1,11 +1,12 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 
-from app.api.v1.router import api_router
-from app.core.config import settings
-from app.db.session import engine
-from app.db.base import Base
-import app.db.base_models  # ensure models are imported
+from backend.app.api.v1.router import api_router
+from backend.app.core.config import settings
+from backend.app.db.session import engine
+from backend.app.db.base import Base
+import backend.app.db.base_models  # ensure models are imported
 
 
 def create_app() -> FastAPI:
@@ -40,11 +41,15 @@ def create_app() -> FastAPI:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
 
-    # Inject global Bearer auth into OpenAPI so Swagger has an Authorize button
-    def customize_openapi():
+    def custom_openapi():
         if app.openapi_schema:
             return app.openapi_schema
-        openapi_schema = app.openapi()
+        openapi_schema = get_openapi(
+            title=app.title,
+            version=app.version,
+            description=app.description,
+            routes=app.routes,
+        )
         openapi_schema.setdefault("components", {}).setdefault("securitySchemes", {}).update({
             "bearerAuth": {
                 "type": "http",
@@ -56,7 +61,7 @@ def create_app() -> FastAPI:
         app.openapi_schema = openapi_schema
         return app.openapi_schema
 
-    app.openapi = customize_openapi  # type: ignore[assignment]
+    app.openapi = custom_openapi  # type: ignore[assignment]
 
     app.include_router(api_router, prefix=settings.API_V1_STR)
 

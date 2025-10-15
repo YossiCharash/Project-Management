@@ -1,6 +1,6 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models.project import Project
+from backend.app.models.project import Project
 
 
 class ProjectRepository:
@@ -26,6 +26,19 @@ class ProjectRepository:
         await self.db.delete(project)
         await self.db.commit()
 
-    async def list(self) -> list[Project]:
-        res = await self.db.execute(select(Project))
+    async def list(self, include_archived: bool = False, only_archived: bool = False) -> list[Project]:
+        stmt = select(Project)
+        if only_archived:
+            stmt = stmt.where(Project.is_active == False)  # noqa: E712
+        elif not include_archived:
+            stmt = stmt.where(Project.is_active == True)  # noqa: E712
+        res = await self.db.execute(stmt)
         return list(res.scalars().all())
+
+    async def archive(self, project: Project) -> Project:
+        project.is_active = False
+        return await self.update(project)
+
+    async def restore(self, project: Project) -> Project:
+        project.is_active = True
+        return await self.update(project)

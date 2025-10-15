@@ -1,6 +1,6 @@
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models.transaction import Transaction
+from backend.app.models.transaction import Transaction
 
 
 class TransactionRepository:
@@ -29,3 +29,7 @@ class TransactionRepository:
     async def list_by_project(self, project_id: int) -> list[Transaction]:
         res = await self.db.execute(select(Transaction).where(Transaction.project_id == project_id))
         return list(res.scalars().all())
+
+    async def delete_by_project(self, project_id: int) -> None:
+        await self.db.execute(delete(Transaction).where(Transaction.project_id == project_id))
+        await self.db.commit()

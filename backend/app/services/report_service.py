@@ -2,8 +2,8 @@ from decimal import Decimal
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.transaction import Transaction
-from app.models.project import Project
+from backend.app.models.transaction import Transaction
+from backend.app.models.project import Project
 
 
 class ReportService:

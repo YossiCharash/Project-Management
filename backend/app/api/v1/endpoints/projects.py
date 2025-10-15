@@ -1,17 +1,18 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.core.deps import DBSessionDep, require_roles
-from app.repositories.project_repository import ProjectRepository
-from app.schemas.project import ProjectCreate, ProjectOut, ProjectUpdate
-from app.services.project_service import ProjectService
-from app.models.user import UserRole
+from backend.app.core.deps import DBSessionDep, require_roles
+from backend.app.repositories.project_repository import ProjectRepository
+from backend.app.repositories.transaction_repository import TransactionRepository
+from backend.app.schemas.project import ProjectCreate, ProjectOut, ProjectUpdate
+from backend.app.services.project_service import ProjectService
+from backend.app.models.user import UserRole
 
 router = APIRouter()
 
 
 @router.get("/", response_model=list[ProjectOut])
-async def list_projects(db: DBSessionDep):
-    return await ProjectRepository(db).list()
+async def list_projects(db: DBSessionDep, include_archived: bool = Query(False), only_archived: bool = Query(False)):
+    return await ProjectRepository(db).list(include_archived=include_archived, only_archived=only_archived)
 
 
 @router.post("/", response_model=ProjectOut)
@@ -28,11 +29,31 @@ async def update_project(project_id: int, db: DBSessionDep, data: ProjectUpdate,
     return await ProjectService(db).update(project, **data.model_dump(exclude_unset=True))
 
 
-@router.delete("/{project_id}")
-async def delete_project(project_id: int, db: DBSessionDep, user = Depends(require_roles(UserRole.ADMIN))):
+@router.post("/{project_id}/archive", response_model=ProjectOut)
+async def archive_project(project_id: int, db: DBSessionDep, user = Depends(require_roles(UserRole.ADMIN, UserRole.PROJECT_MANAGER))):
     repo = ProjectRepository(db)
     project = await repo.get_by_id(project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    await ProjectService(db).delete(project)
+    return await repo.archive(project)
+
+
+@router.post("/{project_id}/restore", response_model=ProjectOut)
+async def restore_project(project_id: int, db: DBSessionDep, user = Depends(require_roles(UserRole.ADMIN, UserRole.PROJECT_MANAGER))):
+    repo = ProjectRepository(db)
+    project = await repo.get_by_id(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return await repo.restore(project)
+
+
+@router.delete("/{project_id}")
+async def hard_delete_project(project_id: int, db: DBSessionDep, user = Depends(require_roles(UserRole.ADMIN, UserRole.PROJECT_MANAGER))):
+    proj_repo = ProjectRepository(db)
+    project = await proj_repo.get_by_id(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    # delete child transactions first
+    await TransactionRepository(db).delete_by_project(project_id)
+    await proj_repo.delete(project)
     return {"ok": True}

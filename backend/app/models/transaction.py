@@ -4,7 +4,7 @@ from enum import Enum
 from sqlalchemy import String, Date, DateTime, ForeignKey, Numeric, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.base import Base
+from backend.app.db.base import Base
 
 
 class TransactionType(str, Enum):

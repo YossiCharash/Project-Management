@@ -28,6 +28,7 @@ class ProjectUpdate(BaseModel):
 
 class ProjectOut(ProjectBase):
     id: int
+    is_active: bool = True
     created_at: datetime
 
     class Config:

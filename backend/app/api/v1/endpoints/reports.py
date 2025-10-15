@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends
 
-from app.core.deps import DBSessionDep, require_roles
-from app.services.report_service import ReportService
-from app.models.user import UserRole
+from backend.app.core.deps import DBSessionDep, require_roles
+from backend.app.services.report_service import ReportService
+from backend.app.models.user import UserRole
 
 router = APIRouter()
 

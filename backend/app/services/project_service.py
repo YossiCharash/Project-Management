@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.repositories.project_repository import ProjectRepository
-from app.models.project import Project
+from backend.app.repositories.project_repository import ProjectRepository
+from backend.app.models.project import Project
 
 
 class ProjectService:

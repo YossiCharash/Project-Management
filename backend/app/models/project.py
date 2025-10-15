@@ -1,9 +1,9 @@
 from __future__ import annotations
 from datetime import datetime
-from sqlalchemy import String, Date, DateTime, ForeignKey, Numeric, Text
+from sqlalchemy import String, Date, DateTime, ForeignKey, Numeric, Text, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.base import Base
+from backend.app.db.base import Base
 
 
 class Project(Base):
@@ -18,8 +18,10 @@ class Project(Base):
     budget_monthly: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
     budget_annual: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
 
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+
     manager_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), index=True)
-    owner: Mapped["User | None"] = relationship(back_populates="projects")
+    manager: Mapped["User | None"] = relationship(back_populates="projects")
 
     transactions: Mapped[list["Transaction"]] = relationship(back_populates="project", cascade="all, delete-orphan")
 
