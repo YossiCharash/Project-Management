@@ -9,6 +9,10 @@ class TransactionBase(BaseModel):
     type: Literal["Income", "Expense"]
     amount: float = Field(ge=0)
     description: str | None = None
+    category: str | None = None
+    notes: str | None = None
+    subproject_id: int | None = None
+    is_exceptional: bool = False
 
 
 class TransactionCreate(TransactionBase):
@@ -20,6 +24,10 @@ class TransactionUpdate(BaseModel):
     type: Literal["Income", "Expense"] | None = None
     amount: float | None = Field(default=None, ge=0)
     description: str | None = None
+    category: str | None = None
+    notes: str | None = None
+    subproject_id: int | None = None
+    is_exceptional: bool | None = None
 
 
 class TransactionOut(TransactionBase):

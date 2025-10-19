@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.models.project import Project
 
@@ -42,3 +42,9 @@ class ProjectRepository:
     async def restore(self, project: Project) -> Project:
         project.is_active = True
         return await self.update(project)
+
+    async def get_payments_of_monthly_tenants(self, project_id):
+        res = await self.db.execute(
+            select(func.sum(Project.budget_monthly)).where(Project.id == project_id)
+        )
+        return res.scalar() or 0.0

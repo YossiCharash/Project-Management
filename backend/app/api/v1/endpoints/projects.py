@@ -14,6 +14,12 @@ router = APIRouter()
 async def list_projects(db: DBSessionDep, include_archived: bool = Query(False), only_archived: bool = Query(False)):
     return await ProjectRepository(db).list(include_archived=include_archived, only_archived=only_archived)
 
+@router.get("/get_values/{project_id}", response_model=ProjectOut)
+async def get_project_values(project_id: int, db: DBSessionDep):
+    project_data = await ProjectService(db).get_value_of_projects(project_id=project_id)
+    if not project_data:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return project_data
 
 @router.post("/", response_model=ProjectOut)
 async def create_project(db: DBSessionDep, data: ProjectCreate, user = Depends(require_roles(UserRole.ADMIN, UserRole.PROJECT_MANAGER))):

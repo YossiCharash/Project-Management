@@ -1,6 +1,6 @@
 from __future__ import annotations
 from datetime import datetime
-from sqlalchemy import String, Date, DateTime, ForeignKey, Numeric, Text, Boolean
+from sqlalchemy import String, Date, DateTime, ForeignKey, Numeric, Text, Boolean, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.db.base import Base
@@ -18,6 +18,12 @@ class Project(Base):
     budget_monthly: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
     budget_annual: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
 
+    # New fields
+    num_residents: Mapped[int | None] = mapped_column(Integer, default=None)
+    monthly_price_per_apartment: Mapped[float | None] = mapped_column(Numeric(10, 2), default=None)
+    address: Mapped[str | None] = mapped_column(String(255), default=None)
+    city: Mapped[str | None] = mapped_column(String(120), default=None)
+
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
 
     manager_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), index=True)
@@ -26,3 +32,6 @@ class Project(Base):
     transactions: Mapped[list["Transaction"]] = relationship(back_populates="project", cascade="all, delete-orphan")
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    def total_value(self) -> float:
+        return self.revenue - self.cost

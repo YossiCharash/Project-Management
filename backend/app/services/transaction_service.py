@@ -4,6 +4,8 @@ from fastapi import UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.core.config import settings
+from backend.app.models.project import Project
+from backend.app.repositories.project_repository import ProjectRepository
 from backend.app.repositories.transaction_repository import TransactionRepository
 from backend.app.models.transaction import Transaction
 

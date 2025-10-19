@@ -1,4 +1,4 @@
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.models.transaction import Transaction
 
@@ -33,3 +33,9 @@ class TransactionRepository:
     async def delete_by_project(self, project_id: int) -> None:
         await self.db.execute(delete(Transaction).where(Transaction.project_id == project_id))
         await self.db.commit()
+
+    async def get_transaction_value(self, project_id: int) -> float:
+        res = await self.db.execute(
+            select(func.sum(Transaction.amount)).where(Transaction.project_id == project_id)
+        )
+        return res.scalar() or 0.0
