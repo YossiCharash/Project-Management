@@ -43,7 +43,7 @@ class ProjectService:
         """Get real-time financial calculations for a project"""
         from sqlalchemy import func, select, and_
         from datetime import date
-        from backend.app.models.transaction import Transaction
+        from app.models.transaction import Transaction
         
         current_date = date.today()
         current_month_start = current_date.replace(day=1)

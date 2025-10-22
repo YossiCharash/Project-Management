@@ -1,6 +1,6 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from backend.app.models.audit_log import AuditLog
+from app.models.audit_log import AuditLog
 
 
 class AuditRepository:

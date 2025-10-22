@@ -1,3 +1,5 @@
+from datetime import date
+
 from sqlalchemy import select, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.models.transaction import Transaction

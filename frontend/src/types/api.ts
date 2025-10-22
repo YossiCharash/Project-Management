@@ -77,6 +77,12 @@ export interface ProjectWithFinance extends Project {
   status_color: 'green' | 'yellow' | 'red'
 }
 
+export interface ExpenseCategory {
+  category: string
+  amount: number
+  color: string
+}
+
 export interface DashboardSnapshot {
   projects: ProjectWithFinance[]
   alerts: {
@@ -89,4 +95,5 @@ export interface DashboardSnapshot {
     total_expense: number
     total_profit: number
   }
+  expense_categories: ExpenseCategory[]
 }

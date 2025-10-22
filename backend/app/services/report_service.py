@@ -56,7 +56,8 @@ class ReportService:
                     "total_income": 0,
                     "total_expense": 0,
                     "total_profit": 0
-                }
+                },
+                "expense_categories": []
             }
 
         # Get current month's date range
@@ -91,11 +92,21 @@ class ReportService:
             monthly_income = float((await self.db.execute(monthly_income_query)).scalar_one())
             monthly_expense = float((await self.db.execute(monthly_expense_query)).scalar_one())
 
-            # Calculate profit percentage
-            profit = monthly_income - monthly_expense
-            profit_percent = (profit / monthly_income * 100) if monthly_income > 0 else 0
+            # Calculate profit including budgets
+            # Add monthly budget to income
+            project_total_income = monthly_income + float(project.budget_monthly or 0)
+            # Add annual budget divided by 12 to monthly income
+            project_total_income += float(project.budget_annual or 0) / 12
+            
+            profit = project_total_income - monthly_expense
+            
+            # Calculate profit percentage based on total income
+            if project_total_income > 0:
+                profit_percent = (profit / project_total_income * 100)
+            else:
+                profit_percent = 0
 
-            # Determine status color
+            # Determine status color based on profit percentage
             if profit_percent >= 10:
                 status_color = "green"
             elif profit_percent <= -10:
@@ -150,15 +161,17 @@ class ReportService:
                 "is_active": project.is_active,
                 "manager_id": project.manager_id,
                 "created_at": project.created_at.isoformat() if project.created_at else None,
-                "income_month_to_date": monthly_income,
+                "income_month_to_date": project_total_income,
                 "expense_month_to_date": monthly_expense,
                 "profit_percent": round(profit_percent, 1),
                 "status_color": status_color,
+                "budget_monthly": float(project.budget_monthly or 0),
+                "budget_annual": float(project.budget_annual or 0),
                 "children": []
             }
 
             projects_with_finance.append(project_data)
-            total_income += monthly_income
+            total_income += project_total_income  # project_total_income includes budgets
             total_expense += monthly_expense
 
         # Build project hierarchy
@@ -175,6 +188,28 @@ class ReportService:
         # Calculate total profit
         total_profit = total_income - total_expense
 
+        # Get expense categories breakdown
+        expense_categories_query = select(
+            Transaction.category,
+            func.coalesce(func.sum(Transaction.amount), 0).label('total_amount')
+        ).where(
+            and_(
+                Transaction.type == "Expense",
+                Transaction.tx_date >= current_month_start
+            )
+        ).group_by(Transaction.category)
+        
+        expense_categories_result = await self.db.execute(expense_categories_query)
+        expense_categories = []
+        
+        for row in expense_categories_result:
+            if row.total_amount > 0:  # Only include categories with expenses
+                expense_categories.append({
+                    "category": row.category or "אחר",
+                    "amount": float(row.total_amount),
+                    "color": self._get_category_color(row.category)
+                })
+
         return {
             "projects": root_projects,
             "alerts": {
@@ -186,5 +221,62 @@ class ReportService:
                 "total_income": round(total_income, 2),
                 "total_expense": round(total_expense, 2),
                 "total_profit": round(total_profit, 2)
-            }
+            },
+            "expense_categories": expense_categories
         }
+
+    def _get_category_color(self, category: str) -> str:
+        """Get color for expense category"""
+        color_map = {
+            "ניקיון": "#3B82F6",  # blue-500
+            "חשמל": "#F59E0B",    # amber-500
+            "ביטוח": "#8B5CF6",   # violet-500
+            "גינון": "#059669",   # emerald-500
+            "אחר": "#EF4444"      # red-500
+        }
+        return color_map.get(category, "#6B7280")  # gray-500 as default
+
+    async def get_project_expense_categories(self, project_id: int) -> List[Dict[str, Any]]:
+        """Get expense categories breakdown for a specific project"""
+        expense_categories_query = select(
+            Transaction.category,
+            func.coalesce(func.sum(Transaction.amount), 0).label('total_amount')
+        ).where(
+            and_(
+                Transaction.project_id == project_id,
+                Transaction.type == "Expense"
+            )
+        ).group_by(Transaction.category)
+        
+        expense_categories_result = await self.db.execute(expense_categories_query)
+        expense_categories = []
+        
+        for row in expense_categories_result:
+            if row.total_amount > 0:  # Only include categories with expenses
+                expense_categories.append({
+                    "category": row.category or "אחר",
+                    "amount": float(row.total_amount),
+                    "color": self._get_category_color(row.category)
+                })
+        
+        return expense_categories
+
+    async def get_project_transactions(self, project_id: int) -> List[Dict[str, Any]]:
+        """Get all transactions for a specific project"""
+        transactions_query = select(Transaction).where(Transaction.project_id == project_id)
+        transactions_result = await self.db.execute(transactions_query)
+        transactions = list(transactions_result.scalars().all())
+        
+        return [
+            {
+                "id": tx.id,
+                "tx_date": tx.tx_date.isoformat(),
+                "type": tx.type,
+                "amount": float(tx.amount),
+                "description": tx.description,
+                "category": tx.category,
+                "notes": tx.notes,
+                "is_exceptional": tx.is_exceptional
+            }
+            for tx in transactions
+        ]

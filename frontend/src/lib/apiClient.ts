@@ -1,5 +1,5 @@
 import api from '../lib/api'
-import { Project, ProjectCreate, Transaction, TransactionCreate, ProjectWithFinance, DashboardSnapshot } from '../types/api'
+import { Project, ProjectCreate, Transaction, TransactionCreate, ProjectWithFinance, DashboardSnapshot, ExpenseCategory } from '../types/api'
 
 // Enhanced API client with proper TypeScript types
 export class ProjectAPI {
@@ -94,7 +94,22 @@ export class DashboardAPI {
         projects: [],
         alerts: { budget_overrun: [], missing_proof: [], unpaid_recurring: [] },
         summary: { total_income: 0, total_expense: 0, total_profit: 0 },
+        expense_categories: []
       }
     }
+  }
+}
+
+export class ReportAPI {
+  // Get expense categories for a specific project
+  static async getProjectExpenseCategories(projectId: number): Promise<ExpenseCategory[]> {
+    const { data } = await api.get<ExpenseCategory[]>(`/reports/project/${projectId}/expense-categories`)
+    return data
+  }
+
+  // Get all transactions for a specific project
+  static async getProjectTransactions(projectId: number): Promise<Transaction[]> {
+    const { data } = await api.get<Transaction[]>(`/reports/project/${projectId}/transactions`)
+    return data
   }
 }

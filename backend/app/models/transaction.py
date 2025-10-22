@@ -13,11 +13,11 @@ class TransactionType(str, Enum):
 
 
 class ExpenseCategory(str, Enum):
-    CLEANING = "cleaning"
-    ELECTRICITY = "electricity"
-    INSURANCE = "insurance"
-    GARDENING = "gardening"
-    OTHER = "other"
+    CLEANING = "ניקיון"
+    ELECTRICITY = "חשמל"
+    INSURANCE = "ביטוח"
+    GARDENING = "גינון"
+    OTHER = "אחר"
 
 
 class Transaction(Base):
