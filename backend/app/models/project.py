@@ -23,6 +23,8 @@ class Project(Base):
     monthly_price_per_apartment: Mapped[float | None] = mapped_column(Numeric(10, 2), default=None)
     address: Mapped[str | None] = mapped_column(String(255), default=None)
     city: Mapped[str | None] = mapped_column(String(120), default=None)
+    relation_project: Mapped[int | None] = mapped_column(Integer, default=None)
+
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
 
@@ -33,5 +35,6 @@ class Project(Base):
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
+    @property
     def total_value(self) -> float:
         return self.revenue - self.cost

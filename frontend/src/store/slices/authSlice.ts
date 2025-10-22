@@ -53,6 +53,7 @@ export const fetchMe = createAsyncThunk('auth/fetchMe', async (_, { rejectWithVa
     const { data } = await api.get<CurrentUser>('/users/me')
     return data
   } catch (e: any) {
+    // Keep token; surface error so UI can handle gracefully without flashing/logout
     return rejectWithValue(e.response?.data?.detail ?? 'Failed to load user')
   }
 })
@@ -100,8 +101,18 @@ const slice = createSlice({
         state.error = (action.payload as string) ?? 'Register failed'
         state.registered = false
       })
+      .addCase(fetchMe.pending, (state) => {
+        state.loading = true
+        state.error = null
+      })
       .addCase(fetchMe.fulfilled, (state, action) => {
+        state.loading = false
         state.me = action.payload
+      })
+      .addCase(fetchMe.rejected, (state, action) => {
+        state.loading = false
+        // Do not clear token on transient errors; allow app to stay authenticated
+        state.error = (action.payload as string) ?? 'Failed to load user'
       })
   },
 })

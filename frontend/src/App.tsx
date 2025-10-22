@@ -1,61 +1,148 @@
-import { Routes, Route, Link, Navigate, useNavigate } from 'react-router-dom'
+import React, { useState, useEffect } from 'react'
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { useSelector, useDispatch } from 'react-redux'
 import type { RootState } from './store'
+import { motion, AnimatePresence } from 'framer-motion'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import Dashboard from './pages/Dashboard'
 import ProjectDetail from './pages/ProjectDetail'
 import Reports from './pages/Reports'
-import { logout } from './store/slices/authSlice'
+import Suppliers from './pages/Suppliers'
+import { logout, fetchMe } from './store/slices/authSlice'
+import { Sidebar, MobileSidebar } from './components/ui/Sidebar'
+import { ThemeProvider } from './contexts/ThemeContext'
+import { LoadingOverlay } from './components/ui/Loading'
+import { Menu, LogOut, User } from 'lucide-react'
+import { cn } from './lib/utils'
 
 function RequireAuth({ children }: { children: JSX.Element }) {
+  const dispatch = useDispatch()
   const token = useSelector((s: RootState) => s.auth.token)
+  const me = useSelector((s: RootState) => s.auth.me)
+  const loading = useSelector((s: RootState) => s.auth.loading)
+
+  useEffect(() => {
+    if (token && !me && !loading) {
+      dispatch(fetchMe())
+    }
+  }, [token, me, loading, dispatch])
+
   if (!token) return <Navigate to="/login" replace />
+  
+  if (loading) {
+    return <LoadingOverlay message="טוען נתוני משתמש..." />
+  }
+
   return children
 }
 
-export default function App() {
+function AppContent() {
   const navigate = useNavigate()
   const dispatch = useDispatch()
   const token = useSelector((s: RootState) => s.auth.token)
   const me = useSelector((s: RootState) => s.auth.me)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
 
   const onLogout = () => {
     dispatch(logout())
-    navigate('/login')
+    // Soft reload to clear any stale state while keeping UX snappy
+    navigate('/login', { replace: true })
   }
 
-  return (
-    <div className="min-h-screen">
-      <nav className="bg-white shadow sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex gap-4 items-center">
-          <Link to="/" className="font-semibold">BMS</Link>
-          <Link to="/" className="text-sm">לוח בקרה</Link>
-          <Link to="/reports" className="text-sm">דוחות</Link>
-          <div className="ml-auto flex gap-3 items-center">
-            {!token ? (
-              <>
-                <Link to="/login" className="text-sm">התחברות</Link>
-                <Link to="/register" className="text-sm">הרשמה</Link>
-              </>
-            ) : (
-              <>
-                {me?.email && <span className="text-sm text-gray-700">{me.email}</span>}
-                <button className="text-sm bg-gray-200 px-3 py-1 rounded" onClick={onLogout}>התנתקות</button>
-              </>
-            )}
-          </div>
-        </div>
-      </nav>
-      <main className="max-w-6xl mx-auto p-4">
+  // If not authenticated, show auth pages and ensure deep links to dashboard/projects go to login then back
+  if (!token) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
-          <Route path="/" element={<RequireAuth><Dashboard /></RequireAuth>} />
-          <Route path="/projects/:id" element={<RequireAuth><ProjectDetail /></RequireAuth>} />
-          <Route path="/reports" element={<RequireAuth><Reports /></RequireAuth>} />
+          <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
-      </main>
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex">
+      {/* Desktop Sidebar */}
+      <div className="hidden lg:flex">
+        <Sidebar 
+          isCollapsed={sidebarCollapsed} 
+          onToggle={() => setSidebarCollapsed(!sidebarCollapsed)} 
+        />
+      </div>
+
+      {/* Mobile Sidebar */}
+      <MobileSidebar 
+        isOpen={mobileSidebarOpen} 
+        onClose={() => setMobileSidebarOpen(false)} 
+      />
+
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Top Navigation */}
+        <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-3 lg:px-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => setMobileSidebarOpen(true)}
+                className="lg:hidden p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+              >
+                <Menu className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+              </button>
+              <h1 className="text-xl font-semibold text-gray-900 dark:text-white">
+                מערכת ניהול נכסים
+              </h1>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 px-3 py-2 bg-gray-100 dark:bg-gray-700 rounded-lg">
+                <User className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {me?.full_name || me?.email}
+                </span>
+              </div>
+              <button
+                onClick={onLogout}
+                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                title="התנתקות"
+              >
+                <LogOut className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+              </button>
+            </div>
+          </div>
+        </header>
+
+        {/* Page Content */}
+        <main className="flex-1 p-4 lg:p-6 overflow-auto">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+            className="max-w-7xl mx-auto"
+          >
+            <Routes>
+              <Route path="/" element={<RequireAuth><Dashboard /></RequireAuth>} />
+              <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
+              <Route path="/projects" element={<RequireAuth><Dashboard /></RequireAuth>} />
+              <Route path="/projects/:id" element={<RequireAuth><ProjectDetail /></RequireAuth>} />
+              <Route path="/reports" element={<RequireAuth><Reports /></RequireAuth>} />
+              <Route path="/suppliers" element={<RequireAuth><Suppliers /></RequireAuth>} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </motion.div>
+        </main>
+      </div>
     </div>
+  )
+}
+
+export default function App() {
+  return (
+    <ThemeProvider>
+      <AppContent />
+    </ThemeProvider>
   )
 }

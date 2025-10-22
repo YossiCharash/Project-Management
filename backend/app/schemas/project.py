@@ -10,6 +10,7 @@ class ProjectBase(BaseModel):
     budget_monthly: float = 0
     budget_annual: float = 0
     manager_id: int | None = None
+    relation_project: int | None = None
 
     num_residents: int | None = None
     monthly_price_per_apartment: float | None = None
@@ -40,7 +41,7 @@ class ProjectOut(ProjectBase):
     id: int
     is_active: bool = True
     created_at: datetime
-    total_value: float
+    total_value: float = 0.0
 
 
 
