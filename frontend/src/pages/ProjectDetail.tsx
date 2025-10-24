@@ -70,11 +70,15 @@ export default function ProjectDetail() {
 
     setChartsLoading(true)
     try {
+      console.log('Loading charts data for project:', id)
       // Load expense categories and transactions for charts
       const [categoriesData, transactionsData] = await Promise.all([
         ReportAPI.getProjectExpenseCategories(parseInt(id)),
         ReportAPI.getProjectTransactions(parseInt(id))
       ])
+      
+      console.log('Categories data:', categoriesData)
+      console.log('Transactions data:', transactionsData)
       
       setExpenseCategories(categoriesData)
       setTxs(transactionsData)

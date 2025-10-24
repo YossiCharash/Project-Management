@@ -6,13 +6,16 @@ import { motion, AnimatePresence } from 'framer-motion'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import Dashboard from './pages/Dashboard'
+import Projects from './pages/Projects'
 import ProjectDetail from './pages/ProjectDetail'
+import Subprojects from './pages/Subprojects'
 import Reports from './pages/Reports'
 import Suppliers from './pages/Suppliers'
 import { logout, fetchMe } from './store/slices/authSlice'
 import { Sidebar, MobileSidebar } from './components/ui/Sidebar'
 import { ThemeProvider } from './contexts/ThemeContext'
 import { LoadingOverlay } from './components/ui/Loading'
+import AddTransactionModal from './components/AddTransactionModal'
 import { Menu, LogOut, User } from 'lucide-react'
 import { cn } from './lib/utils'
 
@@ -24,7 +27,7 @@ function RequireAuth({ children }: { children: JSX.Element }) {
 
   useEffect(() => {
     if (token && !me && !loading) {
-      dispatch(fetchMe())
+      dispatch(fetchMe() as any)
     }
   }, [token, me, loading, dispatch])
 
@@ -46,6 +49,7 @@ function AppContent() {
   const me = useSelector((s: RootState) => s.auth.me)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
+  const [showAddTransactionModal, setShowAddTransactionModal] = useState(false)
 
   const onLogout = () => {
     dispatch(logout())
@@ -72,14 +76,16 @@ function AppContent() {
       <div className="hidden lg:flex">
         <Sidebar 
           isCollapsed={sidebarCollapsed} 
-          onToggle={() => setSidebarCollapsed(!sidebarCollapsed)} 
+          onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
+          onAddTransaction={() => setShowAddTransactionModal(true)}
         />
       </div>
 
       {/* Mobile Sidebar */}
       <MobileSidebar 
         isOpen={mobileSidebarOpen} 
-        onClose={() => setMobileSidebarOpen(false)} 
+        onClose={() => setMobileSidebarOpen(false)}
+        onAddTransaction={() => setShowAddTransactionModal(true)}
       />
 
       {/* Main Content */}
@@ -128,8 +134,9 @@ function AppContent() {
             <Routes>
               <Route path="/" element={<RequireAuth><Dashboard /></RequireAuth>} />
               <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
-              <Route path="/projects" element={<RequireAuth><Dashboard /></RequireAuth>} />
+              <Route path="/projects" element={<RequireAuth><Projects /></RequireAuth>} />
               <Route path="/projects/:id" element={<RequireAuth><ProjectDetail /></RequireAuth>} />
+              <Route path="/projects/:parentId/subprojects" element={<RequireAuth><Subprojects /></RequireAuth>} />
               <Route path="/reports" element={<RequireAuth><Reports /></RequireAuth>} />
               <Route path="/suppliers" element={<RequireAuth><Suppliers /></RequireAuth>} />
               <Route path="*" element={<Navigate to="/" replace />} />
@@ -137,6 +144,16 @@ function AppContent() {
           </motion.div>
         </main>
       </div>
+
+      {/* Add Transaction Modal */}
+      <AddTransactionModal
+        isOpen={showAddTransactionModal}
+        onClose={() => setShowAddTransactionModal(false)}
+        onSuccess={() => {
+          setShowAddTransactionModal(false)
+          // Optionally refresh data or show success message
+        }}
+      />
     </div>
   )
 }

@@ -15,10 +15,11 @@ import SystemFinancialPieChart from './charts/SystemFinancialPieChart'
 // Removed all project-related components - simplified dashboard only shows central pie chart
 
 interface ModernDashboardProps {
-  onCreateProject?: () => void
+  onProjectClick?: (project: any) => void
+  onProjectEdit?: (project: any) => void
 }
 
-export default function ModernDashboard({ onCreateProject }: ModernDashboardProps) {
+export default function ModernDashboard({ onProjectClick, onProjectEdit }: ModernDashboardProps) {
   const dispatch = useAppDispatch()
   const me = useAppSelector(s => s.auth.me)
   const [dashboardData, setDashboardData] = useState<DashboardSnapshot | null>(null)
@@ -80,34 +81,7 @@ export default function ModernDashboard({ onCreateProject }: ModernDashboardProp
 
   return (
     <div className="space-y-8">
-      {/* Welcome Header */}
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="flex justify-between items-center"
-      >
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-            ברוכים הבאים, {me?.full_name || 'משתמש'}! 👋
-          </h1>
-          <p className="text-gray-600 dark:text-gray-400">
-            סקירה פיננסית כללית של כל הפרויקטים
-          </p>
-        </div>
-        {onCreateProject && (
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={onCreateProject}
-            className="px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 flex items-center gap-2"
-          >
-            <Plus className="w-5 h-5" />
-            <span>צור פרויקט חדש</span>
-          </motion.button>
-        )}
-      </motion.div>
-
-      {/* Central Financial Overview Pie Chart */}
+      {/* Central Financial Overview Pie Chart - No Welcome Section */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}

@@ -13,7 +13,8 @@ import {
   ChevronRight,
   Home,
   FileText,
-  Building2
+  Building2,
+  Plus
 } from 'lucide-react'
 import { useTheme } from '../../contexts/ThemeContext'
 import { cn } from '../../lib/utils'
@@ -21,6 +22,7 @@ import { cn } from '../../lib/utils'
 interface SidebarProps {
   isCollapsed: boolean
   onToggle: () => void
+  onAddTransaction?: () => void
 }
 
 const navigationItems = [
@@ -56,7 +58,7 @@ const navigationItems = [
   }
 ]
 
-export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
+export function Sidebar({ isCollapsed, onToggle, onAddTransaction }: SidebarProps) {
   const location = useLocation()
   const { theme, toggleTheme } = useTheme()
 
@@ -146,6 +148,31 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
         })}
       </nav>
 
+      {/* Add Transaction Button */}
+      {onAddTransaction && (
+        <div className="px-4 pb-4">
+          <button
+            onClick={onAddTransaction}
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+          >
+            <Plus className="w-5 h-5 flex-shrink-0" />
+            <AnimatePresence>
+              {!isCollapsed && (
+                <motion.span
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -10 }}
+                  transition={{ duration: 0.2 }}
+                  className="font-medium"
+                >
+                  הוסף עסקה
+                </motion.span>
+              )}
+            </AnimatePresence>
+          </button>
+        </div>
+      )}
+
       {/* Footer */}
       <div className="p-4 border-t border-gray-200 dark:border-gray-700">
         <AnimatePresence>
@@ -188,9 +215,10 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
 interface MobileSidebarProps {
   isOpen: boolean
   onClose: () => void
+  onAddTransaction?: () => void
 }
 
-export function MobileSidebar({ isOpen, onClose }: MobileSidebarProps) {
+export function MobileSidebar({ isOpen, onClose, onAddTransaction }: MobileSidebarProps) {
   const location = useLocation()
   const { theme, toggleTheme } = useTheme()
 
@@ -266,6 +294,22 @@ export function MobileSidebar({ isOpen, onClose }: MobileSidebarProps) {
                 )
               })}
             </nav>
+
+            {/* Add Transaction Button */}
+            {onAddTransaction && (
+              <div className="px-4 pb-4">
+                <button
+                  onClick={() => {
+                    onAddTransaction()
+                    onClose()
+                  }}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+                >
+                  <Plus className="w-5 h-5 flex-shrink-0" />
+                  <span className="font-medium">הוסף עסקה</span>
+                </button>
+              </div>
+            )}
 
             <div className="p-4 border-t border-gray-200 dark:border-gray-700">
               <button

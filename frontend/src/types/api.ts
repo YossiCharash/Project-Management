@@ -29,7 +29,6 @@ export interface Subproject {
 export interface Transaction {
   id: number
   project_id: number
-  subproject_id?: number | null
   tx_date: string
   type: 'Income' | 'Expense'
   amount: number
@@ -58,7 +57,6 @@ export interface ProjectCreate {
 
 export interface TransactionCreate {
   project_id: number
-  subproject_id?: number | null
   tx_date: string
   type: 'Income' | 'Expense'
   amount: number

@@ -7,13 +7,15 @@ interface CreateProjectModalProps {
   onClose: () => void
   onSuccess: (project: Project) => void
   editingProject?: Project | null
+  parentProjectId?: number
 }
 
 const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
   isOpen,
   onClose,
   onSuccess,
-  editingProject
+  editingProject,
+  parentProjectId
 }) => {
   const [formData, setFormData] = useState<ProjectCreate>({
     name: '',
@@ -84,7 +86,7 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
       monthly_price_per_apartment: undefined,
       address: '',
       city: '',
-      relation_project: undefined,
+      relation_project: parentProjectId || undefined,
       manager_id: undefined
     })
     setError(null)
@@ -138,7 +140,7 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
       <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl font-semibold">
-            {editingProject ? 'עריכת פרויקט' : 'יצירת פרויקט חדש'}
+            {editingProject ? 'עריכת פרויקט' : (parentProjectId ? 'יצירת תת-פרויקט חדש' : 'יצירת פרויקט חדש')}
           </h2>
           <button
             onClick={handleClose}
@@ -335,7 +337,7 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
               disabled={loading}
               className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
             >
-              {loading ? 'שומר...' : (editingProject ? 'שמור שינויים' : 'צור פרויקט')}
+              {loading ? 'שומר...' : (editingProject ? 'שמור שינויים' : (parentProjectId ? 'צור תת-פרויקט' : 'צור פרויקט'))}
             </button>
           </div>
         </form>

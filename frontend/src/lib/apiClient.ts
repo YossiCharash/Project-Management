@@ -47,12 +47,12 @@ export class TransactionAPI {
     return data
   }
 
-  // Create transaction (expenses should be negative amounts)
+  // Create transaction
   static async createTransaction(transaction: TransactionCreate): Promise<Transaction> {
-    // Ensure expenses are negative
+    // Keep amounts as positive values
     const payload = {
       ...transaction,
-      amount: transaction.type === 'Expense' ? -Math.abs(transaction.amount) : Math.abs(transaction.amount)
+      amount: Math.abs(transaction.amount)
     }
     const { data } = await api.post<Transaction>('/transactions', payload)
     return data

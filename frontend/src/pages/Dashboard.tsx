@@ -20,7 +20,6 @@ export default function Dashboard() {
   const navigate = useNavigate()
 
   // Enhanced dashboard state
-  const [viewMode, setViewMode] = useState<'modern' | 'enhanced' | 'legacy' | 'tree' | 'tests'>('modern')
   const [selectedProject, setSelectedProject] = useState<ProjectWithFinance | null>(null)
   const [editingProject, setEditingProject] = useState<ProjectWithFinance | null>(null)
   const [showCreateModal, setShowCreateModal] = useState(false)
@@ -44,18 +43,14 @@ export default function Dashboard() {
 
   useEffect(() => { if (!me) dispatch(fetchMe()) }, [dispatch, me])
   
-  // Load projects for legacy view
+  // Load projects for dashboard
   useEffect(() => {
-    if (viewMode === 'legacy') {
-      dispatch(fetchProjects())
-    }
-  }, [dispatch, viewMode])
+    dispatch(fetchProjects())
+  }, [dispatch])
 
-  // Load project charts for legacy view
+  // Load project charts for dashboard
   useEffect(() => {
     const loadProjectCharts = async () => {
-      if (viewMode !== 'legacy') return
-      
       const charts: Record<number, CategoryPoint[]> = {}
       const visible = items.filter((p: any) => p.is_active !== false)
       for (const p of visible) {
@@ -73,8 +68,8 @@ export default function Dashboard() {
       }
       setProjectCharts(charts)
     }
-    if (items.length && viewMode === 'legacy') loadProjectCharts()
-  }, [items, viewMode])
+    if (items.length) loadProjectCharts()
+  }, [items])
 
   const resetForm = () => {
     setName(''); setDescription(''); setStartDate(''); setEndDate(''); setMonthly(0); setAnnual(0); setNumResidents(''); setPricePerApt(''); setAddress(''); setCity(''); setLocalError(null); setEditingId(null)
@@ -158,105 +153,20 @@ export default function Dashboard() {
     setShowCreateModal(true)
   }
 
-  const handleCreateProject = () => {
-    setEditingProject(null)
-    setShowCreateModal(true)
-  }
-
   const handleProjectSuccess = (project: any) => {
-    setShowCreateModal(false)
-    setEditingProject(null)
     // Refresh the dashboard
-    if (viewMode === 'legacy') {
-      dispatch(fetchProjects())
-    }
-  }
-
-  const handleCloseCreateModal = () => {
-    setShowCreateModal(false)
-    setEditingProject(null)
+    dispatch(fetchProjects())
   }
 
   const visibleItems = items?.filter?.((p: any) => p?.is_active !== false) ?? []
 
   return (
     <div className="space-y-6">
-      {/* View Mode Selector - Only show if admin */}
-        {isAdmin && (
-        <div className="flex justify-end">
-          <div className="flex items-center gap-3 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-3">
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">תצוגה:</label>
-            <select 
-              className="border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500" 
-              value={viewMode} 
-              onChange={e=>setViewMode(e.target.value as any)}
-            >
-              <option value="modern">מודרני</option>
-              <option value="enhanced">מתקדם</option>
-              <option value="legacy">קלאסי</option>
-              <option value="tree">עץ פרויקטים</option>
-              <option value="tests">בדיקות</option>
-        </select>
-      </div>
-        </div>
-      )}
-
-      {/* Render appropriate view based on selected mode */}
-      {viewMode === 'modern' && (
-        <ModernDashboard
-          onProjectClick={handleProjectClick}
-          onProjectEdit={handleProjectEdit}
-          onCreateProject={handleCreateProject}
-        />
-      )}
-
-      {viewMode === 'enhanced' && (
-        <EnhancedDashboard
-          onProjectClick={handleProjectClick}
-          onProjectEdit={handleProjectEdit}
-          onCreateProject={handleCreateProject}
-        />
-      )}
-
-      {viewMode === 'tree' && (
-        <ProjectTreeView
-          projects={visibleItems as any}
-          onProjectSelect={handleProjectClick}
-          onProjectEdit={handleProjectEdit}
-          onProjectArchive={(project) => archive(project.id)}
-          selectedProjectId={selectedProject?.id}
-          showActions={isAdmin}
-        />
-      )}
-
-      {viewMode === 'tests' && (
-        <TestComponent />
-      )}
-
-      {viewMode === 'legacy' && (
-      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {loading ? 'טוען...' : visibleItems.map(p => (
-          <div key={p.id} className="bg-white p-4 rounded shadow">
-            <div className="flex items-center gap-2 mb-2">
-              <h3 className="font-semibold flex-1">{p.name}</h3>
-              {isAdmin && (
-                // @ts-expect-error
-                p.is_active === false ? (
-                  <button className="px-2 py-1 bg-green-600 text-white rounded" onClick={()=>restore(p.id)}>שחזר</button>
-                ) : (
-                  <>
-                    <button className="px-2 py-1 bg-yellow-500 text-white rounded" onClick={()=>openEditModal(p.id)}>ערוך</button>
-                    <button className="px-2 py-1 bg-red-600 text-white rounded" onClick={()=>archive(p.id)}>ארכב</button>
-                  </>
-                )
-              )}
-            </div>
-            {p.is_active === false && <span className="text-xs bg-gray-200 px-2 py-0.5 rounded">בארכיון</span>}
-            <CategoryBarChart data={projectCharts[p.id] ?? []} />
-          </div>
-        ))}
-      </div>
-      )}
+      {/* Modern Dashboard - Clean view without create project option or welcome section */}
+      <ModernDashboard
+        onProjectClick={handleProjectClick}
+        onProjectEdit={handleProjectEdit}
+      />
 
       <Modal open={openCreate} onClose={onCloseModal} title={editingId ? 'עריכת פרויקט' : 'יצירת פרויקט'}>
         <form onSubmit={onCreateOrUpdate} className="space-y-2">
@@ -319,7 +229,7 @@ export default function Dashboard() {
       {/* Enhanced Create Project Modal */}
       <CreateProjectModal
         isOpen={showCreateModal}
-        onClose={handleCloseCreateModal}
+        onClose={() => setShowCreateModal(false)}
         onSuccess={handleProjectSuccess}
         editingProject={editingProject}
       />
