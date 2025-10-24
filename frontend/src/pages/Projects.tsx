@@ -263,8 +263,8 @@ export default function Projects() {
     const hasSubprojects = dashboardData?.projects?.some((p: any) => p.relation_project === project.id)
     
     if (hasSubprojects) {
-      // Navigate to subprojects page
-      navigate(`/projects/${project.id}/subprojects`)
+      // Navigate to parent project detail page with consolidated view
+      navigate(`/projects/${project.id}/parent`)
     } else {
       // Navigate to project detail page
       navigate(`/projects/${project.id}`)

@@ -1,0 +1,1130 @@
+import React, { useState, useEffect } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
+import { motion } from 'framer-motion'
+import { 
+  ArrowLeft, 
+  Calendar, 
+  DollarSign,
+  Users,
+  MapPin,
+  Building,
+  RefreshCw
+} from 'lucide-react'
+import { ProjectWithFinance } from '../types/api'
+import { DashboardAPI } from '../lib/apiClient'
+import api from '../lib/api'
+
+interface DateRange {
+  start: string
+  end: string
+}
+
+interface FinancialSummary {
+  totalIncome: number
+  totalExpense: number
+  netProfit: number
+  profitMargin: number
+  subprojectCount: number
+  activeSubprojects: number
+}
+
+interface SubprojectFinancial {
+  id: number
+  name: string
+  income: number
+  expense: number
+  profit: number
+  profitMargin: number
+  status: 'green' | 'yellow' | 'red'
+}
+
+interface Transaction {
+  id: number
+  type: 'Income' | 'Expense'
+  amount: number
+  description?: string | null
+  tx_date: string
+  category?: string | null
+  notes?: string | null
+  subproject_id?: number | null
+  is_exceptional?: boolean
+  subproject_name?: string
+}
+
+// Simple Hebrew text constants
+const HebrewText = {
+  projects: {
+    parentProject: 'פרויקט ראשי',
+    subprojects: 'תת-פרויקטים',
+    projectDetails: 'פרטי הפרויקט',
+    projectDescription: 'תיאור הפרויקט',
+    projectAddress: 'כתובת הפרויקט',
+    monthlyBudget: 'תקציב חודשי',
+    annualBudget: 'תקציב שנתי'
+  },
+  financial: {
+    totalIncome: 'סה"כ הכנסות',
+    totalExpense: 'סה"כ הוצאות',
+    netProfit: 'רווח נטו',
+    profitMargin: 'אחוז רווחיות',
+    income: 'הכנסות',
+    expense: 'הוצאות'
+  },
+  status: {
+    active: 'פעיל',
+    profitable: 'רווחי',
+    balanced: 'מאוזן',
+    lossMaking: 'הפסדי'
+  },
+  time: {
+    dateRange: 'בחירת תקופת זמן',
+    specificMonth: 'חודש ספציפי',
+    specificYear: 'שנה ספציפית',
+    customRange: 'טווח תאריכים',
+    month: 'חודש',
+    year: 'שנה',
+    fromDate: 'מתאריך',
+    toDate: 'עד תאריך'
+  },
+  actions: {
+    refresh: 'רענן'
+  },
+  ui: {
+    loading: 'טוען...',
+    noData: 'לא נמצא'
+  },
+  property: {
+    residents: 'דיירים',
+    apartment: 'לדירה'
+  },
+  months: {
+    january: 'ינואר',
+    february: 'פברואר',
+    march: 'מרץ',
+    april: 'אפריל',
+    may: 'מאי',
+    june: 'יוני',
+    july: 'יולי',
+    august: 'אוגוסט',
+    september: 'ספטמבר',
+    october: 'אוקטובר',
+    november: 'נובמבר',
+    december: 'דצמבר'
+  }
+}
+
+// Utility functions
+const formatCurrency = (amount: number): string => {
+  return `${amount.toLocaleString('he-IL')} ₪`
+}
+
+const formatPercentage = (value: number): string => {
+  return `${value.toFixed(1)}%`
+}
+
+const getStatusText = (status: 'green' | 'yellow' | 'red'): string => {
+  switch (status) {
+    case 'green': return HebrewText.status.profitable
+    case 'yellow': return HebrewText.status.balanced
+    case 'red': return HebrewText.status.lossMaking
+    default: return HebrewText.ui.noData
+  }
+}
+
+const getStatusColorClass = (status: 'green' | 'yellow' | 'red'): string => {
+  switch (status) {
+    case 'green': return 'text-green-600 dark:text-green-400'
+    case 'yellow': return 'text-yellow-600 dark:text-yellow-400'
+    case 'red': return 'text-red-600 dark:text-red-400'
+    default: return 'text-gray-600 dark:text-gray-400'
+  }
+}
+
+const getStatusBgClass = (status: 'green' | 'yellow' | 'red'): string => {
+  switch (status) {
+    case 'green': return 'bg-green-50 dark:bg-green-900/20'
+    case 'yellow': return 'bg-yellow-50 dark:bg-yellow-900/20'
+    case 'red': return 'bg-red-50 dark:bg-red-900/20'
+    default: return 'bg-gray-50 dark:bg-gray-700'
+  }
+}
+
+const DateSelector: React.FC<{
+  dateType: 'month' | 'year' | 'custom'
+  onDateTypeChange: (type: 'month' | 'year' | 'custom') => void
+  selectedMonth: string
+  onMonthChange: (month: string) => void
+  selectedYear: string
+  onYearChange: (year: string) => void
+  customRange: DateRange
+  onCustomRangeChange: (range: DateRange) => void
+}> = ({
+  dateType,
+  onDateTypeChange,
+  selectedMonth,
+  onMonthChange,
+  selectedYear,
+  onYearChange,
+  customRange,
+  onCustomRangeChange
+}) => {
+  const currentYear = new Date().getFullYear()
+  const years = Array.from({ length: 5 }, (_, i) => currentYear - 2 + i)
+  const months = [
+    { value: '01', label: HebrewText.months.january },
+    { value: '02', label: HebrewText.months.february },
+    { value: '03', label: HebrewText.months.march },
+    { value: '04', label: HebrewText.months.april },
+    { value: '05', label: HebrewText.months.may },
+    { value: '06', label: HebrewText.months.june },
+    { value: '07', label: HebrewText.months.july },
+    { value: '08', label: HebrewText.months.august },
+    { value: '09', label: HebrewText.months.september },
+    { value: '10', label: HebrewText.months.october },
+    { value: '11', label: HebrewText.months.november },
+    { value: '12', label: HebrewText.months.december }
+  ]
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+      <div className="flex items-center gap-2 mb-4">
+        <Calendar className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{HebrewText.time.dateRange}</h3>
+      </div>
+      
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            {HebrewText.time.dateRange}
+          </label>
+          <select
+            value={dateType}
+            onChange={(e) => onDateTypeChange(e.target.value as 'month' | 'year' | 'custom')}
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+          >
+            <option value="month">{HebrewText.time.specificMonth}</option>
+            <option value="year">{HebrewText.time.specificYear}</option>
+            <option value="custom">{HebrewText.time.customRange}</option>
+          </select>
+        </div>
+
+        {dateType === 'month' && (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              {HebrewText.time.month}
+            </label>
+            <select
+              value={selectedMonth}
+              onChange={(e) => onMonthChange(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+            >
+              {months.map(month => (
+                <option key={month.value} value={month.value}>
+                  {month.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {dateType === 'year' && (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              {HebrewText.time.year}
+            </label>
+            <select
+              value={selectedYear}
+              onChange={(e) => onYearChange(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+            >
+              {years.map(year => (
+                <option key={year} value={year.toString()}>
+                  {year}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {dateType === 'custom' && (
+          <>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                {HebrewText.time.fromDate}
+              </label>
+              <input
+                type="date"
+                value={customRange.start}
+                onChange={(e) => onCustomRangeChange({ ...customRange, start: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                {HebrewText.time.toDate}
+              </label>
+              <input
+                type="date"
+                value={customRange.end}
+                onChange={(e) => onCustomRangeChange({ ...customRange, end: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              />
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+const ConsolidatedFinancialSummary: React.FC<{
+  summary: FinancialSummary
+  subprojects: SubprojectFinancial[]
+}> = ({ summary, subprojects }) => {
+  return (
+    <div className="space-y-6">
+      {/* Main Financial Summary */}
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-2xl p-6 border border-blue-200 dark:border-blue-800">
+        <div className="flex items-center gap-2 mb-4">
+          <DollarSign className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+          <h3 className="text-xl font-semibold text-gray-900 dark:text-white">סיכום פיננסי מאוחד</h3>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <div className="text-center">
+            <div className="text-3xl font-bold text-green-600 dark:text-green-400 mb-1">
+              {formatCurrency(summary.totalIncome)}
+            </div>
+            <div className="text-sm text-gray-600 dark:text-gray-400">{HebrewText.financial.totalIncome}</div>
+          </div>
+          
+          <div className="text-center">
+            <div className="text-3xl font-bold text-red-600 dark:text-red-400 mb-1">
+              {formatCurrency(summary.totalExpense)}
+            </div>
+            <div className="text-sm text-gray-600 dark:text-gray-400">{HebrewText.financial.totalExpense}</div>
+          </div>
+          
+          <div className="text-center">
+            <div className={`text-3xl font-bold mb-1 ${
+              summary.netProfit >= 0 
+                ? 'text-green-600 dark:text-green-400' 
+                : 'text-red-600 dark:text-red-400'
+            }`}>
+              {summary.netProfit >= 0 ? '+' : ''}{formatCurrency(summary.netProfit)}
+            </div>
+            <div className="text-sm text-gray-600 dark:text-gray-400">{HebrewText.financial.netProfit}</div>
+          </div>
+          
+          <div className="text-center">
+            <div className={`text-3xl font-bold mb-1 ${
+              summary.profitMargin >= 0 
+                ? 'text-green-600 dark:text-green-400' 
+                : 'text-red-600 dark:text-red-400'
+            }`}>
+              {summary.profitMargin >= 0 ? '+' : ''}{formatPercentage(summary.profitMargin)}
+            </div>
+            <div className="text-sm text-gray-600 dark:text-gray-400">{HebrewText.financial.profitMargin}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Subprojects Breakdown */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h4 className="text-lg font-semibold text-gray-900 dark:text-white">
+            {HebrewText.projects.subprojects} ({summary.subprojectCount})
+          </h4>
+          <div className="text-sm text-gray-600 dark:text-gray-400">
+            {summary.activeSubprojects} {HebrewText.status.active}
+          </div>
+        </div>
+        
+        <div className="space-y-3">
+          {subprojects.map((subproject) => (
+            <div key={subproject.id} className="flex items-center justify-between p-4 rounded-lg border border-gray-200 dark:border-gray-600">
+              <div className="flex-1">
+                <div className="font-medium text-gray-900 dark:text-white">{subproject.name}</div>
+                <div className="text-sm text-gray-600 dark:text-gray-400">
+                  {HebrewText.financial.income}: {formatCurrency(subproject.income)} | {HebrewText.financial.expense}: {formatCurrency(subproject.expense)}
+                </div>
+              </div>
+              
+              <div className="text-right">
+                <div className={`font-semibold ${getStatusColorClass(subproject.status)}`}>
+                  {subproject.profit >= 0 ? '+' : ''}{formatCurrency(subproject.profit)}
+                </div>
+                <div className={`text-sm ${getStatusColorClass(subproject.status)}`}>
+                  {subproject.profitMargin >= 0 ? '+' : ''}{formatPercentage(subproject.profitMargin)}
+                </div>
+              </div>
+              
+              <div className={`ml-4 px-3 py-1 rounded-full text-xs font-medium ${getStatusBgClass(subproject.status)} ${getStatusColorClass(subproject.status)}`}>
+                {getStatusText(subproject.status)}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const ConsolidatedTransactionsTable: React.FC<{
+  transactions: Transaction[]
+  loading: boolean
+  onFilterChange: (filters: {
+    type: 'all' | 'Income' | 'Expense'
+    month: string
+    year: string
+    category: string
+    exceptional: 'all' | 'only' | 'none'
+  }) => void
+  filters: {
+    type: 'all' | 'Income' | 'Expense'
+    month: string
+    year: string
+    category: string
+    exceptional: 'all' | 'only' | 'none'
+  }
+}> = ({ transactions, loading, onFilterChange, filters }) => {
+  const filteredTransactions = transactions.filter(transaction => {
+    const txDate = new Date(transaction.tx_date)
+    const transactionMonth = (txDate.getMonth() + 1).toString().padStart(2, '0')
+    const transactionYear = txDate.getFullYear().toString()
+    
+    const typeMatch = filters.type === 'all' || transaction.type === filters.type
+    const monthMatch = !filters.month || transactionMonth === filters.month
+    const yearMatch = !filters.year || transactionYear === filters.year
+    const categoryMatch = !filters.category || transaction.category?.toLowerCase().includes(filters.category.toLowerCase())
+    const exceptionalMatch = filters.exceptional === 'all' || 
+      (filters.exceptional === 'only' && transaction.is_exceptional) ||
+      (filters.exceptional === 'none' && !transaction.is_exceptional)
+    
+    return typeMatch && monthMatch && yearMatch && categoryMatch && exceptionalMatch
+  })
+
+  const totalIncome = filteredTransactions
+    .filter(t => t.type === 'Income')
+    .reduce((sum, t) => sum + t.amount, 0)
+  
+  const totalExpense = filteredTransactions
+    .filter(t => t.type === 'Expense')
+    .reduce((sum, t) => sum + t.amount, 0)
+
+  const categories = Array.from(new Set(transactions.map(t => t.category).filter(Boolean)))
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+      <div className="flex items-center justify-between mb-6">
+        <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
+          עסקאות מאוחדות ({filteredTransactions.length})
+        </h3>
+        <div className="text-sm text-gray-600 dark:text-gray-400">
+          הכנסות: {formatCurrency(totalIncome)} | הוצאות: {formatCurrency(totalExpense)}
+        </div>
+      </div>
+
+      {/* Advanced Filters */}
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            סוג עסקה
+          </label>
+          <select
+            value={filters.type}
+            onChange={(e) => onFilterChange({ ...filters, type: e.target.value as 'all' | 'Income' | 'Expense' })}
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+          >
+            <option value="all">הכל</option>
+            <option value="Income">הכנסות</option>
+            <option value="Expense">הוצאות</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            חודש
+          </label>
+          <select
+            value={filters.month}
+            onChange={(e) => onFilterChange({ ...filters, month: e.target.value })}
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+          >
+            <option value="">כל החודשים</option>
+            <option value="01">ינואר</option>
+            <option value="02">פברואר</option>
+            <option value="03">מרץ</option>
+            <option value="04">אפריל</option>
+            <option value="05">מאי</option>
+            <option value="06">יוני</option>
+            <option value="07">יולי</option>
+            <option value="08">אוגוסט</option>
+            <option value="09">ספטמבר</option>
+            <option value="10">אוקטובר</option>
+            <option value="11">נובמבר</option>
+            <option value="12">דצמבר</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            שנה
+          </label>
+          <select
+            value={filters.year}
+            onChange={(e) => onFilterChange({ ...filters, year: e.target.value })}
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+          >
+            <option value="">כל השנים</option>
+            <option value="2024">2024</option>
+            <option value="2023">2023</option>
+            <option value="2022">2022</option>
+            <option value="2021">2021</option>
+            <option value="2020">2020</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            קטגוריה
+          </label>
+          <select
+            value={filters.category}
+            onChange={(e) => onFilterChange({ ...filters, category: e.target.value })}
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+          >
+            <option value="">כל הקטגוריות</option>
+            {categories.map(category => (
+              <option key={category} value={category || ''}>{category}</option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            עסקאות חריגות
+          </label>
+          <select
+            value={filters.exceptional}
+            onChange={(e) => onFilterChange({ ...filters, exceptional: e.target.value as 'all' | 'only' | 'none' })}
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+          >
+            <option value="all">הכל</option>
+            <option value="only">רק חריגות</option>
+            <option value="none">ללא חריגות</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Transactions Table */}
+      {loading ? (
+        <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+          טוען עסקאות...
+        </div>
+      ) : filteredTransactions.length === 0 ? (
+        <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+          לא נמצאו עסקאות המתאימות לסינון
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 dark:bg-gray-700 text-left">
+                <th className="p-3 font-medium text-gray-700 dark:text-gray-300">תת-פרויקט</th>
+                <th className="p-3 font-medium text-gray-700 dark:text-gray-300">סוג</th>
+                <th className="p-3 font-medium text-gray-700 dark:text-gray-300">תאריך</th>
+                <th className="p-3 font-medium text-gray-700 dark:text-gray-300">סכום</th>
+                <th className="p-3 font-medium text-gray-700 dark:text-gray-300">קטגוריה</th>
+                <th className="p-3 font-medium text-gray-700 dark:text-gray-300">תיאור</th>
+                <th className="p-3 font-medium text-gray-700 dark:text-gray-300">הערות</th>
+                <th className="p-3 font-medium text-gray-700 dark:text-gray-300">סטטוס</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredTransactions.map(transaction => (
+                <tr key={transaction.id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700">
+                  <td className="p-3 text-gray-900 dark:text-white font-medium">
+                    {transaction.subproject_name || 'ללא תת-פרויקט'}
+                  </td>
+                  <td className="p-3">
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                      transaction.type === 'Income' 
+                        ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-300' 
+                        : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-300'
+                    }`}>
+                      {transaction.type === 'Income' ? 'הכנסה' : 'הוצאה'}
+                    </span>
+                  </td>
+                  <td className="p-3 text-gray-700 dark:text-gray-300">
+                    {new Date(transaction.tx_date).toLocaleDateString('he-IL')}
+                  </td>
+                  <td className={`p-3 font-semibold ${
+                    transaction.type === 'Income' 
+                      ? 'text-green-600 dark:text-green-400' 
+                      : 'text-red-600 dark:text-red-400'
+                  }`}>
+                    {formatCurrency(transaction.amount)}
+                  </td>
+                  <td className="p-3 text-gray-700 dark:text-gray-300">
+                    {transaction.category || '-'}
+                  </td>
+                  <td className="p-3 text-gray-700 dark:text-gray-300">
+                    {transaction.description || '-'}
+                  </td>
+                  <td className="p-3 text-gray-700 dark:text-gray-300">
+                    {transaction.notes || '-'}
+                  </td>
+                  <td className="p-3">
+                    {transaction.is_exceptional && (
+                      <span className="px-2 py-1 bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-300 rounded-full text-xs font-medium">
+                        חריגה
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Summary */}
+      {filteredTransactions.length > 0 && (
+        <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-600">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg text-center">
+              <div className="text-green-600 dark:text-green-400 font-semibold mb-1">סה"כ הכנסות</div>
+              <div className="text-2xl font-bold text-green-700 dark:text-green-300">
+                {formatCurrency(totalIncome)}
+              </div>
+            </div>
+            <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg text-center">
+              <div className="text-red-600 dark:text-red-400 font-semibold mb-1">סה"כ הוצאות</div>
+              <div className="text-2xl font-bold text-red-700 dark:text-red-300">
+                {formatCurrency(totalExpense)}
+              </div>
+            </div>
+            <div className={`p-4 rounded-lg text-center ${
+              totalIncome - totalExpense < 0 
+                ? 'bg-red-50 dark:bg-red-900/20' 
+                : 'bg-green-50 dark:bg-green-900/20'
+            }`}>
+              <div className={`font-semibold mb-1 ${
+                totalIncome - totalExpense < 0 
+                  ? 'text-red-600 dark:text-red-400' 
+                  : 'text-green-600 dark:text-green-400'
+              }`}>
+                רווח נטו
+              </div>
+              <div className={`text-2xl font-bold ${
+                totalIncome - totalExpense < 0 
+                  ? 'text-red-700 dark:text-red-300' 
+                  : 'text-green-700 dark:text-green-300'
+              }`}>
+                {formatCurrency(totalIncome - totalExpense)}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default function ParentProjectDetail() {
+  const { id } = useParams()
+  const navigate = useNavigate()
+  
+  const [parentProject, setParentProject] = useState<ProjectWithFinance | null>(null)
+  const [subprojects, setSubprojects] = useState<SubprojectFinancial[]>([])
+  const [financialSummary, setFinancialSummary] = useState<FinancialSummary | null>(null)
+  const [transactions, setTransactions] = useState<Transaction[]>([])
+  const [transactionsLoading, setTransactionsLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  
+  // Transaction filters
+  const [transactionFilters, setTransactionFilters] = useState({
+    type: 'all' as 'all' | 'Income' | 'Expense',
+    month: '',
+    year: '',
+    category: '',
+    exceptional: 'all' as 'all' | 'only' | 'none'
+  })
+  
+  // Date selector state
+  const [dateType, setDateType] = useState<'month' | 'year' | 'custom'>('month')
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() < 9 ? `0${new Date().getMonth() + 1}` : `${new Date().getMonth() + 1}`)
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString())
+  const [customRange, setCustomRange] = useState<DateRange>({
+    start: new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0],
+    end: new Date().toISOString().split('T')[0]
+  })
+
+  useEffect(() => {
+    if (id) {
+      loadParentProjectData()
+    }
+  }, [id])
+
+  // Reload data when date filters change
+  useEffect(() => {
+    if (id && parentProject) {
+      loadSubprojectsFinancialData(parseInt(id))
+      loadTransactions()
+    }
+  }, [dateType, selectedMonth, selectedYear, customRange])
+
+  const loadParentProjectData = async () => {
+    if (!id) return
+    
+    setLoading(true)
+    setError(null)
+    
+    try {
+      // Load parent project info
+      const dashboardData = await DashboardAPI.getDashboardSnapshot()
+      const parent = dashboardData.projects.find(p => p.id === parseInt(id))
+      
+      if (!parent) {
+        setError('פרויקט לא נמצא')
+        return
+      }
+      
+      setParentProject(parent)
+      
+      // Load real financial data from subprojects
+      await loadSubprojectsFinancialData(parseInt(id))
+      
+      // Load real transactions
+      await loadTransactions()
+      
+    } catch (err: any) {
+      console.error('Parent project data loading error:', err)
+      setError(err.message || 'שגיאה בטעינת נתוני הפרויקט')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const loadSubprojectsFinancialData = async (parentId: number) => {
+    try {
+      // Get all subprojects for this parent project
+      const { data: allProjects } = await api.get('/projects')
+      const subprojectList = allProjects.filter((p: any) => p.relation_project === parentId)
+      
+      const subprojectFinancials: SubprojectFinancial[] = []
+      let totalIncome = 0
+      let totalExpense = 0
+      
+      for (const subproject of subprojectList) {
+        try {
+          // Get transactions for this subproject
+          const { data: allTransactions } = await api.get(`/transactions/project/${subproject.id}`)
+          
+          // Filter transactions based on selected date range
+          const filteredTransactions = allTransactions.filter((transaction: any) => {
+            const txDate = new Date(transaction.tx_date)
+            
+            if (dateType === 'month') {
+              const targetDate = new Date(parseInt(selectedYear), parseInt(selectedMonth) - 1, 1)
+              const nextMonth = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 1)
+              return txDate >= targetDate && txDate < nextMonth
+            } else if (dateType === 'year') {
+              const targetYear = parseInt(selectedYear)
+              return txDate.getFullYear() === targetYear
+            } else if (dateType === 'custom') {
+              const startDate = new Date(customRange.start)
+              const endDate = new Date(customRange.end)
+              return txDate >= startDate && txDate <= endDate
+            }
+            
+            return true
+          })
+          
+          const income = filteredTransactions
+            .filter((t: any) => t.type === 'Income')
+            .reduce((sum: number, t: any) => sum + Number(t.amount || 0), 0)
+          
+          const expense = filteredTransactions
+            .filter((t: any) => t.type === 'Expense')
+            .reduce((sum: number, t: any) => sum + Number(t.amount || 0), 0)
+          
+          const profit = income - expense
+          const profitMargin = income > 0 ? (profit / income) * 100 : 0
+          
+          let status: 'green' | 'yellow' | 'red' = 'yellow'
+          if (profitMargin >= 10) status = 'green'
+          else if (profitMargin <= -10) status = 'red'
+          
+          subprojectFinancials.push({
+            id: subproject.id,
+            name: subproject.name,
+            income,
+            expense,
+            profit,
+            profitMargin,
+            status
+          })
+          
+          totalIncome += income
+          totalExpense += expense
+          
+        } catch (err) {
+          console.error(`Error loading financial data for subproject ${subproject.id}:`, err)
+        }
+      }
+      
+      setSubprojects(subprojectFinancials)
+      
+      const netProfit = totalIncome - totalExpense
+      const profitMargin = totalIncome > 0 ? (netProfit / totalIncome) * 100 : 0
+      
+      setFinancialSummary({
+        totalIncome,
+        totalExpense,
+        netProfit,
+        profitMargin,
+        subprojectCount: subprojectList.length,
+        activeSubprojects: subprojectList.filter((p: any) => p.is_active !== false).length
+      })
+      
+    } catch (err: any) {
+      console.error('Error loading subprojects financial data:', err)
+      setError('שגיאה בטעינת נתונים פיננסיים של תת-פרויקטים')
+    }
+  }
+
+  const loadTransactions = async () => {
+    if (!id) return
+    
+    setTransactionsLoading(true)
+    try {
+      // Get all subprojects for this parent project
+      const { data: allProjects } = await api.get('/projects')
+      const subprojects = allProjects.filter((p: any) => p.relation_project === parseInt(id))
+      
+      // Load transactions for each subproject
+      const allTransactions: Transaction[] = []
+      
+      for (const subproject of subprojects) {
+        try {
+          const { data: subprojectTransactions } = await api.get(`/transactions/project/${subproject.id}`)
+          
+          // Filter transactions based on selected date range
+          const filteredTransactions = subprojectTransactions.filter((transaction: any) => {
+            const txDate = new Date(transaction.tx_date)
+            
+            if (dateType === 'month') {
+              const targetDate = new Date(parseInt(selectedYear), parseInt(selectedMonth) - 1, 1)
+              const nextMonth = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 1)
+              return txDate >= targetDate && txDate < nextMonth
+            } else if (dateType === 'year') {
+              const targetYear = parseInt(selectedYear)
+              return txDate.getFullYear() === targetYear
+            } else if (dateType === 'custom') {
+              const startDate = new Date(customRange.start)
+              const endDate = new Date(customRange.end)
+              return txDate >= startDate && txDate <= endDate
+            }
+            
+            return true
+          })
+          
+          // Add subproject name to each transaction
+          const transactionsWithSubproject = filteredTransactions.map((tx: any) => ({
+            ...tx,
+            subproject_name: subproject.name
+          }))
+          
+          allTransactions.push(...transactionsWithSubproject)
+        } catch (err) {
+          console.error(`Error loading transactions for subproject ${subproject.id}:`, err)
+        }
+      }
+      
+      // Sort transactions by date (newest first)
+      allTransactions.sort((a, b) => new Date(b.tx_date).getTime() - new Date(a.tx_date).getTime())
+      
+      setTransactions(allTransactions)
+    } catch (err: any) {
+      console.error('Error loading transactions:', err)
+      setError('שגיאה בטעינת העסקאות')
+    } finally {
+      setTransactionsLoading(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-lg">{HebrewText.ui.loading} {HebrewText.projects.parentProject}...</div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-4">
+        <div className="bg-red-50 border border-red-200 text-red-800 p-4 rounded">
+          {error}
+        </div>
+        <button
+          onClick={() => navigate('/projects')}
+          className="bg-gray-900 text-white px-4 py-2 rounded"
+        >
+          חזור לפרויקטים
+        </button>
+      </div>
+    )
+  }
+
+  if (!parentProject) {
+    return (
+      <div className="space-y-4">
+        <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 p-4 rounded">
+          פרויקט {HebrewText.ui.noData}
+        </div>
+        <button
+          onClick={() => navigate('/projects')}
+          className="bg-gray-900 text-white px-4 py-2 rounded"
+        >
+          חזור לפרויקטים
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-8">
+      {/* Header */}
+      <motion.div
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="flex items-center justify-between"
+      >
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => navigate('/projects')}
+            className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+          >
+            <ArrowLeft className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+          </button>
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+              {parentProject.name}
+            </h1>
+            <p className="text-gray-600 dark:text-gray-400 mt-1">
+              {HebrewText.projects.parentProject} - {HebrewText.projects.subprojects}
+            </p>
+          </div>
+        </div>
+        
+        <div className="flex items-center gap-2">
+          <button
+            onClick={loadParentProjectData}
+            className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+          >
+            <RefreshCw className="w-4 h-4" />
+            {HebrewText.actions.refresh}
+          </button>
+        </div>
+      </motion.div>
+
+      {/* Parent Project Details */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+        className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6"
+      >
+        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">{HebrewText.projects.projectDetails}</h2>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {parentProject.description && (
+            <div>
+              <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{HebrewText.projects.projectDescription}</div>
+              <div className="text-gray-900 dark:text-white">{parentProject.description}</div>
+            </div>
+          )}
+          
+          {parentProject.address && (
+            <div className="flex items-center gap-2">
+              <MapPin className="w-4 h-4 text-gray-400" />
+              <div>
+                <div className="text-sm font-medium text-gray-700 dark:text-gray-300">{HebrewText.projects.projectAddress}</div>
+                <div className="text-gray-900 dark:text-white">{parentProject.address}</div>
+                {parentProject.city && (
+                  <div className="text-sm text-gray-600 dark:text-gray-400">{parentProject.city}</div>
+                )}
+              </div>
+            </div>
+          )}
+          
+          {parentProject.num_residents && (
+            <div className="flex items-center gap-2">
+              <Users className="w-4 h-4 text-gray-400" />
+              <div>
+                <div className="text-sm font-medium text-gray-700 dark:text-gray-300">{HebrewText.property.residents}</div>
+                <div className="text-gray-900 dark:text-white">{parentProject.num_residents}</div>
+              </div>
+            </div>
+          )}
+          
+          {parentProject.monthly_price_per_apartment && (
+            <div className="flex items-center gap-2">
+              <DollarSign className="w-4 h-4 text-gray-400" />
+              <div>
+                <div className="text-sm font-medium text-gray-700 dark:text-gray-300">{HebrewText.projects.monthlyBudget} {HebrewText.property.apartment}</div>
+                <div className="text-gray-900 dark:text-white">{parentProject.monthly_price_per_apartment.toFixed(0)} ₪</div>
+              </div>
+            </div>
+          )}
+          
+          {parentProject.budget_monthly > 0 && (
+            <div className="flex items-center gap-2">
+              <Building className="w-4 h-4 text-gray-400" />
+              <div>
+                <div className="text-sm font-medium text-gray-700 dark:text-gray-300">{HebrewText.projects.monthlyBudget}</div>
+                <div className="text-gray-900 dark:text-white">{parentProject.budget_monthly.toFixed(0)} ₪</div>
+              </div>
+            </div>
+          )}
+          
+          {parentProject.budget_annual > 0 && (
+            <div className="flex items-center gap-2">
+              <Building className="w-4 h-4 text-gray-400" />
+              <div>
+                <div className="text-sm font-medium text-gray-700 dark:text-gray-300">{HebrewText.projects.annualBudget}</div>
+                <div className="text-gray-900 dark:text-white">{parentProject.budget_annual.toFixed(0)} ₪</div>
+              </div>
+            </div>
+          )}
+        </div>
+      </motion.div>
+
+      {/* Date Selector */}
+      <DateSelector
+        dateType={dateType}
+        onDateTypeChange={setDateType}
+        selectedMonth={selectedMonth}
+        onMonthChange={setSelectedMonth}
+        selectedYear={selectedYear}
+        onYearChange={setSelectedYear}
+        customRange={customRange}
+        onCustomRangeChange={setCustomRange}
+      />
+
+      {/* Consolidated Financial Summary */}
+      {financialSummary && (
+        <ConsolidatedFinancialSummary
+          summary={financialSummary}
+          subprojects={subprojects}
+        />
+      )}
+
+      {/* Subprojects Grid */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
+            תת-פרויקטים ({subprojects.length})
+          </h3>
+        </div>
+        
+        {subprojects.length === 0 ? (
+          <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+            אין תת-פרויקטים לפרויקט זה
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {subprojects.map((subproject) => (
+              <motion.div
+                key={subproject.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3 }}
+                className="bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600 p-6 hover:shadow-md transition-shadow cursor-pointer"
+                onClick={() => navigate(`/projects/${subproject.id}`)}
+              >
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex-1">
+                    <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                      {subproject.name}
+                    </h4>
+                    <div className="flex items-center space-x-2 space-x-reverse">
+                      <div className={`w-3 h-3 rounded-full ${getStatusBgClass(subproject.status)}`}></div>
+                      <span className={`text-sm font-medium ${getStatusColorClass(subproject.status)}`}>
+                        {getStatusText(subproject.status)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600 dark:text-gray-400">הכנסות</span>
+                    <span className="font-semibold text-green-600 dark:text-green-400">
+                      {formatCurrency(subproject.income)}
+                    </span>
+                  </div>
+                  
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600 dark:text-gray-400">הוצאות</span>
+                    <span className="font-semibold text-red-600 dark:text-red-400">
+                      {formatCurrency(subproject.expense)}
+                    </span>
+                  </div>
+                  
+                  <div className="border-t border-gray-200 dark:border-gray-600 pt-3">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">רווח נטו</span>
+                      <span className={`font-bold ${
+                        subproject.profit >= 0 
+                          ? 'text-green-600 dark:text-green-400' 
+                          : 'text-red-600 dark:text-red-400'
+                      }`}>
+                        {formatCurrency(subproject.profit)}
+                      </span>
+                    </div>
+                    
+                    <div className="flex justify-between items-center mt-1">
+                      <span className="text-xs text-gray-500 dark:text-gray-400">רווחיות</span>
+                      <span className={`text-sm font-medium ${
+                        subproject.profitMargin >= 0 
+                          ? 'text-green-600 dark:text-green-400' 
+                          : 'text-red-600 dark:text-red-400'
+                      }`}>
+                        {formatPercentage(subproject.profitMargin)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      navigate(`/projects/${subproject.id}`)
+                    }}
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                  >
+                    צפה בפרויקט
+                  </button>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Consolidated Transactions Table */}
+      <ConsolidatedTransactionsTable
+        transactions={transactions}
+        loading={transactionsLoading}
+        onFilterChange={setTransactionFilters}
+        filters={transactionFilters}
+      />
+    </div>
+  )
+}

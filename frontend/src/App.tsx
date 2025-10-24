@@ -9,6 +9,7 @@ import Dashboard from './pages/Dashboard'
 import Projects from './pages/Projects'
 import ProjectDetail from './pages/ProjectDetail'
 import Subprojects from './pages/Subprojects'
+import ParentProjectDetail from './components/ParentProjectDetail'
 import Reports from './pages/Reports'
 import Suppliers from './pages/Suppliers'
 import { logout, fetchMe } from './store/slices/authSlice'
@@ -136,6 +137,7 @@ function AppContent() {
               <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
               <Route path="/projects" element={<RequireAuth><Projects /></RequireAuth>} />
               <Route path="/projects/:id" element={<RequireAuth><ProjectDetail /></RequireAuth>} />
+              <Route path="/projects/:id/parent" element={<RequireAuth><ParentProjectDetail /></RequireAuth>} />
               <Route path="/projects/:parentId/subprojects" element={<RequireAuth><Subprojects /></RequireAuth>} />
               <Route path="/reports" element={<RequireAuth><Reports /></RequireAuth>} />
               <Route path="/suppliers" element={<RequireAuth><Suppliers /></RequireAuth>} />
