@@ -18,13 +18,21 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  // If we have a token, optimistically go to dashboard and fetch user in background
+  // Handle successful login
   useEffect(() => {
-    if (token) {
-      navigate('/')
+    if (token && !loading) {
+      // Navigate immediately after getting token
+      const redirectPath = localStorage.getItem('redirectAfterLogin')
+      if (redirectPath) {
+        localStorage.removeItem('redirectAfterLogin')
+        navigate(redirectPath)
+      } else {
+        navigate('/')
+      }
+      // Fetch user data in background
       if (!me) dispatch(fetchMe())
     }
-  }, [token, me, dispatch, navigate])
+  }, [token, loading, dispatch, navigate])
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -121,6 +129,11 @@ export default function Login() {
                 className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4"
               >
                 <p className="text-red-600 dark:text-red-400 text-sm font-medium">{error}</p>
+                {error.includes('Invalid credentials') && (
+                  <p className="text-red-500 dark:text-red-400 text-xs mt-2">
+                    אם אין לכם חשבון, אנא הירשמו תחילה
+                  </p>
+                )}
               </motion.div>
             )}
 

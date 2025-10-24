@@ -21,8 +21,15 @@ api.interceptors.response.use(
       try { window.alert('אין לך הרשאה לבצע את הפעולה הזו') } catch {}
     }
     if (status === 401) {
-      // optional: keep user informed
-      try { window.alert('ההתחברות פגה או לא תקפה. יש להתחבר מחדש.') } catch {}
+      // Clear token and redirect to login
+      localStorage.removeItem('token')
+      // Save current location to redirect back after login
+      const currentPath = window.location.pathname + window.location.search
+      if (currentPath !== '/login' && currentPath !== '/register') {
+        localStorage.setItem('redirectAfterLogin', currentPath)
+      }
+      // Redirect to login page
+      window.location.href = '/login'
     }
     return Promise.reject(error)
   }

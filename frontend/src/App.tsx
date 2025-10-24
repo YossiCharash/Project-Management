@@ -28,8 +28,10 @@ function RequireAuth({ children }: { children: JSX.Element }) {
     }
   }, [token, me, loading, dispatch])
 
+  // If no token, redirect to login
   if (!token) return <Navigate to="/login" replace />
   
+  // If loading user data, show loading
   if (loading) {
     return <LoadingOverlay message="טוען נתוני משתמש..." />
   }

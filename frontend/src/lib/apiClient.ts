@@ -87,9 +87,15 @@ export class DashboardAPI {
       // Use the new comprehensive backend endpoint for real-time data
       const { data } = await api.get<DashboardSnapshot>('/reports/dashboard-snapshot')
       return data
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to fetch dashboard snapshot:', error)
-      // Return empty state on error
+      
+      // If authentication error, let the interceptor handle it
+      if (error.response?.status === 401) {
+        throw error
+      }
+      
+      // Return empty state on other errors
       return {
         projects: [],
         alerts: { budget_overrun: [], missing_proof: [], unpaid_recurring: [] },

@@ -48,12 +48,21 @@ export const register = createAsyncThunk(
   }
 )
 
-export const fetchMe = createAsyncThunk('auth/fetchMe', async (_, { rejectWithValue }) => {
+export const fetchMe = createAsyncThunk('auth/fetchMe', async (_, { rejectWithValue, dispatch }) => {
   try {
     const { data } = await api.get<CurrentUser>('/users/me')
     return data
   } catch (e: any) {
-    // Keep token; surface error so UI can handle gracefully without flashing/logout
+    // If 401, clear token and redirect
+    if (e.response?.status === 401) {
+      dispatch(logout())
+      // Save current location to redirect back after login
+      const currentPath = window.location.pathname + window.location.search
+      if (currentPath !== '/login' && currentPath !== '/register') {
+        localStorage.setItem('redirectAfterLogin', currentPath)
+      }
+      window.location.href = '/login'
+    }
     return rejectWithValue(e.response?.data?.detail ?? 'Failed to load user')
   }
 })
