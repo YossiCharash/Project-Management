@@ -21,6 +21,17 @@ class UserRepository:
         await self.db.refresh(user)
         return user
 
+    async def update(self, user: User) -> User:
+        await self.db.commit()
+        await self.db.refresh(user)
+        return user
+
     async def list(self) -> list[User]:
         res = await self.db.execute(select(User))
         return list(res.scalars().all())
+
+    async def has_admin_user(self) -> bool:
+        """Check if any admin user exists in the system"""
+        from backend.models.user import UserRole
+        res = await self.db.execute(select(User).where(User.role == UserRole.ADMIN.value))
+        return res.scalar_one_or_none() is not None

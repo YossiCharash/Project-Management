@@ -13,6 +13,8 @@ import {
 import { ProjectWithFinance } from '../types/api'
 import { DashboardAPI } from '../lib/apiClient'
 import api from '../lib/api'
+import ProjectExpensePieChart from './charts/ProjectExpensePieChart'
+import ProjectTrendsChart from './charts/ProjectTrendsChart'
 
 interface DateRange {
   start: string
@@ -49,6 +51,12 @@ interface Transaction {
   subproject_id?: number | null
   is_exceptional?: boolean
   subproject_name?: string
+}
+
+interface ExpenseCategory {
+  category: string
+  amount: number
+  color: string
 }
 
 // Simple Hebrew text constants
@@ -370,6 +378,7 @@ const ConsolidatedFinancialSummary: React.FC<{
   )
 }
 
+
 const ConsolidatedTransactionsTable: React.FC<{
   transactions: Transaction[]
   loading: boolean
@@ -641,6 +650,8 @@ export default function ParentProjectDetail() {
   const [financialSummary, setFinancialSummary] = useState<FinancialSummary | null>(null)
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [transactionsLoading, setTransactionsLoading] = useState(false)
+  const [expenseCategories, setExpenseCategories] = useState<ExpenseCategory[]>([])
+  const [chartsLoading, setChartsLoading] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   
@@ -671,10 +682,11 @@ export default function ParentProjectDetail() {
   // Reload data when date filters change
   useEffect(() => {
     if (id && parentProject) {
-      loadSubprojectsFinancialData(parseInt(id))
+      loadAdvancedFinancialSummary(parseInt(id))
       loadTransactions()
+      loadChartsData()
     }
-  }, [dateType, selectedMonth, selectedYear, customRange])
+  }, [dateType, selectedMonth, selectedYear, customRange, id, parentProject])
 
   const loadParentProjectData = async () => {
     if (!id) return
@@ -694,11 +706,14 @@ export default function ParentProjectDetail() {
       
       setParentProject(parent)
       
-      // Load real financial data from subprojects
-      await loadSubprojectsFinancialData(parseInt(id))
+      // Load all data using the new advanced API
+      await loadAdvancedFinancialSummary(parseInt(id))
       
-      // Load real transactions
+      // Load transactions
       await loadTransactions()
+      
+      // Load charts data
+      await loadChartsData()
       
     } catch (err: any) {
       console.error('Parent project data loading error:', err)
@@ -708,9 +723,119 @@ export default function ParentProjectDetail() {
     }
   }
 
-  const loadSubprojectsFinancialData = async (parentId: number) => {
+  const loadAdvancedFinancialSummary = async (parentId: number) => {
     try {
-      // Get all subprojects for this parent project
+      // Build date range parameters
+      let startDate: string | undefined
+      let endDate: string | undefined
+      
+      if (dateType === 'month') {
+        const targetDate = new Date(parseInt(selectedYear), parseInt(selectedMonth) - 1, 1)
+        const nextMonth = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 1)
+        startDate = targetDate.toISOString().split('T')[0]
+        endDate = nextMonth.toISOString().split('T')[0]
+      } else if (dateType === 'year') {
+        const targetYear = parseInt(selectedYear)
+        startDate = `${targetYear}-01-01`
+        endDate = `${targetYear}-12-31`
+      } else if (dateType === 'custom') {
+        startDate = customRange.start
+        endDate = customRange.end
+      }
+      
+      // Load advanced financial summary
+      const params = new URLSearchParams()
+      if (startDate) params.append('start_date', startDate)
+      if (endDate) params.append('end_date', endDate)
+      
+      console.log('Loading financial summary with params:', { startDate, endDate, parentId })
+      
+      const { data: financialSummary } = await api.get(`/projects/${parentId}/financial-summary?${params.toString()}`)
+      
+      console.log('Financial summary response:', financialSummary)
+      
+      // Update state with advanced data
+      if (financialSummary.financial_summary) {
+        setFinancialSummary({
+          totalIncome: financialSummary.financial_summary.total_income,
+          totalExpense: financialSummary.financial_summary.total_expense,
+          netProfit: financialSummary.financial_summary.net_profit,
+          profitMargin: financialSummary.financial_summary.profit_margin,
+          subprojectCount: financialSummary.financial_summary.subproject_count,
+          activeSubprojects: financialSummary.financial_summary.active_subprojects
+        })
+      }
+      
+      // Update subprojects with advanced data
+      if (financialSummary.subproject_financials) {
+        const advancedSubprojects: SubprojectFinancial[] = financialSummary.subproject_financials.map((sp: any) => ({
+          id: sp.id,
+          name: sp.name,
+          income: sp.income,
+          expense: sp.expense,
+          profit: sp.profit,
+          profitMargin: sp.profit_margin,
+          status: sp.status
+        }))
+        setSubprojects(advancedSubprojects)
+      }
+      
+    } catch (err: any) {
+      console.error('Error loading advanced financial summary:', err)
+      // Fallback to basic loading if advanced API fails
+      console.log('Falling back to basic loading...')
+      try {
+        await loadSubprojectsData(parentId)
+      } catch (fallbackErr) {
+        console.error('Fallback loading also failed:', fallbackErr)
+      }
+    }
+  }
+
+  const loadChartsData = async () => {
+    if (!id) return
+    
+    setChartsLoading(true)
+    try {
+      // Load expense categories for pie chart
+      const { data: transactions } = await api.get(`/transactions/project/${id}`)
+      
+      // Filter transactions by date range
+      const filteredTransactions = filterTransactionsByDate(transactions || [])
+      
+      // Calculate expense categories
+      const categoryMap: { [key: string]: number } = {}
+      filteredTransactions.forEach((tx: any) => {
+        if (tx.type === 'Expense') {
+          const category = tx.category || 'ללא קטגוריה'
+          categoryMap[category] = (categoryMap[category] || 0) + Number(tx.amount || 0)
+        }
+      })
+      
+      // Convert to array with colors
+      const colors = [
+        '#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6',
+        '#EC4899', '#06B6D4', '#84CC16', '#F97316', '#6366F1'
+      ]
+      
+      const categories: ExpenseCategory[] = Object.entries(categoryMap).map(([category, amount], index) => ({
+        category,
+        amount,
+        color: colors[index % colors.length]
+      }))
+      
+      setExpenseCategories(categories)
+      
+    } catch (err: any) {
+      console.error('Error loading charts data:', err)
+    } finally {
+      setChartsLoading(false)
+    }
+  }
+
+  const loadSubprojectsData = async (parentId: number) => {
+    try {
+      // Get all projects and filter subprojects
       const { data: allProjects } = await api.get('/projects')
       const subprojectList = allProjects.filter((p: any) => p.relation_project === parentId)
       
@@ -718,30 +843,60 @@ export default function ParentProjectDetail() {
       let totalIncome = 0
       let totalExpense = 0
       
+      // Calculate financial data for parent project
+      try {
+        const { data: parentTransactions } = await api.get(`/transactions/project/${parentId}`)
+        
+        // Ensure we have transactions data
+        const transactions = parentTransactions || []
+        
+        // Filter parent transactions by date range
+        const filteredParentTransactions = filterTransactionsByDate(transactions)
+        
+        const parentIncome = filteredParentTransactions
+          .filter((t: any) => t.type === 'Income')
+          .reduce((sum: number, t: any) => sum + Number(t.amount || 0), 0)
+        
+        const parentExpense = filteredParentTransactions
+          .filter((t: any) => t.type === 'Expense')
+          .reduce((sum: number, t: any) => sum + Number(t.amount || 0), 0)
+        
+        const parentProfit = parentIncome - parentExpense
+        const parentProfitMargin = parentIncome > 0 ? (parentProfit / parentIncome) * 100 : 0
+        
+        let parentStatus: 'green' | 'yellow' | 'red' = 'yellow'
+        if (parentProfitMargin >= 10) parentStatus = 'green'
+        else if (parentProfitMargin <= -10) parentStatus = 'red'
+        
+        // Add parent project as first item in subprojects list
+        subprojectFinancials.push({
+          id: parentId,
+          name: `${parentProject?.name || 'פרויקט ראשי'} (ראשי)`,
+          income: parentIncome,
+          expense: parentExpense,
+          profit: parentProfit,
+          profitMargin: parentProfitMargin,
+          status: parentStatus
+        })
+        
+        totalIncome += parentIncome
+        totalExpense += parentExpense
+        
+      } catch (err) {
+        console.error('Error loading parent project financial data:', err)
+      }
+      
+      // Calculate financial data for each subproject
       for (const subproject of subprojectList) {
         try {
-          // Get transactions for this subproject
-          const { data: allTransactions } = await api.get(`/transactions/project/${subproject.id}`)
+          // Get transactions for the subproject
+          const { data: transactions } = await api.get(`/transactions/project/${subproject.id}`)
           
-          // Filter transactions based on selected date range
-          const filteredTransactions = allTransactions.filter((transaction: any) => {
-            const txDate = new Date(transaction.tx_date)
-            
-            if (dateType === 'month') {
-              const targetDate = new Date(parseInt(selectedYear), parseInt(selectedMonth) - 1, 1)
-              const nextMonth = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 1)
-              return txDate >= targetDate && txDate < nextMonth
-            } else if (dateType === 'year') {
-              const targetYear = parseInt(selectedYear)
-              return txDate.getFullYear() === targetYear
-            } else if (dateType === 'custom') {
-              const startDate = new Date(customRange.start)
-              const endDate = new Date(customRange.end)
-              return txDate >= startDate && txDate <= endDate
-            }
-            
-            return true
-          })
+          // Ensure we have transactions data
+          const transactionsData = transactions || []
+          
+          // Filter subproject transactions by date range
+          const filteredTransactions = filterTransactionsByDate(transactionsData)
           
           const income = filteredTransactions
             .filter((t: any) => t.type === 'Income')
@@ -786,9 +941,14 @@ export default function ParentProjectDetail() {
         totalExpense,
         netProfit,
         profitMargin,
-        subprojectCount: subprojectList.length,
-        activeSubprojects: subprojectList.filter((p: any) => p.is_active !== false).length
+        subprojectCount: subprojectList.length + 1, // +1 for parent project
+        activeSubprojects: subprojectList.filter((p: any) => p.is_active !== false).length + 1 // +1 for parent project
       })
+      
+      // Show message if no financial data found
+      if (subprojectFinancials.length === 0) {
+        console.log('No financial data found for this project and its subprojects')
+      }
       
     } catch (err: any) {
       console.error('Error loading subprojects financial data:', err)
@@ -801,59 +961,96 @@ export default function ParentProjectDetail() {
     
     setTransactionsLoading(true)
     try {
-      // Get all subprojects for this parent project
-      const { data: allProjects } = await api.get('/projects')
-      const subprojects = allProjects.filter((p: any) => p.relation_project === parseInt(id))
-      
-      // Load transactions for each subproject
       const allTransactions: Transaction[] = []
       
-      for (const subproject of subprojects) {
-        try {
-          const { data: subprojectTransactions } = await api.get(`/transactions/project/${subproject.id}`)
-          
-          // Filter transactions based on selected date range
-          const filteredTransactions = subprojectTransactions.filter((transaction: any) => {
-            const txDate = new Date(transaction.tx_date)
-            
-            if (dateType === 'month') {
-              const targetDate = new Date(parseInt(selectedYear), parseInt(selectedMonth) - 1, 1)
-              const nextMonth = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 1)
-              return txDate >= targetDate && txDate < nextMonth
-            } else if (dateType === 'year') {
-              const targetYear = parseInt(selectedYear)
-              return txDate.getFullYear() === targetYear
-            } else if (dateType === 'custom') {
-              const startDate = new Date(customRange.start)
-              const endDate = new Date(customRange.end)
-              return txDate >= startDate && txDate <= endDate
-            }
-            
-            return true
+      // Load parent project transactions
+      try {
+        const { data: parentTransactions } = await api.get(`/transactions/project/${id}`)
+        const parentProjectName = parentProject?.name || 'פרויקט ראשי'
+        
+        // Ensure we have transactions data
+        const transactions = parentTransactions || []
+        
+        // Filter transactions by date range
+        const filteredParentTransactions = filterTransactionsByDate(transactions)
+        
+        filteredParentTransactions.forEach((transaction: any) => {
+          allTransactions.push({
+            ...transaction,
+            subproject_name: parentProjectName,
+            subproject_id: null
           })
-          
-          // Add subproject name to each transaction
-          const transactionsWithSubproject = filteredTransactions.map((tx: any) => ({
-            ...tx,
-            subproject_name: subproject.name
-          }))
-          
-          allTransactions.push(...transactionsWithSubproject)
-        } catch (err) {
-          console.error(`Error loading transactions for subproject ${subproject.id}:`, err)
+        })
+      } catch (err) {
+        console.error('Error loading parent project transactions:', err)
+      }
+      
+      // Load subprojects transactions
+      try {
+        const { data: allProjects } = await api.get('/projects')
+        const subprojectList = allProjects.filter((p: any) => p.relation_project === parseInt(id))
+        
+        for (const subproject of subprojectList) {
+          try {
+            const { data: subprojectTransactions } = await api.get(`/transactions/project/${subproject.id}`)
+            
+            // Ensure we have transactions data
+            const transactions = subprojectTransactions || []
+            
+            // Filter transactions by date range
+            const filteredSubprojectTransactions = filterTransactionsByDate(transactions)
+            
+            filteredSubprojectTransactions.forEach((transaction: any) => {
+              allTransactions.push({
+                ...transaction,
+                subproject_name: subproject.name,
+                subproject_id: subproject.id
+              })
+            })
+          } catch (err) {
+            console.error(`Error loading transactions for subproject ${subproject.id}:`, err)
+          }
         }
+      } catch (err) {
+        console.error('Error loading subprojects:', err)
       }
       
       // Sort transactions by date (newest first)
       allTransactions.sort((a, b) => new Date(b.tx_date).getTime() - new Date(a.tx_date).getTime())
       
       setTransactions(allTransactions)
+      
+      // Show message if no transactions found
+      if (allTransactions.length === 0) {
+        console.log('No transactions found for this project and its subprojects')
+      }
     } catch (err: any) {
       console.error('Error loading transactions:', err)
-      setError('שגיאה בטעינת העסקאות')
+      setError('שגיאה בטעינת הטרנזקציות')
     } finally {
       setTransactionsLoading(false)
     }
+  }
+
+  const filterTransactionsByDate = (transactions: any[]) => {
+    return transactions.filter((transaction: any) => {
+      const txDate = new Date(transaction.tx_date)
+      
+      if (dateType === 'month') {
+        const targetDate = new Date(parseInt(selectedYear), parseInt(selectedMonth) - 1, 1)
+        const nextMonth = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 1)
+        return txDate >= targetDate && txDate < nextMonth
+      } else if (dateType === 'year') {
+        const targetYear = parseInt(selectedYear)
+        return txDate.getFullYear() === targetYear
+      } else if (dateType === 'custom') {
+        const startDate = new Date(customRange.start)
+        const endDate = new Date(customRange.end)
+        return txDate >= startDate && txDate <= endDate
+      }
+      
+      return true
+    })
   }
 
   if (loading) {
@@ -884,7 +1081,7 @@ export default function ParentProjectDetail() {
     return (
       <div className="space-y-4">
         <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 p-4 rounded">
-          פרויקט {HebrewText.ui.noData}
+          {HebrewText.projects.parentProject} {HebrewText.ui.noData}
         </div>
         <button
           onClick={() => navigate('/projects')}
@@ -1016,51 +1213,35 @@ export default function ParentProjectDetail() {
         onCustomRangeChange={setCustomRange}
       />
 
-      {/* Consolidated Financial Summary */}
-      {financialSummary && (
-        <ConsolidatedFinancialSummary
-          summary={financialSummary}
-          subprojects={subprojects}
-        />
-      )}
-
-      {/* Subprojects Grid */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
-            תת-פרויקטים ({subprojects.length})
-          </h3>
-        </div>
-        
-        {subprojects.length === 0 ? (
-          <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-            אין תת-פרויקטים לפרויקט זה
+      {/* Subprojects Cards */}
+      {subprojects.length > 0 ? (
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
+              תת-פרויקטים ({subprojects.length})
+            </h3>
+            <div className="text-sm text-gray-600 dark:text-gray-400">
+              סה"כ פרויקטים: {subprojects.length}
+            </div>
           </div>
-        ) : (
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {subprojects.map((subproject) => (
-              <motion.div
+              <div
                 key={subproject.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3 }}
-                className="bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600 p-6 hover:shadow-md transition-shadow cursor-pointer"
-                onClick={() => navigate(`/projects/${subproject.id}`)}
+                className="bg-gradient-to-br from-white to-gray-50 dark:from-gray-700 dark:to-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 p-6 hover:shadow-md transition-shadow duration-200"
               >
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex-1">
-                    <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                    <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
                       {subproject.name}
                     </h4>
-                    <div className="flex items-center space-x-2 space-x-reverse">
-                      <div className={`w-3 h-3 rounded-full ${getStatusBgClass(subproject.status)}`}></div>
-                      <span className={`text-sm font-medium ${getStatusColorClass(subproject.status)}`}>
-                        {getStatusText(subproject.status)}
-                      </span>
+                    <div className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getStatusBgClass(subproject.status)} ${getStatusColorClass(subproject.status)}`}>
+                      {getStatusText(subproject.status)}
                     </div>
                   </div>
                 </div>
-                
+
                 <div className="space-y-3">
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-600 dark:text-gray-400">הכנסות</span>
@@ -1079,7 +1260,7 @@ export default function ParentProjectDetail() {
                   <div className="border-t border-gray-200 dark:border-gray-600 pt-3">
                     <div className="flex justify-between items-center">
                       <span className="text-sm font-medium text-gray-700 dark:text-gray-300">רווח נטו</span>
-                      <span className={`font-bold ${
+                      <span className={`font-bold text-lg ${
                         subproject.profit >= 0 
                           ? 'text-green-600 dark:text-green-400' 
                           : 'text-red-600 dark:text-red-400'
@@ -1100,22 +1281,99 @@ export default function ParentProjectDetail() {
                     </div>
                   </div>
                 </div>
-                
+
                 <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xs text-gray-500 dark:text-gray-400">מזהה פרויקט</span>
+                    <span className="text-xs font-mono text-gray-600 dark:text-gray-300">
+                      #{subproject.id}
+                    </span>
+                  </div>
+                  
                   <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      navigate(`/projects/${subproject.id}`)
-                    }}
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                    onClick={() => navigate(`/projects/${subproject.id}`)}
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2 px-4 rounded-lg transition-colors duration-200 flex items-center justify-center gap-2"
                   >
-                    צפה בפרויקט
+                    <span>צפה בפרויקט</span>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
                   </button>
                 </div>
-              </motion.div>
+              </div>
             ))}
           </div>
-        )}
+        </div>
+      ) : (
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-8">
+          <div className="text-center">
+            <div className="mx-auto w-16 h-16 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mb-4">
+              <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+              </svg>
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+              אין תת-פרויקטים
+            </h3>
+            <p className="text-gray-600 dark:text-gray-400 mb-4">
+              לפרויקט זה אין תת-פרויקטים קשורים
+            </p>
+            <button
+              onClick={() => navigate('/projects')}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200"
+            >
+              צפה בכל הפרויקטים
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Consolidated Financial Summary */}
+      {financialSummary && (
+        <ConsolidatedFinancialSummary
+          summary={financialSummary}
+          subprojects={subprojects}
+        />
+      )}
+
+      {/* Charts Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Project Expense Pie Chart */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+        >
+          {chartsLoading ? (
+            <div className="h-96 bg-gray-100 dark:bg-gray-700 rounded-2xl animate-pulse flex items-center justify-center">
+              <div className="text-gray-500 dark:text-gray-400">טוען נתוני גרפים...</div>
+            </div>
+          ) : (
+            <ProjectExpensePieChart
+              expenseCategories={expenseCategories}
+              projectName={parentProject?.name || 'פרויקט ראשי'}
+            />
+          )}
+        </motion.div>
+
+        {/* Project Trends Chart */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+        >
+          {chartsLoading ? (
+            <div className="h-96 bg-gray-100 dark:bg-gray-700 rounded-2xl animate-pulse flex items-center justify-center">
+              <div className="text-gray-500 dark:text-gray-400">טוען נתוני גרפים...</div>
+            </div>
+          ) : (
+            <ProjectTrendsChart
+              projectId={parseInt(id || '0')}
+              projectName={parentProject?.name || 'פרויקט ראשי'}
+              transactions={transactions}
+            />
+          )}
+        </motion.div>
       </div>
 
       {/* Consolidated Transactions Table */}

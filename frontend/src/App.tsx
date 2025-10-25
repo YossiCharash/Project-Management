@@ -5,6 +5,13 @@ import type { RootState } from './store'
 import { motion, AnimatePresence } from 'framer-motion'
 import Login from './pages/Login'
 import Register from './pages/Register'
+import AdminRegister from './pages/AdminRegister'
+import AdminInviteRegister from './pages/AdminInviteRegister'
+import AdminInviteManagement from './pages/AdminInviteManagement'
+import EmailVerificationRegister from './pages/EmailVerificationRegister'
+import AdminManagement from './pages/AdminManagement'
+import GroupCodeManagement from './pages/GroupCodeManagement'
+import UserManagement from './pages/UserManagement'
 import Dashboard from './pages/Dashboard'
 import Projects from './pages/Projects'
 import ProjectDetail from './pages/ProjectDetail'
@@ -65,6 +72,9 @@ function AppContent() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/admin-register" element={<AdminRegister />} />
+          <Route path="/admin-invite" element={<AdminInviteRegister />} />
+          <Route path="/email-register" element={<EmailVerificationRegister />} />
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
       </div>
@@ -141,6 +151,10 @@ function AppContent() {
               <Route path="/projects/:parentId/subprojects" element={<RequireAuth><Subprojects /></RequireAuth>} />
               <Route path="/reports" element={<RequireAuth><Reports /></RequireAuth>} />
               <Route path="/suppliers" element={<RequireAuth><Suppliers /></RequireAuth>} />
+              <Route path="/users" element={<RequireAuth><UserManagement /></RequireAuth>} />
+              <Route path="/admin-invites" element={<RequireAuth><AdminInviteManagement /></RequireAuth>} />
+              <Route path="/admin-management" element={<RequireAuth><AdminManagement /></RequireAuth>} />
+              <Route path="/group-codes" element={<RequireAuth><GroupCodeManagement /></RequireAuth>} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </motion.div>

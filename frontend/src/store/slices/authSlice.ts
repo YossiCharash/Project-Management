@@ -5,7 +5,9 @@ interface CurrentUser {
   id: number
   email: string
   full_name: string
-  role: 'Admin' | 'ProjectManager' | 'Viewer'
+  role: 'Admin' | 'Member'
+  group_id?: number
+  is_active: boolean
 }
 
 interface AuthState {
@@ -22,10 +24,10 @@ export const login = createAsyncThunk(
   'auth/login',
   async (payload: { email: string; password: string }, { rejectWithValue }) => {
     try {
-      const form = new URLSearchParams()
-      form.append('username', payload.email)
-      form.append('password', payload.password)
-      const { data } = await api.post('/auth/token', form)
+      const { data } = await api.post('/auth/login', {
+        email: payload.email,
+        password: payload.password
+      })
       return data.access_token as string
     } catch (e: any) {
       return rejectWithValue(e.response?.data?.detail ?? 'Login failed')
@@ -48,9 +50,47 @@ export const register = createAsyncThunk(
   }
 )
 
+export const registerAdmin = createAsyncThunk(
+  'auth/registerAdmin',
+  async (payload: { email: string; full_name: string; password: string }, { rejectWithValue, dispatch }) => {
+    try {
+      // axios interceptor will automatically add the token from localStorage
+      const { data } = await api.post('/auth/register-admin', payload)
+      
+      // Auto login after successful registration
+      const loginResult = await dispatch(login({ 
+        email: payload.email, 
+        password: payload.password 
+      }))
+      
+      if (loginResult.type === 'auth/login/fulfilled') {
+        return data
+      } else {
+        throw new Error('Registration successful but auto-login failed')
+      }
+    } catch (e: any) {
+      return rejectWithValue(e.response?.data?.detail ?? 'Admin registration failed')
+    }
+  }
+)
+
+export const registerMember = createAsyncThunk(
+  'auth/registerMember',
+  async (payload: { email: string; full_name: string; password: string; group_id: number }, { rejectWithValue }) => {
+    try {
+      // axios interceptor will automatically add the token from localStorage
+      const { data } = await api.post('/auth/register-member', payload)
+      return data
+    } catch (e: any) {
+      return rejectWithValue(e.response?.data?.detail ?? 'Member registration failed')
+    }
+  }
+)
+
 export const fetchMe = createAsyncThunk('auth/fetchMe', async (_, { rejectWithValue, dispatch }) => {
   try {
-    const { data } = await api.get<CurrentUser>('/users/me')
+    // axios interceptor will automatically add the token from localStorage
+    const { data } = await api.get<CurrentUser>('/auth/profile')
     return data
   } catch (e: any) {
     // If 401, clear token and redirect
@@ -122,6 +162,34 @@ const slice = createSlice({
         state.loading = false
         // Do not clear token on transient errors; allow app to stay authenticated
         state.error = (action.payload as string) ?? 'Failed to load user'
+      })
+      .addCase(registerAdmin.pending, (state) => {
+        state.loading = true
+        state.error = null
+        state.registered = false
+      })
+      .addCase(registerAdmin.fulfilled, (state) => {
+        state.loading = false
+        state.registered = true
+      })
+      .addCase(registerAdmin.rejected, (state, action) => {
+        state.loading = false
+        state.error = (action.payload as string) ?? 'Admin registration failed'
+        state.registered = false
+      })
+      .addCase(registerMember.pending, (state) => {
+        state.loading = true
+        state.error = null
+        state.registered = false
+      })
+      .addCase(registerMember.fulfilled, (state) => {
+        state.loading = false
+        state.registered = true
+      })
+      .addCase(registerMember.rejected, (state, action) => {
+        state.loading = false
+        state.error = (action.payload as string) ?? 'Member registration failed'
+        state.registered = false
       })
   },
 })

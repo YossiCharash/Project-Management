@@ -14,10 +14,13 @@ import {
   Home,
   FileText,
   Building2,
-  Plus
+  Plus,
+  UserCog
 } from 'lucide-react'
 import { useTheme } from '../../contexts/ThemeContext'
 import { cn } from '../../lib/utils'
+import { useSelector } from 'react-redux'
+import type { RootState } from '../../store'
 
 interface SidebarProps {
   isCollapsed: boolean
@@ -25,42 +28,71 @@ interface SidebarProps {
   onAddTransaction?: () => void
 }
 
-const navigationItems = [
-  {
-    name: 'לוח בקרה',
-    href: '/',
-    icon: LayoutDashboard,
-    description: 'סקירה כללית של הפרויקטים'
-  },
-  {
-    name: 'פרויקטים',
-    href: '/projects',
-    icon: FolderOpen,
-    description: 'ניהול פרויקטים ותת-פרויקטים'
-  },
-  {
-    name: 'דוחות',
-    href: '/reports',
-    icon: BarChart3,
-    description: 'דוחות פיננסיים ומעקב'
-  },
-  {
-    name: 'ספקים',
-    href: '/suppliers',
-    icon: Users,
-    description: 'ניהול ספקים ומסמכים'
-  },
-  {
+const getNavigationItems = (userRole?: string) => {
+  const baseItems = [
+    {
+      name: 'לוח בקרה',
+      href: '/',
+      icon: LayoutDashboard,
+      description: 'סקירה כללית של הפרויקטים'
+    },
+    {
+      name: 'פרויקטים',
+      href: '/projects',
+      icon: FolderOpen,
+      description: 'ניהול פרויקטים ותת-פרויקטים'
+    },
+    {
+      name: 'דוחות',
+      href: '/reports',
+      icon: BarChart3,
+      description: 'דוחות פיננסיים ומעקב'
+    },
+    {
+      name: 'ספקים',
+      href: '/suppliers',
+      icon: Users,
+      description: 'ניהול ספקים ומסמכים'
+    }
+  ]
+
+  // Add admin-only items
+  if (userRole === 'Admin') {
+    baseItems.push({
+      name: 'ניהול מנהלים',
+      href: '/admin-management',
+      icon: UserCog,
+      description: 'ניהול מנהלי מערכת נוספים'
+    })
+    baseItems.push({
+      name: 'קודי קבוצה',
+      href: '/group-codes',
+      icon: UserCog,
+      description: 'יצירה וניהול קודי קבוצה למשתמשים'
+    })
+    baseItems.push({
+      name: 'ניהול משתמשים',
+      href: '/users',
+      icon: UserCog,
+      description: 'ניהול משתמשי המערכת והרשאות'
+    })
+  }
+
+  baseItems.push({
     name: 'הגדרות',
     href: '/settings',
     icon: Settings,
     description: 'הגדרות מערכת ומשתמש'
-  }
-]
+  })
+
+  return baseItems
+}
 
 export function Sidebar({ isCollapsed, onToggle, onAddTransaction }: SidebarProps) {
   const location = useLocation()
   const { theme, toggleTheme } = useTheme()
+  const me = useSelector((state: RootState) => state.auth.me)
+  const navigationItems = getNavigationItems(me?.role)
 
   return (
     <motion.aside
@@ -221,6 +253,8 @@ interface MobileSidebarProps {
 export function MobileSidebar({ isOpen, onClose, onAddTransaction }: MobileSidebarProps) {
   const location = useLocation()
   const { theme, toggleTheme } = useTheme()
+  const me = useSelector((state: RootState) => state.auth.me)
+  const navigationItems = getNavigationItems(me?.role)
 
   return (
     <AnimatePresence>

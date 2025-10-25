@@ -162,12 +162,12 @@ export default function Login() {
             </motion.button>
           </form>
 
-          {/* Register Link */}
+          {/* Register Links */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.6, delay: 0.4 }}
-            className="mt-6 text-center"
+            className="mt-6 text-center space-y-3"
           >
             <p className="text-gray-600 dark:text-gray-400 text-sm">
               אין לכם חשבון?{' '}
@@ -178,6 +178,26 @@ export default function Login() {
                 הירשמו כאן
               </Link>
             </p>
+            <div className="border-t border-gray-200 dark:border-gray-700 pt-3 space-y-2">
+              <p className="text-gray-500 dark:text-gray-400 text-xs mb-2">
+                רוצים להירשם עם אימות אימייל?
+              </p>
+              <Link
+                to="/email-register"
+                className="text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 font-medium text-sm transition-colors block"
+              >
+                רישום עם אימות אימייל
+              </Link>
+              <p className="text-gray-500 dark:text-gray-400 text-xs mb-2">
+                קיבלתם קוד הזמנה למנהל מערכת?
+              </p>
+              <Link
+                to="/admin-invite"
+                className="text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 font-medium text-sm transition-colors block"
+              >
+                רישום עם קוד הזמנה
+              </Link>
+            </div>
           </motion.div>
         </motion.div>
 

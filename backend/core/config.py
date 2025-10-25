@@ -22,6 +22,11 @@ class Settings(BaseModel):
     ]
 
     FILE_UPLOAD_DIR: str = os.getenv("FILE_UPLOAD_DIR", "./uploads")
+    
+    # Super Admin Configuration
+    SUPER_ADMIN_EMAIL: str = Field(default=os.getenv("SUPER_ADMIN_EMAIL", "c0548508540@gmail.com"))
+    SUPER_ADMIN_PASSWORD: str = Field(default=os.getenv("SUPER_ADMIN_PASSWORD", "c98C98@98"))
+    SUPER_ADMIN_NAME: str = Field(default=os.getenv("SUPER_ADMIN_NAME", "Super Administrator"))
 
     class Config:
         arbitrary_types_allowed = True

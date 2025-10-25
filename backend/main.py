@@ -40,6 +40,13 @@ def create_app() -> FastAPI:
     async def on_startup() -> None:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+        
+        # Import the new models to ensure they're created
+        from backend.models import admin_invite, email_verification, group_code
+        
+        # Create super admin from environment variables
+        from backend.core.seed import create_super_admin
+        await create_super_admin()
 
     def custom_openapi():
         if app.openapi_schema:
@@ -64,6 +71,10 @@ def create_app() -> FastAPI:
     app.openapi = custom_openapi  # type: ignore[assignment]
 
     app.include_router(api_router, prefix=settings.API_V1_STR)
+
+    @app.get("/health")
+    async def health_check():
+        return {"status": "healthy", "message": "Project Management System is running"}
 
     return app
 

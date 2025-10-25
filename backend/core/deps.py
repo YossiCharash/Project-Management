@@ -26,6 +26,19 @@ async def get_current_user(db: DBSessionDep, token: Annotated[str, Depends(oauth
     return user
 
 
+async def get_current_user_with_details(db: DBSessionDep, token: Annotated[str, Depends(oauth2_scheme)]):
+    """Get current user with role and group_id for RBAC"""
+    user = await get_current_user(db, token)
+    return {
+        "id": user.id,
+        "email": user.email,
+        "role": user.role,
+        "group_id": user.group_id,
+        "is_active": user.is_active,
+        "user": user
+    }
+
+
 def require_roles(*roles: UserRole | str):
     async def _role_dep(user = Depends(get_current_user)):
         allowed = {r.value if hasattr(r, "value") else r for r in roles}
@@ -33,3 +46,40 @@ def require_roles(*roles: UserRole | str):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient role")
         return user
     return _role_dep
+
+
+def require_role(required_role: str):
+    """Require specific role (Admin or Member)"""
+    async def _role_dep(user_details = Depends(get_current_user_with_details)):
+        if user_details["role"] != required_role:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, 
+                detail=f"Access denied. Required role: {required_role}"
+            )
+        return user_details["user"]
+    return _role_dep
+
+
+def require_group_access():
+    """Require group access - Admin bypasses, Members must match group_id"""
+    async def _group_dep(user_details = Depends(get_current_user_with_details)):
+        # Admin always has access
+        if user_details["role"] == "Admin":
+            return user_details["user"]
+        
+        # For Members, we need to check group_id in the request
+        # This will be implemented in the specific endpoints
+        return user_details["user"]
+    return _group_dep
+
+
+def require_admin():
+    """Require Admin role"""
+    async def _admin_dep(user = Depends(get_current_user)):
+        if user.role != "Admin":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, 
+                detail="Access denied. Admin role required"
+            )
+        return user
+    return _admin_dep

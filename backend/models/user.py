@@ -9,8 +9,7 @@ from backend.db.base import Base
 
 class UserRole(str, Enum):
     ADMIN = "Admin"
-    PROJECT_MANAGER = "ProjectManager"
-    VIEWER = "Viewer"
+    MEMBER = "Member"
 
 
 class User(Base):
@@ -19,9 +18,10 @@ class User(Base):
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     full_name: Mapped[str] = mapped_column(String(255))
-    hashed_password: Mapped[str] = mapped_column(String(255))
+    password_hash: Mapped[str] = mapped_column(String(255))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    role: Mapped[str] = mapped_column(String(50), default=UserRole.VIEWER.value, index=True)
+    role: Mapped[str] = mapped_column(String(50), default=UserRole.MEMBER.value, index=True)
+    group_id: Mapped[int] = mapped_column(nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     projects: Mapped[list["Project"]] = relationship(back_populates="manager")

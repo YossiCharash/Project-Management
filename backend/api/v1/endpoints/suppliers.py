@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from backend.core.deps import DBSessionDep, require_roles
+from backend.core.deps import DBSessionDep, require_roles, get_current_user, require_admin
 from backend.models.user import UserRole
 from backend.models.supplier import Supplier
 from backend.models.supplier_document import SupplierDocument
@@ -14,18 +14,21 @@ router = APIRouter()
 
 
 @router.get("/", response_model=list[SupplierOut])
-async def list_suppliers(db: DBSessionDep):
+async def list_suppliers(db: DBSessionDep, user = Depends(get_current_user)):
+    """List suppliers - accessible to all authenticated users"""
     return await SupplierRepository(db).list()
 
 
 @router.post("/", response_model=SupplierOut)
-async def create_supplier(db: DBSessionDep, data: SupplierCreate, user = Depends(require_roles(UserRole.ADMIN, UserRole.PROJECT_MANAGER))):
+async def create_supplier(db: DBSessionDep, data: SupplierCreate, user = Depends(get_current_user)):
+    """Create supplier - accessible to all authenticated users"""
     supplier = Supplier(**data.model_dump())
     return await SupplierRepository(db).create(supplier)
 
 
 @router.put("/{supplier_id}", response_model=SupplierOut)
-async def update_supplier(supplier_id: int, db: DBSessionDep, data: SupplierUpdate, user = Depends(require_roles(UserRole.ADMIN, UserRole.PROJECT_MANAGER))):
+async def update_supplier(supplier_id: int, db: DBSessionDep, data: SupplierUpdate, user = Depends(get_current_user)):
+    """Update supplier - accessible to all authenticated users"""
     repo = SupplierRepository(db)
     supplier = await repo.get(supplier_id)
     if not supplier:
@@ -36,7 +39,8 @@ async def update_supplier(supplier_id: int, db: DBSessionDep, data: SupplierUpda
 
 
 @router.delete("/{supplier_id}")
-async def delete_supplier(supplier_id: int, db: DBSessionDep, user = Depends(require_roles(UserRole.ADMIN, UserRole.PROJECT_MANAGER))):
+async def delete_supplier(supplier_id: int, db: DBSessionDep, user = Depends(require_admin())):
+    """Delete supplier - Admin only"""
     repo = SupplierRepository(db)
     supplier = await repo.get(supplier_id)
     if not supplier:
@@ -46,7 +50,8 @@ async def delete_supplier(supplier_id: int, db: DBSessionDep, user = Depends(req
 
 
 @router.post("/{supplier_id}/documents", response_model=dict)
-async def upload_supplier_document(supplier_id: int, db: DBSessionDep, file: UploadFile = File(...), user = Depends(require_roles(UserRole.ADMIN, UserRole.PROJECT_MANAGER))):
+async def upload_supplier_document(supplier_id: int, db: DBSessionDep, file: UploadFile = File(...), user = Depends(get_current_user)):
+    """Upload supplier document - accessible to all authenticated users"""
     supplier = await SupplierRepository(db).get(supplier_id)
     if not supplier:
         raise HTTPException(status_code=404, detail="Supplier not found")
