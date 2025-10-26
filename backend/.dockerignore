@@ -9,20 +9,16 @@ venv/
 ENV/
 .venv
 
-# Node
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
-frontend/dist/
-
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+
+# Git
+.git/
+.gitignore
 
 # Environment
 .env
@@ -47,9 +43,6 @@ Thumbs.db
 .coverage
 htmlcov/
 
-# Docker
-docker-compose.override.yml
-
-# Uploads
+# Uploads (will be mounted as volume in production)
 uploads/*
 !uploads/.gitkeep

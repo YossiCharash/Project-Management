@@ -9,9 +9,6 @@ api.interceptors.request.use((config) => {
   if (token) {
     config.headers = config.headers ?? {}
     config.headers.Authorization = `Bearer ${token}`
-    console.log('🔐 API Request with token:', config.method?.toUpperCase(), config.url)
-  } else {
-    console.warn('⚠️ API Request without token:', config.method?.toUpperCase(), config.url)
   }
   return config
 })
@@ -20,7 +17,6 @@ api.interceptors.response.use(
   (res) => res,
   (error) => {
     const status = error?.response?.status
-    console.error('❌ API Error:', status, error.response?.data)
     if (status === 403) {
       try { window.alert('אין לך הרשאה לבצע את הפעולה הזו') } catch {}
     }
@@ -34,9 +30,6 @@ api.interceptors.response.use(
       }
       // Redirect to login page
       window.location.href = '/login'
-    }
-    if (status === 400) {
-      console.error('Bad Request:', error.response?.data?.detail || error.response?.data)
     }
     return Promise.reject(error)
   }

@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: bms-backend
+    env: docker
+    plan: free
+    dockerfilePath: backend/Dockerfile
+    dockerContext: .
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: bms-database
+          property: connectionString
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: SUPER_ADMIN_EMAIL
+        value: c0548508540@gmail.com
+      - key: SUPER_ADMIN_PASSWORD
+        value: c98C98@98
+      - key: SUPER_ADMIN_NAME
+        value: Super Administrator
+      - key: FILE_UPLOAD_DIR
+        value: /app/uploads
+      - key: CORS_ORIGINS
+        value: https://bms-frontend.onrender.com,http://localhost:5173,http://localhost:3000
+
+databases:
+  - name: bms-database
+    plan: free
+    databaseName: bms
+    user: postgres
