@@ -16,6 +16,7 @@ class ProjectBase(BaseModel):
     monthly_price_per_apartment: float | None = None
     address: str | None = None
     city: str | None = None
+    image_url: str | None = None
 
 
 class ProjectCreate(ProjectBase):
@@ -35,6 +36,7 @@ class ProjectUpdate(BaseModel):
     monthly_price_per_apartment: float | None = None
     address: str | None = None
     city: str | None = None
+    image_url: str | None = None
 
 
 class ProjectOut(ProjectBase):

@@ -35,6 +35,8 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
   const [availableProjects, setAvailableProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [selectedImage, setSelectedImage] = useState<File | null>(null)
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
 
   // Load available projects for parent selection
   useEffect(() => {
@@ -60,6 +62,9 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
         relation_project: editingProject.relation_project || undefined,
         manager_id: editingProject.manager_id || undefined
       })
+      // Reset image states when editing
+      setSelectedImage(null)
+      setImagePreview(editingProject.image_url ? getImageUrl(editingProject.image_url) : null)
     } else {
       resetForm()
     }
@@ -90,6 +95,42 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
       manager_id: undefined
     })
     setError(null)
+    setSelectedImage(null)
+    setImagePreview(null)
+  }
+
+  const getImageUrl = (imageUrl: string): string => {
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
+    const baseUrl = apiUrl.replace('/api/v1', '')
+    return `${baseUrl}/uploads/${imageUrl}`
+  }
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      // Validate file type
+      const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']
+      if (!validTypes.includes(file.type)) {
+        setError('סוג קובץ לא תקין. אנא בחר תמונה (JPG, PNG, GIF, WebP)')
+        return
+      }
+      
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        setError('גודל הקובץ גדול מדי. מקסימום 5MB')
+        return
+      }
+
+      setSelectedImage(file)
+      setError(null)
+      
+      // Create preview
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setImagePreview(reader.result as string)
+      }
+      reader.readAsDataURL(file)
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -118,9 +159,25 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
         result = await ProjectAPI.createProject(projectData)
       }
 
+      // Upload image if one was selected
+      let imageUploadError = false
+      if (selectedImage) {
+        try {
+          result = await ProjectAPI.uploadProjectImage(result.id, selectedImage)
+        } catch (imgErr: any) {
+          console.error('Failed to upload image:', imgErr)
+          // Don't fail the whole operation if image upload fails
+          imageUploadError = true
+          setError(`הפרויקט נוצר בהצלחה אך העלאת התמונה נכשלה: ${imgErr.response?.data?.detail || 'שגיאה לא ידועה'}`)
+        }
+      }
+
       onSuccess(result)
-      onClose()
-      resetForm()
+      // Only close if there was no image upload error
+      if (!imageUploadError) {
+        onClose()
+        resetForm()
+      }
     } catch (err: any) {
       setError(err.response?.data?.detail || 'שמירה נכשלה')
     } finally {
@@ -197,6 +254,41 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
               rows={3}
               className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              תמונת הפרויקט
+            </label>
+            <div className="space-y-2">
+              <input
+                type="file"
+                accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+                onChange={handleImageChange}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              {imagePreview && (
+                <div className="mt-2">
+                  <img
+                    src={imagePreview}
+                    alt="תצוגה מקדימה"
+                    className="max-w-full h-48 object-cover rounded-md border border-gray-300"
+                  />
+                  {selectedImage && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedImage(null)
+                        setImagePreview(editingProject?.image_url ? getImageUrl(editingProject.image_url) : null)
+                      }}
+                      className="mt-2 text-sm text-red-600 hover:text-red-700"
+                    >
+                      הסר תמונה
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

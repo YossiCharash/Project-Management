@@ -38,6 +38,16 @@ export class ProjectAPI {
     const { data } = await api.post<Project>(`/projects/${projectId}/restore`)
     return data
   }
+
+  // Upload project image
+  static async uploadProjectImage(projectId: number, file: File): Promise<Project> {
+    const formData = new FormData()
+    formData.append('file', file)
+    const { data } = await api.post<Project>(`/projects/${projectId}/upload-image`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+    return data
+  }
 }
 
 export class TransactionAPI {

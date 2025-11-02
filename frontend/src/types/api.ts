@@ -12,6 +12,7 @@ export interface Project {
   address?: string | null
   city?: string | null
   relation_project?: number | null // Parent project ID
+  image_url?: string | null
   is_active: boolean
   manager_id?: number | null
   created_at: string
@@ -52,6 +53,7 @@ export interface ProjectCreate {
   address?: string | null
   city?: string | null
   relation_project?: number | null // Parent project ID
+  image_url?: string | null
   manager_id?: number | null
 }
 

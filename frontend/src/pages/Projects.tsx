@@ -69,6 +69,15 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
     }
   }
 
+  const getImageUrl = (imageUrl: string | null | undefined): string | null => {
+    if (!imageUrl) return null
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
+    const baseUrl = apiUrl.replace('/api/v1', '')
+    return `${baseUrl}/uploads/${imageUrl}`
+  }
+
+  const imageUrl = getImageUrl(project.image_url)
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -77,6 +86,22 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
       className="bg-white dark:bg-gray-800 rounded-xl shadow-md hover:shadow-lg transition-all duration-200 border border-gray-200 dark:border-gray-700"
     >
       <div className="p-6">
+        {imageUrl && (
+          <div className="mb-4 rounded-lg overflow-hidden">
+            <img
+              src={imageUrl}
+              alt={project.name}
+              className="w-full h-48 object-cover"
+              onError={(e) => {
+                console.error('Failed to load image:', imageUrl, e)
+                e.currentTarget.style.display = 'none'
+              }}
+              onLoad={() => {
+                console.log('Image loaded successfully:', imageUrl)
+              }}
+            />
+          </div>
+        )}
         <div className="flex justify-between items-start mb-4">
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-2">
