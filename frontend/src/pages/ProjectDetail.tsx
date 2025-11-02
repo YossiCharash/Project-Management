@@ -227,21 +227,25 @@ export default function ProjectDetail() {
         className="flex items-center justify-between"
       >
         <div className="flex-1">
-          {projectImageUrl && (
-            <div className="mb-4 rounded-lg overflow-hidden max-w-2xl">
-              <img
-                src={projectImageUrl}
-                alt={projectName || `פרויקט #${id}`}
-                className="w-full h-64 object-cover"
-              />
+          <div className="flex items-center gap-4 mb-4">
+            {projectImageUrl && (
+              <div className="rounded-lg overflow-hidden flex-shrink-0">
+                <img
+                  src={projectImageUrl}
+                  alt={projectName || `פרויקט #${id}`}
+                  className="w-32 h-32 object-cover"
+                />
+              </div>
+            )}
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+                {projectName || `פרויקט #${id}`}
+              </h1>
+              <p className="text-gray-600 dark:text-gray-400">
+                ניהול פיננסי מפורט
+              </p>
             </div>
-          )}
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-            {projectName || `פרויקט #${id}`}
-          </h1>
-          <p className="text-gray-600 dark:text-gray-400">
-            ניהול פיננסי מפורט
-          </p>
+          </div>
         </div>
         <button
           onClick={() => navigate('/dashboard')}

@@ -24,8 +24,6 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
     end_date: '',
     budget_monthly: 0,
     budget_annual: 0,
-    num_residents: undefined,
-    monthly_price_per_apartment: undefined,
     address: '',
     city: '',
     relation_project: undefined,
@@ -37,6 +35,7 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
   const [error, setError] = useState<string | null>(null)
   const [selectedImage, setSelectedImage] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [budgetInputType, setBudgetInputType] = useState<'monthly' | 'yearly'>('monthly')
 
   // Load available projects for parent selection
   useEffect(() => {
@@ -55,8 +54,6 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
         end_date: editingProject.end_date || '',
         budget_monthly: editingProject.budget_monthly,
         budget_annual: editingProject.budget_annual,
-        num_residents: editingProject.num_residents || undefined,
-        monthly_price_per_apartment: editingProject.monthly_price_per_apartment || undefined,
         address: editingProject.address || '',
         city: editingProject.city || '',
         relation_project: editingProject.relation_project || undefined,
@@ -87,8 +84,6 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
       end_date: '',
       budget_monthly: 0,
       budget_annual: 0,
-      num_residents: undefined,
-      monthly_price_per_apartment: undefined,
       address: '',
       city: '',
       relation_project: parentProjectId || undefined,
@@ -97,6 +92,7 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
     setError(null)
     setSelectedImage(null)
     setImagePreview(null)
+    setBudgetInputType('monthly')
   }
 
   const getImageUrl = (imageUrl: string): string => {
@@ -144,8 +140,6 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
         description: formData.description || undefined,
         start_date: formData.start_date || undefined,
         end_date: formData.end_date || undefined,
-        num_residents: formData.num_residents || undefined,
-        monthly_price_per_apartment: formData.monthly_price_per_apartment || undefined,
         address: formData.address || undefined,
         city: formData.city || undefined,
         relation_project: formData.relation_project || undefined,
@@ -249,7 +243,7 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
               תיאור
             </label>
             <textarea
-              value={formData.description}
+              value={formData.description || ''}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               rows={3}
               className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -298,7 +292,7 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
               </label>
               <input
                 type="text"
-                value={formData.address}
+                value={formData.address || ''}
                 onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                 className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
@@ -310,77 +304,92 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
               </label>
               <input
                 type="text"
-                value={formData.city}
+                value={formData.city || ''}
                 onChange={(e) => setFormData({ ...formData, city: e.target.value })}
                 className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                מספר דיירים
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                סוג הקלט לתקציב
               </label>
-              <input
-                type="number"
-                min="0"
-                value={formData.num_residents || ''}
-                onChange={(e) => setFormData({ 
-                  ...formData, 
-                  num_residents: e.target.value ? parseInt(e.target.value) : undefined 
-                })}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+              <div className="flex gap-4">
+                <label className="flex items-center">
+                  <input
+                    type="radio"
+                    value="monthly"
+                    checked={budgetInputType === 'monthly'}
+                    onChange={(e) => setBudgetInputType(e.target.value as 'monthly' | 'yearly')}
+                    className="ml-2"
+                  />
+                  <span className="text-sm text-gray-700">חודשי</span>
+                </label>
+                <label className="flex items-center">
+                  <input
+                    type="radio"
+                    value="yearly"
+                    checked={budgetInputType === 'yearly'}
+                    onChange={(e) => setBudgetInputType(e.target.value as 'monthly' | 'yearly')}
+                    className="ml-2"
+                  />
+                  <span className="text-sm text-gray-700">שנתי</span>
+                </label>
+              </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                מחיר חודשי לדירה
-              </label>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={formData.monthly_price_per_apartment || ''}
-                onChange={(e) => setFormData({ 
-                  ...formData, 
-                  monthly_price_per_apartment: e.target.value ? parseFloat(e.target.value) : undefined 
-                })}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-          </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  תקציב חודשי
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  required
+                  value={formData.budget_monthly}
+                  onChange={(e) => {
+                    const monthlyValue = parseFloat(e.target.value) || 0
+                    setFormData({ 
+                      ...formData, 
+                      budget_monthly: monthlyValue,
+                      budget_annual: monthlyValue * 12
+                    })
+                  }}
+                  disabled={budgetInputType === 'yearly'}
+                  className={`w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                    budgetInputType === 'yearly' ? 'bg-gray-100 cursor-not-allowed' : ''
+                  }`}
+                />
+              </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                תקציב חודשי
-              </label>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                required
-                value={formData.budget_monthly}
-                onChange={(e) => setFormData({ ...formData, budget_monthly: parseFloat(e.target.value) })}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                תקציב שנתי
-              </label>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                required
-                value={formData.budget_annual}
-                onChange={(e) => setFormData({ ...formData, budget_annual: parseFloat(e.target.value) })}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  תקציב שנתי
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  required
+                  value={formData.budget_annual}
+                  onChange={(e) => {
+                    const yearlyValue = parseFloat(e.target.value) || 0
+                    setFormData({ 
+                      ...formData, 
+                      budget_annual: yearlyValue,
+                      budget_monthly: yearlyValue / 12
+                    })
+                  }}
+                  disabled={budgetInputType === 'monthly'}
+                  className={`w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                    budgetInputType === 'monthly' ? 'bg-gray-100 cursor-not-allowed' : ''
+                  }`}
+                />
+              </div>
             </div>
           </div>
 
@@ -391,7 +400,7 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
               </label>
               <input
                 type="date"
-                value={formData.start_date}
+                value={formData.start_date || ''}
                 onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
                 className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
@@ -403,7 +412,7 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
               </label>
               <input
                 type="date"
-                value={formData.end_date}
+                value={formData.end_date || ''}
                 onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
                 className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />

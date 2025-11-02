@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useAppDispatch, useAppSelector } from '../utils/hooks'
-import { fetchProjects } from '../store/slices/projectsSlice'
 import { fetchMe } from '../store/slices/authSlice'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { 
   Plus, 
@@ -13,10 +12,11 @@ import {
   Edit,
   Archive,
   Eye,
-  RefreshCw
+  RefreshCw,
+  RotateCcw
 } from 'lucide-react'
 import { ProjectWithFinance, DashboardSnapshot } from '../types/api'
-import { DashboardAPI } from '../lib/apiClient'
+import { DashboardAPI, ProjectAPI } from '../lib/apiClient'
 import CreateProjectModal from '../components/CreateProjectModal'
 import CategoryBarChart, { CategoryPoint } from '../components/charts/CategoryBarChart'
 import api from '../lib/api'
@@ -27,6 +27,7 @@ interface ProjectCardProps {
   onProjectClick?: (project: ProjectWithFinance) => void
   onProjectEdit?: (project: ProjectWithFinance) => void
   onProjectArchive?: (project: ProjectWithFinance) => void
+  onProjectRestore?: (project: ProjectWithFinance) => void
   hasSubprojects?: boolean
 }
 
@@ -36,6 +37,7 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
   onProjectClick, 
   onProjectEdit, 
   onProjectArchive,
+  onProjectRestore,
   hasSubprojects = false
 }) => {
   const getStatusColor = (status: 'green' | 'yellow' | 'red') => {
@@ -83,7 +85,11 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       whileHover={{ y: -2 }}
-      className="bg-white dark:bg-gray-800 rounded-xl shadow-md hover:shadow-lg transition-all duration-200 border border-gray-200 dark:border-gray-700"
+      className={`bg-white dark:bg-gray-800 rounded-xl shadow-md hover:shadow-lg transition-all duration-200 border ${
+        project.is_active === false 
+          ? 'border-gray-300 dark:border-gray-600 opacity-75' 
+          : 'border-gray-200 dark:border-gray-700'
+      }`}
     >
       <div className="p-6">
         {imageUrl && (
@@ -120,9 +126,16 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
               </p>
             )}
           </div>
-          <span className={`px-3 py-1 rounded-full text-sm font-medium border ${getStatusColor(project.status_color)}`}>
-            {getStatusText(project.status_color)}
-          </span>
+          <div className="flex flex-col items-end gap-1">
+            <span className={`px-3 py-1 rounded-full text-sm font-medium border ${getStatusColor(project.status_color)}`}>
+              {getStatusText(project.status_color)}
+            </span>
+            {project.is_active === false && (
+              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400">
+                מאורכב
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="space-y-3 text-sm text-gray-600 dark:text-gray-400">
@@ -153,13 +166,13 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
           <div className="mb-4 p-3 rounded-lg bg-gray-50 dark:bg-gray-700">
             <div className="flex justify-between items-center mb-2">
               <span className="text-sm font-medium text-gray-700 dark:text-gray-300">סטטוס רווחיות</span>
-              <span className={`px-2 py-1 rounded-full text-xs font-bold ${getStatusColor(project.status_color)}`}>
-                {getStatusText(project.status_color)}
+              <span className={`px-2 py-1 rounded-full text-xs font-bold ${getStatusColor(project.status_color || 'yellow')}`}>
+                {getStatusText(project.status_color || 'yellow')}
               </span>
             </div>
             <div className="text-center">
-              <div className={`text-2xl font-bold ${(project.profit_percent || 0) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                {(project.profit_percent || 0) >= 0 ? '+' : ''}{(project.profit_percent || 0).toFixed(1)}%
+              <div className={`text-2xl font-bold ${(Number(project.profit_percent) || 0) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                {(Number(project.profit_percent) || 0) >= 0 ? '+' : ''}{Number(project.profit_percent || 0).toFixed(1)}%
               </div>
               <div className="text-xs text-gray-500 dark:text-gray-400">רווח/הפסד חודשי</div>
             </div>
@@ -169,13 +182,13 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
             <div>
               <div className="text-gray-500 dark:text-gray-400 text-xs">הכנסות החודש</div>
               <div className="font-semibold text-green-600 dark:text-green-400">
-                {(project.income_month_to_date || 0).toFixed(0)} ₪
+                {Number(project.income_month_to_date || 0).toLocaleString('he-IL')} ₪
               </div>
             </div>
             <div>
               <div className="text-gray-500 dark:text-gray-400 text-xs">הוצאות החודש</div>
               <div className="font-semibold text-red-600 dark:text-red-400">
-                {(project.expense_month_to_date || 0).toFixed(0)} ₪
+                {Number(project.expense_month_to_date || 0).toLocaleString('he-IL')} ₪
               </div>
             </div>
           </div>
@@ -183,8 +196,8 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
           <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
             <div className="flex justify-between items-center">
               <span className="text-gray-500 dark:text-gray-400 text-xs">רווח/הפסד נטו</span>
-              <span className={`font-bold ${((project.income_month_to_date || 0) - (project.expense_month_to_date || 0)) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                {((project.income_month_to_date || 0) - (project.expense_month_to_date || 0)) >= 0 ? '+' : ''}{((project.income_month_to_date || 0) - (project.expense_month_to_date || 0)).toFixed(0)} ₪
+              <span className={`font-bold ${((Number(project.income_month_to_date) || 0) - (Number(project.expense_month_to_date) || 0)) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                {((Number(project.income_month_to_date) || 0) - (Number(project.expense_month_to_date) || 0)) >= 0 ? '+' : ''}{((Number(project.income_month_to_date) || 0) - (Number(project.expense_month_to_date) || 0)).toLocaleString('he-IL')} ₪
               </span>
             </div>
           </div>
@@ -200,7 +213,7 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
               <Eye className="w-4 h-4" />
               {hasSubprojects ? 'צפה בתת-פרויקטים' : 'צפה'}
             </button>
-            {onProjectEdit && (
+            {onProjectEdit && project.is_active !== false && (
               <button
                 onClick={() => onProjectEdit(project)}
                 className="px-3 py-2 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
@@ -208,12 +221,22 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
                 <Edit className="w-4 h-4" />
               </button>
             )}
-            {onProjectArchive && (
+            {onProjectArchive && project.is_active !== false && (
               <button
                 onClick={() => onProjectArchive(project)}
                 className="px-3 py-2 text-sm bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-300 rounded-lg hover:bg-red-200 dark:hover:bg-red-900/40 transition-colors"
+                title="ארכב פרויקט"
               >
                 <Archive className="w-4 h-4" />
+              </button>
+            )}
+            {onProjectRestore && project.is_active === false && (
+              <button
+                onClick={() => onProjectRestore(project)}
+                className="px-3 py-2 text-sm bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300 rounded-lg hover:bg-green-200 dark:hover:bg-green-900/40 transition-colors"
+                title="שחזר פרויקט"
+              >
+                <RotateCcw className="w-4 h-4" />
               </button>
             )}
           </div>
@@ -226,6 +249,7 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
 export default function Projects() {
   const dispatch = useAppDispatch()
   const navigate = useNavigate()
+  const location = useLocation()
   const me = useAppSelector(s => s.auth.me)
   
   const [dashboardData, setDashboardData] = useState<DashboardSnapshot | null>(null)
@@ -237,20 +261,110 @@ export default function Projects() {
   const [statusFilter, setStatusFilter] = useState('')
   const [cityFilter, setCityFilter] = useState('')
   const [projectTypeFilter, setProjectTypeFilter] = useState('')
+  const [archiveFilter, setArchiveFilter] = useState<'active' | 'archived' | 'all'>('active')
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [editingProject, setEditingProject] = useState<ProjectWithFinance | null>(null)
+  const [archivingProject, setArchivingProject] = useState<number | null>(null)
 
   useEffect(() => {
     if (!me) dispatch(fetchMe())
-    loadProjectsData()
-  }, [dispatch, me])
+    loadProjectsData(archiveFilter !== 'active')
+  }, [dispatch, me, archiveFilter])
 
-  const loadProjectsData = async () => {
+  // Refresh data when navigating back to this page
+  useEffect(() => {
+    if (location.pathname === '/projects') {
+      loadProjectsData(archiveFilter !== 'active')
+    }
+  }, [location.pathname, archiveFilter])
+
+  // Auto-refresh financial data every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!loading) {
+        loadProjectsData(archiveFilter !== 'active')
+      }
+    }, 30000) // 30 seconds
+
+    return () => clearInterval(interval)
+  }, [archiveFilter, loading])
+
+  const loadProjectsData = async (includeArchived = false) => {
     setLoading(true)
     setError(null)
     try {
+      // Load dashboard snapshot for active projects
       const data = await DashboardAPI.getDashboardSnapshot()
+      
+      // Debug: Log the raw data to see what we're getting
+      console.log('Raw dashboard snapshot data:', data)
+      if (data.projects && data.projects.length > 0) {
+        console.log('Sample project data:', data.projects[0])
+        console.log('Financial fields check:', {
+          income_month_to_date: data.projects[0].income_month_to_date,
+          expense_month_to_date: data.projects[0].expense_month_to_date,
+          profit_percent: data.projects[0].profit_percent,
+          status_color: data.projects[0].status_color,
+          has_income_field: 'income_month_to_date' in data.projects[0],
+          has_expense_field: 'expense_month_to_date' in data.projects[0]
+        })
+      }
+      
+      // Ensure all projects have financial data properly formatted
+      if (data.projects) {
+        data.projects = data.projects.map((p: any) => {
+          // Get all possible field names that might contain financial data
+          const incomeValue = p.income_month_to_date ?? p.income ?? 0
+          const expenseValue = p.expense_month_to_date ?? p.expense ?? p.expenses ?? 0
+          const profitValue = p.profit_percent ?? p.profit_percentage ?? 0
+          const statusValue = p.status_color ?? p.status ?? 'yellow'
+          
+          const formatted = {
+            ...p,
+            income_month_to_date: Number(incomeValue),
+            expense_month_to_date: Number(expenseValue),
+            profit_percent: Number(profitValue),
+            status_color: statusValue,
+            total_value: Number(p.total_value ?? p.budget_monthly ?? p.budget_annual ?? 0)
+          }
+          console.log(`Project ${p.id} (${p.name}) financial data:`, {
+            raw_income: p.income_month_to_date,
+            raw_expense: p.expense_month_to_date,
+            raw_profit: p.profit_percent,
+            formatted_income: formatted.income_month_to_date,
+            formatted_expense: formatted.expense_month_to_date,
+            formatted_profit: formatted.profit_percent
+          })
+          return formatted
+        })
+      }
+      
+      // If we need archived projects, load them separately and merge
+      if (includeArchived || archiveFilter !== 'active') {
+        try {
+          const archivedProjects = await ProjectAPI.getProjects(true)
+          // Get only archived projects
+          const archived = archivedProjects.filter((p: any) => p.is_active === false)
+          
+          // Convert archived projects to ProjectWithFinance format (with basic structure)
+          const archivedWithFinance: ProjectWithFinance[] = archived.map((p: any) => ({
+            ...p,
+            income_month_to_date: 0,
+            expense_month_to_date: 0,
+            profit_percent: 0,
+            status_color: 'yellow' as const,
+            total_value: 0
+          }))
+          
+          // Merge active and archived projects
+          data.projects = [...data.projects, ...archivedWithFinance]
+        } catch (archivedErr) {
+          console.warn('Failed to load archived projects:', archivedErr)
+          // Continue with only active projects if archived loading fails
+        }
+      }
+      
       setDashboardData(data)
       await loadProjectCharts(data.projects)
     } catch (err: any) {
@@ -301,10 +415,33 @@ export default function Projects() {
     setShowCreateModal(true)
   }
 
-  const handleProjectArchive = (project: ProjectWithFinance) => {
+  const handleProjectArchive = async (project: ProjectWithFinance) => {
     if (confirm('האם לארכב את הפרויקט? ניתן לשחזר מאוחר יותר.')) {
-      // Archive logic here
-      console.log('Archive project:', project.id)
+      try {
+        setArchivingProject(project.id)
+        await ProjectAPI.archiveProject(project.id)
+        await loadProjectsData(archiveFilter !== 'active')
+      } catch (err: any) {
+        console.error('Failed to archive project:', err)
+        alert(err.response?.data?.detail || 'שגיאה בארכוב הפרויקט')
+      } finally {
+        setArchivingProject(null)
+      }
+    }
+  }
+
+  const handleProjectRestore = async (project: ProjectWithFinance) => {
+    if (confirm('האם לשחזר את הפרויקט?')) {
+      try {
+        setArchivingProject(project.id)
+        await ProjectAPI.restoreProject(project.id)
+        await loadProjectsData(archiveFilter !== 'active')
+      } catch (err: any) {
+        console.error('Failed to restore project:', err)
+        alert(err.response?.data?.detail || 'שגיאה בשחזור הפרויקט')
+      } finally {
+        setArchivingProject(null)
+      }
     }
   }
 
@@ -335,10 +472,18 @@ export default function Projects() {
       matchesType = !!project.relation_project // Subprojects have relation_project
     }
     
-    return matchesSearch && matchesStatus && matchesCity && matchesType && project.is_active !== false
+    // Filter by archive status
+    let matchesArchive = true
+    if (archiveFilter === 'active') {
+      matchesArchive = project.is_active !== false
+    } else if (archiveFilter === 'archived') {
+      matchesArchive = project.is_active === false
+    } // 'all' shows everything
+    
+    return matchesSearch && matchesStatus && matchesCity && matchesType && matchesArchive
   }) || []
 
-  const isAdmin = me?.role === 'Admin' || me?.role === 'ProjectManager'
+  const isAdmin = me?.role === 'Admin'
 
   if (loading) {
     return (
@@ -373,7 +518,7 @@ export default function Projects() {
 
       {/* Filters */}
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               חיפוש
@@ -436,6 +581,21 @@ export default function Projects() {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              סטטוס ארכוב
+            </label>
+            <select
+              value={archiveFilter}
+              onChange={(e) => setArchiveFilter(e.target.value as 'active' | 'archived' | 'all')}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+            >
+              <option value="active">פעילים בלבד</option>
+              <option value="archived">מאורכבים בלבד</option>
+              <option value="all">הכל</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               תצוגה
             </label>
             <div className="flex gap-2">
@@ -470,7 +630,7 @@ export default function Projects() {
           נמצאו {filteredProjects.length} פרויקטים
         </div>
         <button
-          onClick={loadProjectsData}
+          onClick={() => loadProjectsData(archiveFilter !== 'active')}
           className="flex items-center gap-2 px-3 py-2 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
         >
           <RefreshCw className="w-4 h-4" />
@@ -501,6 +661,7 @@ export default function Projects() {
                 onProjectClick={handleProjectClick}
                 onProjectEdit={isAdmin ? handleProjectEdit : undefined}
                 onProjectArchive={isAdmin ? handleProjectArchive : undefined}
+                onProjectRestore={isAdmin ? handleProjectRestore : undefined}
                 hasSubprojects={hasSubprojects}
               />
             )

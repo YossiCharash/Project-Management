@@ -111,21 +111,42 @@ export default function SystemFinancialPieChart({
         </PieChart>
       </ResponsiveContainer>
       
-      <div className="mt-4 grid grid-cols-2 gap-4 text-center">
+      <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
         <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded-lg">
-          <div className="text-green-600 dark:text-green-400 font-semibold">
+          <div className="text-green-600 dark:text-green-400 font-semibold text-sm mb-1">
             סה״כ הכנסות
           </div>
-          <div className="text-lg font-bold text-green-700 dark:text-green-300">
+          <div className="text-xl font-bold text-green-700 dark:text-green-300">
             {totalIncome.toLocaleString()} ₪
           </div>
         </div>
         <div className="bg-red-50 dark:bg-red-900/20 p-3 rounded-lg">
-          <div className="text-red-600 dark:text-red-400 font-semibold">
+          <div className="text-red-600 dark:text-red-400 font-semibold text-sm mb-1">
             סה״כ הוצאות
           </div>
-          <div className="text-lg font-bold text-red-700 dark:text-red-300">
+          <div className="text-xl font-bold text-red-700 dark:text-red-300">
             {totalExpense.toLocaleString()} ₪
+          </div>
+        </div>
+        <div className={`p-3 rounded-lg ${
+          (totalIncome - totalExpense) >= 0 
+            ? 'bg-green-50 dark:bg-green-900/20' 
+            : 'bg-red-50 dark:bg-red-900/20'
+        }`}>
+          <div className={`font-semibold text-sm mb-1 ${
+            (totalIncome - totalExpense) >= 0 
+              ? 'text-green-600 dark:text-green-400' 
+              : 'text-red-600 dark:text-red-400'
+          }`}>
+            סה״כ רווח/הפסד
+          </div>
+          <div className={`text-xl font-bold ${
+            (totalIncome - totalExpense) >= 0 
+              ? 'text-green-700 dark:text-green-300' 
+              : 'text-red-700 dark:text-red-300'
+          }`}>
+            {(totalIncome - totalExpense) >= 0 ? '+' : ''}
+            {(totalIncome - totalExpense).toLocaleString()} ₪
           </div>
         </div>
       </div>
