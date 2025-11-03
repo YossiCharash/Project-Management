@@ -1,7 +1,10 @@
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from fastapi.openapi.utils import get_openapi
+import re
+import os
 
 # Import all models to ensure Base.metadata is populated
 from backend.models import (  # noqa: F401
@@ -41,16 +44,17 @@ def create_app() -> FastAPI:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        expose_headers=["*"],
     )
 
     @app.on_event("startup")
     async def on_startup() -> None:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-        
+
         # Import the new models to ensure they're created
         from backend.models import admin_invite, email_verification, group_code
-        
+
         # Create super admin from environment variables
         from backend.core.seed import create_super_admin
         await create_super_admin()
@@ -79,14 +83,19 @@ def create_app() -> FastAPI:
 
     app.include_router(api_router, prefix=settings.API_V1_STR)
 
+    # Mount static files for uploads (images, documents, etc.)
+    uploads_dir = os.path.abspath(settings.FILE_UPLOAD_DIR)
+    os.makedirs(uploads_dir, exist_ok=True)
+    app.mount("/uploads", StaticFiles(directory=uploads_dir), name="uploads")
+
     @app.get("/health")
     async def health_check():
         return {"status": "healthy", "message": "Project Management System is running"}
 
     return app
 
-app = create_app()
 
+app = create_app()
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

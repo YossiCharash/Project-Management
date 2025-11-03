@@ -158,6 +158,7 @@ class ReportService:
                 "address": project.address,
                 "city": project.city,
                 "relation_project": project.relation_project,
+                "image_url": project.image_url,
                 "is_active": project.is_active,
                 "manager_id": project.manager_id,
                 "created_at": project.created_at.isoformat() if project.created_at else None,

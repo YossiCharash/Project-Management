@@ -1,8 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from datetime import date
 from typing import Optional
+import os
+from uuid import uuid4
 
 from backend.core.deps import DBSessionDep, require_roles, get_current_user, require_admin
+from backend.core.config import settings
 from backend.repositories.project_repository import ProjectRepository
 from backend.repositories.transaction_repository import TransactionRepository
 from backend.schemas.project import ProjectCreate, ProjectOut, ProjectUpdate
@@ -73,6 +76,41 @@ async def update_project(project_id: int, db: DBSessionDep, data: ProjectUpdate,
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     return await ProjectService(db).update(project, **data.model_dump(exclude_unset=True))
+
+
+@router.post("/{project_id}/upload-image", response_model=ProjectOut)
+async def upload_project_image(project_id: int, db: DBSessionDep, file: UploadFile = File(...), user = Depends(get_current_user)):
+    """Upload project image - accessible to all authenticated users"""
+    repo = ProjectRepository(db)
+    project = await repo.get_by_id(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    # Validate file type (only images)
+    allowed_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if ext not in allowed_extensions:
+        raise HTTPException(status_code=400, detail=f"Invalid file type. Allowed types: {', '.join(allowed_extensions)}")
+    
+    # Create projects directory in uploads if it doesn't exist
+    upload_dir = os.path.join(settings.FILE_UPLOAD_DIR, 'projects')
+    os.makedirs(upload_dir, exist_ok=True)
+    
+    # Generate unique filename
+    filename = f"{uuid4().hex}{ext}"
+    file_path = os.path.join(upload_dir, filename)
+    
+    # Save file
+    content = await file.read()
+    with open(file_path, 'wb') as f:
+        f.write(content)
+    
+    # Update project with image URL (relative path from uploads directory)
+    image_url = f"projects/{filename}"
+    project.image_url = image_url
+    await repo.update(project)
+    
+    return project
 
 
 @router.post("/{project_id}/archive", response_model=ProjectOut)

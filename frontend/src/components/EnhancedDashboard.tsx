@@ -27,11 +27,33 @@ const ProjectCard: React.FC<ProjectCardProps> = ({ project, onProjectClick, onPr
     }
   }
 
+  const getImageUrl = (imageUrl: string | null | undefined): string | null => {
+    if (!imageUrl) return null
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
+    const baseUrl = apiUrl.replace('/api/v1', '')
+    return `${baseUrl}/uploads/${imageUrl}`
+  }
+
+  const imageUrl = getImageUrl(project.image_url)
+
   return (
     <div 
       className="bg-white rounded-lg shadow-md p-4 hover:shadow-lg transition-shadow cursor-pointer"
       onClick={() => onProjectClick?.(project)}
     >
+      {imageUrl && (
+        <div className="mb-3 rounded-lg overflow-hidden">
+          <img
+            src={imageUrl}
+            alt={project.name}
+            className="w-full h-40 object-cover"
+            onError={(e) => {
+              console.error('Failed to load image:', imageUrl, e)
+              e.currentTarget.style.display = 'none'
+            }}
+          />
+        </div>
+      )}
       <div className="flex justify-between items-start mb-3">
         <h3 className="text-lg font-semibold text-gray-900 truncate">{project.name}</h3>
         <span className={`px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(project.status_color)}`}>

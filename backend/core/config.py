@@ -1,6 +1,10 @@
 from functools import lru_cache
 from pydantic import BaseModel, Field
 import os
+from dotenv import load_dotenv
+
+# Load environment variables from a .env file if present
+load_dotenv()
 
 
 class Settings(BaseModel):
@@ -17,7 +21,7 @@ class Settings(BaseModel):
 
     CORS_ORIGINS: list[str] = os.getenv(
         "CORS_ORIGINS",
-        "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000"
+        "http://localhost:5173/,http://127.0.0.1:5173,http://localhost:3000,http://localhost:5176"
     ).split(",")
 
     FILE_UPLOAD_DIR: str = os.getenv("FILE_UPLOAD_DIR", "./uploads")

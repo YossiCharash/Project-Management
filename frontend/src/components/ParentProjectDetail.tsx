@@ -285,6 +285,140 @@ const DateSelector: React.FC<{
   )
 }
 
+const SubprojectCard: React.FC<{
+  subproject: SubprojectFinancial
+  imageUrl: string | null
+  onViewClick: () => void
+}> = ({ subproject, imageUrl, onViewClick }) => {
+  return (
+    <div className="bg-gradient-to-br from-white to-gray-50 dark:from-gray-700 dark:to-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 p-6 hover:shadow-md transition-shadow duration-200">
+      {imageUrl && (
+        <div className="mb-4 rounded-lg overflow-hidden">
+          <img
+            src={imageUrl}
+            alt={subproject.name}
+            className="w-full h-40 object-cover"
+          />
+        </div>
+      )}
+      <div className="flex items-start justify-between mb-4">
+        <div className="flex-1">
+          <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
+            {subproject.name}
+          </h4>
+          <div className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getStatusBgClass(subproject.status)} ${getStatusColorClass(subproject.status)}`}>
+            {getStatusText(subproject.status)}
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <div className="flex justify-between items-center">
+          <span className="text-sm text-gray-600 dark:text-gray-400">הכנסות</span>
+          <span className="font-semibold text-green-600 dark:text-green-400">
+            {formatCurrency(subproject.income)}
+          </span>
+        </div>
+        
+        <div className="flex justify-between items-center">
+          <span className="text-sm text-gray-600 dark:text-gray-400">הוצאות</span>
+          <span className="font-semibold text-red-600 dark:text-red-400">
+            {formatCurrency(subproject.expense)}
+          </span>
+        </div>
+        
+        <div className="border-t border-gray-200 dark:border-gray-600 pt-3">
+          <div className="flex justify-between items-center">
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">רווח נטו</span>
+            <span className={`font-bold text-lg ${
+              subproject.profit >= 0 
+                ? 'text-green-600 dark:text-green-400' 
+                : 'text-red-600 dark:text-red-400'
+            }`}>
+              {formatCurrency(subproject.profit)}
+            </span>
+          </div>
+          
+          <div className="flex justify-between items-center mt-1">
+            <span className="text-xs text-gray-500 dark:text-gray-400">רווחיות</span>
+            <span className={`text-sm font-medium ${
+              subproject.profitMargin >= 0 
+                ? 'text-green-600 dark:text-green-400' 
+                : 'text-red-600 dark:text-red-400'
+            }`}>
+              {formatPercentage(subproject.profitMargin)}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-xs text-gray-500 dark:text-gray-400">מזהה פרויקט</span>
+          <span className="text-xs font-mono text-gray-600 dark:text-gray-300">
+            #{subproject.id}
+          </span>
+        </div>
+        
+        <button
+          onClick={onViewClick}
+          className="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2 px-4 rounded-lg transition-colors duration-200 flex items-center justify-center gap-2"
+        >
+          <span>צפה בפרויקט</span>
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  )
+}
+
+const SubprojectCardsList: React.FC<{
+  subprojects: SubprojectFinancial[]
+  onNavigate: (path: string) => void
+}> = ({ subprojects, onNavigate }) => {
+  const [subprojectImages, setSubprojectImages] = useState<Record<number, string | null>>({})
+
+  useEffect(() => {
+    const loadImages = async () => {
+      const images: Record<number, string | null> = {}
+      for (const subproject of subprojects) {
+        try {
+          const { data } = await api.get(`/projects/${subproject.id}`)
+          if (data.image_url) {
+            const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
+            const baseUrl = apiUrl.replace('/api/v1', '')
+            images[subproject.id] = `${baseUrl}/uploads/${data.image_url}`
+          } else {
+            images[subproject.id] = null
+          }
+        } catch (err) {
+          console.error(`Error loading image for subproject ${subproject.id}:`, err)
+          images[subproject.id] = null
+        }
+      }
+      setSubprojectImages(images)
+    }
+    if (subprojects.length > 0) {
+      loadImages()
+    }
+  }, [subprojects])
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {subprojects.map((subproject) => (
+        <SubprojectCard
+          key={subproject.id}
+          subproject={subproject}
+          imageUrl={subprojectImages[subproject.id] || null}
+          onViewClick={() => onNavigate(`/projects/${subproject.id}`)}
+        />
+      ))}
+    </div>
+  )
+}
+
 const ConsolidatedFinancialSummary: React.FC<{
   summary: FinancialSummary
   subprojects: SubprojectFinancial[]
@@ -1138,6 +1272,23 @@ export default function ParentProjectDetail() {
       >
         <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">{HebrewText.projects.projectDetails}</h2>
         
+        {parentProject.image_url && (
+          <div className="mb-6 rounded-lg overflow-hidden">
+            {(() => {
+              const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
+              const baseUrl = apiUrl.replace('/api/v1', '')
+              const imageUrl = `${baseUrl}/uploads/${parentProject.image_url}`
+              return (
+                <img
+                  src={imageUrl}
+                  alt={parentProject.name}
+                  className="w-full h-64 object-cover"
+                />
+              )
+            })()}
+          </div>
+        )}
+        
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {parentProject.description && (
             <div>
@@ -1225,84 +1376,7 @@ export default function ParentProjectDetail() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {subprojects.map((subproject) => (
-              <div
-                key={subproject.id}
-                className="bg-gradient-to-br from-white to-gray-50 dark:from-gray-700 dark:to-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 p-6 hover:shadow-md transition-shadow duration-200"
-              >
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex-1">
-                    <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
-                      {subproject.name}
-                    </h4>
-                    <div className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getStatusBgClass(subproject.status)} ${getStatusColorClass(subproject.status)}`}>
-                      {getStatusText(subproject.status)}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600 dark:text-gray-400">הכנסות</span>
-                    <span className="font-semibold text-green-600 dark:text-green-400">
-                      {formatCurrency(subproject.income)}
-                    </span>
-                  </div>
-                  
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600 dark:text-gray-400">הוצאות</span>
-                    <span className="font-semibold text-red-600 dark:text-red-400">
-                      {formatCurrency(subproject.expense)}
-                    </span>
-                  </div>
-                  
-                  <div className="border-t border-gray-200 dark:border-gray-600 pt-3">
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">רווח נטו</span>
-                      <span className={`font-bold text-lg ${
-                        subproject.profit >= 0 
-                          ? 'text-green-600 dark:text-green-400' 
-                          : 'text-red-600 dark:text-red-400'
-                      }`}>
-                        {formatCurrency(subproject.profit)}
-                      </span>
-                    </div>
-                    
-                    <div className="flex justify-between items-center mt-1">
-                      <span className="text-xs text-gray-500 dark:text-gray-400">רווחיות</span>
-                      <span className={`text-sm font-medium ${
-                        subproject.profitMargin >= 0 
-                          ? 'text-green-600 dark:text-green-400' 
-                          : 'text-red-600 dark:text-red-400'
-                      }`}>
-                        {formatPercentage(subproject.profitMargin)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-xs text-gray-500 dark:text-gray-400">מזהה פרויקט</span>
-                    <span className="text-xs font-mono text-gray-600 dark:text-gray-300">
-                      #{subproject.id}
-                    </span>
-                  </div>
-                  
-                  <button
-                    onClick={() => navigate(`/projects/${subproject.id}`)}
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2 px-4 rounded-lg transition-colors duration-200 flex items-center justify-center gap-2"
-                  >
-                    <span>צפה בפרויקט</span>
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
+          <SubprojectCardsList subprojects={subprojects} onNavigate={navigate} />
         </div>
       ) : (
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-8">

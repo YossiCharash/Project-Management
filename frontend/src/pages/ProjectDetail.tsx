@@ -32,6 +32,7 @@ export default function ProjectDetail() {
   const [projectName, setProjectName] = useState<string>('')
   const [loading, setLoading] = useState(false)
   const [chartsLoading, setChartsLoading] = useState(false)
+  const [projectImageUrl, setProjectImageUrl] = useState<string | null>(null)
 
   const [type, setType] = useState<'Income' | 'Expense'>('Expense')
   const [txDate, setTxDate] = useState('')
@@ -96,6 +97,11 @@ export default function ProjectDetail() {
     try {
       const { data } = await api.get(`/projects/${id}`)
       setProjectName(data.name || `פרויקט ${id}`)
+      if (data.image_url) {
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
+        const baseUrl = apiUrl.replace('/api/v1', '')
+        setProjectImageUrl(`${baseUrl}/uploads/${data.image_url}`)
+      }
     } catch (err: any) {
       console.error('Error loading project info:', err)
       setProjectName(`פרויקט ${id}`)
@@ -211,6 +217,7 @@ export default function ProjectDetail() {
     )
   }
 
+
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -219,13 +226,26 @@ export default function ProjectDetail() {
         animate={{ opacity: 1, y: 0 }}
         className="flex items-center justify-between"
       >
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-            {projectName || `פרויקט #${id}`}
-          </h1>
-          <p className="text-gray-600 dark:text-gray-400">
-            ניהול פיננסי מפורט
-          </p>
+        <div className="flex-1">
+          <div className="flex items-center gap-4 mb-4">
+            {projectImageUrl && (
+              <div className="rounded-lg overflow-hidden flex-shrink-0">
+                <img
+                  src={projectImageUrl}
+                  alt={projectName || `פרויקט #${id}`}
+                  className="w-32 h-32 object-cover"
+                />
+              </div>
+            )}
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+                {projectName || `פרויקט #${id}`}
+              </h1>
+              <p className="text-gray-600 dark:text-gray-400">
+                ניהול פיננסי מפורט
+              </p>
+            </div>
+          </div>
         </div>
         <button
           onClick={() => navigate('/dashboard')}

@@ -24,7 +24,7 @@ class Project(Base):
     address: Mapped[str | None] = mapped_column(String(255), default=None)
     city: Mapped[str | None] = mapped_column(String(120), default=None)
     relation_project: Mapped[int | None] = mapped_column(Integer, default=None)
-
+    image_url: Mapped[str | None] = mapped_column(String(500), default=None)
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
 
