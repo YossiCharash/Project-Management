@@ -160,6 +160,30 @@ const RecurringTransactionManagement: React.FC<RecurringTransactionManagementPro
                       >
                         ערוך
                       </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleDeactivateTemplate(template.id)
+                        }}
+                        className={`px-2 py-1 text-xs rounded hover:opacity-80 ${
+                          template.is_active
+                            ? 'bg-yellow-600 text-white'
+                            : 'bg-green-600 text-white'
+                        }`}
+                        title={template.is_active ? 'השבת תבנית' : 'הפעל תבנית'}
+                      >
+                        {template.is_active ? 'השבת' : 'הפעל'}
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleDeleteTemplate(template.id)
+                        }}
+                        className="px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700"
+                        title="מחק תבנית"
+                      >
+                        מחק
+                      </button>
                       <span className={`px-2 py-1 text-xs rounded-full ${
                         template.is_active
                           ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'

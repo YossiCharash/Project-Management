@@ -263,21 +263,25 @@ class ReportService:
         return expense_categories
 
     async def get_project_transactions(self, project_id: int) -> List[Dict[str, Any]]:
-        """Get all transactions for a specific project"""
-        transactions_query = select(Transaction).where(Transaction.project_id == project_id)
+        """Get all transactions for a specific project (including recurring ones)"""
+        transactions_query = select(Transaction).where(Transaction.project_id == project_id).order_by(Transaction.tx_date.desc())
         transactions_result = await self.db.execute(transactions_query)
         transactions = list(transactions_result.scalars().all())
         
         return [
             {
                 "id": tx.id,
+                "project_id": tx.project_id,
                 "tx_date": tx.tx_date.isoformat(),
                 "type": tx.type,
                 "amount": float(tx.amount),
                 "description": tx.description,
                 "category": tx.category,
                 "notes": tx.notes,
-                "is_exceptional": tx.is_exceptional
+                "is_exceptional": tx.is_exceptional,
+                "is_generated": getattr(tx, 'is_generated', False),
+                "recurring_template_id": getattr(tx, 'recurring_template_id', None),
+                "created_at": tx.created_at.isoformat() if hasattr(tx, 'created_at') and tx.created_at else None
             }
             for tx in transactions
         ]

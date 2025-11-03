@@ -159,4 +159,33 @@ export class RecurringTransactionAPI {
     const { data } = await api.post<RecurringTransactionTemplate>(`/recurring-transactions/${templateId}/deactivate`)
     return data
   }
+
+  // Get all transactions generated from a specific template
+  static async getTemplateTransactions(templateId: number): Promise<Transaction[]> {
+    const { data } = await api.get<Transaction[]>(`/recurring-transactions/${templateId}/transactions`)
+    return data
+  }
+
+  // Get a template with its transactions
+  static async getTemplate(templateId: number): Promise<RecurringTransactionTemplate & { generated_transactions?: Transaction[] }> {
+    const { data } = await api.get<RecurringTransactionTemplate & { generated_transactions?: Transaction[] }>(`/recurring-transactions/${templateId}`)
+    return data
+  }
+
+  // Generate transactions for a specific month
+  static async generateMonthlyTransactions(year: number, month: number): Promise<{ generated_count: number; transactions: Transaction[] }> {
+    const { data } = await api.post<{ generated_count: number; transactions: Transaction[] }>(`/recurring-transactions/generate/${year}/${month}`)
+    return data
+  }
+
+  // Update a specific transaction instance (for recurring transactions)
+  static async updateTransactionInstance(transactionId: number, updates: { tx_date?: string; amount?: number; category?: string; notes?: string }): Promise<Transaction> {
+    const { data } = await api.put<Transaction>(`/recurring-transactions/transactions/${transactionId}`, updates)
+    return data
+  }
+
+  // Delete a specific transaction instance (for recurring transactions)
+  static async deleteTransactionInstance(transactionId: number): Promise<void> {
+    await api.delete(`/recurring-transactions/transactions/${transactionId}`)
+  }
 }

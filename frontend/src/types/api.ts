@@ -37,6 +37,7 @@ export interface Transaction {
   category?: string | null
   notes?: string | null
   is_exceptional: boolean
+  is_generated?: boolean
   file_path?: string | null
   created_at: string
 }

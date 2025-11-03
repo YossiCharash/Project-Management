@@ -6,6 +6,7 @@ import { ReportAPI } from '../lib/apiClient'
 import { ExpenseCategory, Transaction } from '../types/api'
 import ProjectExpensePieChart from '../components/charts/ProjectExpensePieChart'
 import ProjectTrendsChart from '../components/charts/ProjectTrendsChart'
+import EditTransactionModal from '../components/EditTransactionModal'
 
 interface Transaction {
   id: number
@@ -50,6 +51,9 @@ export default function ProjectDetail() {
   const [filterType, setFilterType] = useState<'all' | 'Income' | 'Expense'>('all')
   const [filterExceptional, setFilterExceptional] = useState<'all' | 'only'>('all')
 
+  const [editTransactionModalOpen, setEditTransactionModalOpen] = useState(false)
+  const [selectedTransactionForEdit, setSelectedTransactionForEdit] = useState<Transaction | null>(null)
+
   const load = async () => {
     if (!id) return
 
@@ -77,9 +81,6 @@ export default function ProjectDetail() {
         ReportAPI.getProjectExpenseCategories(parseInt(id)),
         ReportAPI.getProjectTransactions(parseInt(id))
       ])
-      
-      console.log('Categories data:', categoriesData)
-      console.log('Transactions data:', transactionsData)
       
       setExpenseCategories(categoriesData)
       setTxs(transactionsData)
@@ -114,6 +115,7 @@ export default function ProjectDetail() {
       loadChartsData()
     }
   }, [id])
+
 
   useEffect(() => {
     const loadSubs = async () => {
@@ -187,6 +189,12 @@ export default function ProjectDetail() {
       setSaving(false)
     }
   }
+
+  const handleEditAnyTransaction = (transaction: Transaction) => {
+    setSelectedTransactionForEdit(transaction)
+    setEditTransactionModalOpen(true)
+  }
+
 
   const filtered = txs.filter(t =>
     (filterType === 'all' || t.type === filterType) &&
@@ -302,7 +310,9 @@ export default function ProjectDetail() {
         transition={{ delay: 0.3 }}
         className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6"
       >
-        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-6">הוספת עסקה חדשה</h2>
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-white">הוספת עסקה חדשה</h2>
+        </div>
         <form onSubmit={onCreate} className="grid md:grid-cols-6 gap-4 items-end">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">סוג</label>
@@ -453,20 +463,30 @@ export default function ProjectDetail() {
                   <th className="p-3 font-medium text-gray-700 dark:text-gray-300">קטגוריה</th>
                   <th className="p-3 font-medium text-gray-700 dark:text-gray-300">תיאור</th>
                   <th className="p-3 font-medium text-gray-700 dark:text-gray-300">הערות</th>
+                  <th className="p-3 font-medium text-gray-700 dark:text-gray-300">פעולות</th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.map(t => (
+                {filtered.map(t => {
+                  const transaction = t as any // Cast to access is_generated
+                  return (
                   <tr key={t.id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700">
                     <td className="p-3">
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        t.type === 'Income' 
-                          ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-300' 
-                          : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-300'
-                      }`}>
-                        {t.type === 'Income' ? 'הכנסה' : 'הוצאה'}
-                        {t.is_exceptional ? ' (חריגה)' : ''}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          t.type === 'Income' 
+                            ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-300' 
+                            : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-300'
+                        }`}>
+                          {t.type === 'Income' ? 'הכנסה' : 'הוצאה'}
+                          {t.is_exceptional ? ' (חריגה)' : ''}
+                        </span>
+                        {transaction.is_generated && (
+                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-300" title="נוצר אוטומטית מעסקה מחזורית">
+                            🔄 מחזורי
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="p-3 text-gray-700 dark:text-gray-300">{t.tx_date}</td>
                     <td className={`p-3 font-semibold ${t.type === 'Income' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
@@ -475,8 +495,17 @@ export default function ProjectDetail() {
                     <td className="p-3 text-gray-700 dark:text-gray-300">{t.category ?? '-'}</td>
                     <td className="p-3 text-gray-700 dark:text-gray-300">{t.description ?? '-'}</td>
                     <td className="p-3 text-gray-700 dark:text-gray-300">{t.notes ?? '-'}</td>
+                    <td className="p-3">
+                      <button
+                        onClick={() => handleEditAnyTransaction(t)}
+                        className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+                      >
+                        ערוך
+                      </button>
+                    </td>
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           </div>
@@ -526,6 +555,21 @@ export default function ProjectDetail() {
           </div>
         </div>
       </motion.div>
+
+      {/* Modals */}
+      <EditTransactionModal
+        isOpen={editTransactionModalOpen}
+        onClose={() => {
+          setEditTransactionModalOpen(false)
+          setSelectedTransactionForEdit(null)
+        }}
+        onSuccess={async () => {
+          setEditTransactionModalOpen(false)
+          setSelectedTransactionForEdit(null)
+          await loadChartsData()
+        }}
+        transaction={selectedTransactionForEdit}
+      />
     </div>
   )
 }

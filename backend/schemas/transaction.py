@@ -38,6 +38,7 @@ class TransactionOut(BaseModel):
     category: str | None = None
     notes: str | None = None
     is_exceptional: bool = False
+    is_generated: bool = False
     file_path: str | None
     created_at: datetime
 

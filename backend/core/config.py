@@ -19,10 +19,12 @@ class Settings(BaseModel):
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24
 
-    CORS_ORIGINS: list[str] = os.getenv(
-        "CORS_ORIGINS",
-        "http://localhost:5173/,http://127.0.0.1:5173,http://localhost:3000,http://localhost:5176"
-    ).split(",")
+    CORS_ORIGINS: list[str] = [
+        origin.strip().rstrip("/") for origin in os.getenv(
+            "CORS_ORIGINS",
+            "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000"
+        ).split(",")
+    ]
 
     FILE_UPLOAD_DIR: str = os.getenv("FILE_UPLOAD_DIR", "./uploads")
     

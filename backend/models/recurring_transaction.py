@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 from datetime import datetime, date
 from enum import Enum
 from sqlalchemy import String, Date, DateTime, ForeignKey, Numeric, Text, Boolean, Enum as SAEnum, Integer
@@ -48,9 +48,5 @@ class RecurringTransactionTemplate(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Relationship to generated transactions
-    generated_transactions: Mapped[list["Transaction"]] = relationship(
-        "Transaction", 
-        back_populates="recurring_template",
-        cascade="all, delete-orphan"
-    )
+    # Note: No relationship to generated_transactions defined here`n    # Access generated transactions via query:`n    # select(Transaction).where(Transaction.recurring_template_id == self.id)`n    # The relationship is only one-way from Transaction.recurring_template
+

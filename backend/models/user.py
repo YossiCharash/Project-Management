@@ -24,4 +24,4 @@ class User(Base):
     group_id: Mapped[int] = mapped_column(nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
-    projects: Mapped[list["Project"]] = relationship(back_populates="manager")
+    projects: Mapped[list[Project]] = relationship(back_populates="manager")

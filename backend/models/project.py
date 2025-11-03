@@ -32,7 +32,7 @@ class Project(Base):
     manager: Mapped["User | None"] = relationship(back_populates="projects")
 
     transactions: Mapped[list["Transaction"]] = relationship(back_populates="project", cascade="all, delete-orphan")
-
+    recurring_templates: Mapped[list["RecurringTransactionTemplate"]] = relationship(back_populates="project", cascade="all, delete-orphan")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     @property

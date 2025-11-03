@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from pydantic import BaseModel, Field
-from typing import Literal, Optional
+from pydantic import BaseModel, Field, model_validator
+from typing import Literal, Optional, Any
 
 
 class RecurringTransactionTemplateBase(BaseModel):
@@ -42,6 +42,35 @@ class RecurringTransactionTemplateOut(RecurringTransactionTemplateBase):
     is_active: bool
     created_at: datetime
     updated_at: datetime
+
+    @model_validator(mode='before')
+    @classmethod
+    def convert_enum_to_string(cls, data: Any) -> Any:
+        """Convert Enum objects to their string values for frequency and end_type"""
+        if hasattr(data, '__dict__') or hasattr(data, '_sa_instance_state'):
+            # Handle SQLAlchemy model objects - use getattr to access attributes
+            obj_dict = {}
+            for attr in ['id', 'project_id', 'description', 'type', 'amount', 'category', 'notes',
+                        'frequency', 'day_of_month', 'start_date', 'end_type', 'end_date',
+                        'max_occurrences', 'is_active', 'created_at', 'updated_at']:
+                if hasattr(data, attr):
+                    value = getattr(data, attr)
+                    if attr == 'frequency' and hasattr(value, 'value'):
+                        obj_dict[attr] = value.value
+                    elif attr == 'end_type' and hasattr(value, 'value'):
+                        obj_dict[attr] = value.value
+                    else:
+                        obj_dict[attr] = value
+            return obj_dict
+        elif isinstance(data, dict):
+            # Handle dict objects
+            result = dict(data)
+            if 'frequency' in result and hasattr(result.get('frequency'), 'value'):
+                result['frequency'] = result['frequency'].value
+            if 'end_type' in result and hasattr(result.get('end_type'), 'value'):
+                result['end_type'] = result['end_type'].value
+            return result
+        return data
 
     class Config:
         from_attributes = True
