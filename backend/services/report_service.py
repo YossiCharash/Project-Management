@@ -59,9 +59,9 @@ class ReportService:
                 "expense_categories": []
             }
 
-        # Get current month's date range
+        # Get current year's date range
         current_date = date.today()
-        current_month_start = current_date.replace(day=1)
+        current_year_start = current_date.replace(month=1, day=1)
 
         # Calculate financial data for each project
         projects_with_finance = []
@@ -72,32 +72,32 @@ class ReportService:
         unpaid_recurring_projects = []
 
         for project in projects:
-            # Get current month's transactions
-            monthly_income_query = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
+            # Get current year's transactions
+            yearly_income_query = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
                 and_(
                     Transaction.project_id == project.id,
                     Transaction.type == "Income",
-                    Transaction.tx_date >= current_month_start
+                    Transaction.tx_date >= current_year_start
                 )
             )
-            monthly_expense_query = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
+            yearly_expense_query = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
                 and_(
                     Transaction.project_id == project.id,
                     Transaction.type == "Expense",
-                    Transaction.tx_date >= current_month_start
+                    Transaction.tx_date >= current_year_start
                 )
             )
 
-            monthly_income = float((await self.db.execute(monthly_income_query)).scalar_one())
-            monthly_expense = float((await self.db.execute(monthly_expense_query)).scalar_one())
+            yearly_income = float((await self.db.execute(yearly_income_query)).scalar_one())
+            yearly_expense = float((await self.db.execute(yearly_expense_query)).scalar_one())
 
             # Calculate profit including budgets
-            # Add monthly budget to income
-            project_total_income = monthly_income + float(project.budget_monthly or 0)
-            # Add annual budget divided by 12 to monthly income
-            project_total_income += float(project.budget_annual or 0) / 12
+            # Add annual budget to income
+            project_total_income = yearly_income + float(project.budget_annual or 0)
+            # Add monthly budget multiplied by 12 to yearly income
+            project_total_income += float(project.budget_monthly or 0) * 12
             
-            profit = project_total_income - monthly_expense
+            profit = project_total_income - yearly_expense
             
             # Calculate profit percentage based on total income
             if project_total_income > 0:
@@ -113,8 +113,9 @@ class ReportService:
             else:
                 status_color = "yellow"
 
-            # Check for budget overrun
-            if monthly_expense > (project.budget_monthly or 0):
+            # Check for budget overrun (compare yearly expense to yearly budget)
+            yearly_budget = float(project.budget_annual or 0) + (float(project.budget_monthly or 0) * 12)
+            if yearly_expense > yearly_budget:
                 budget_overrun_projects.append(project.id)
 
             # Check for missing proof (transactions without file_path)
@@ -122,7 +123,7 @@ class ReportService:
                 and_(
                     Transaction.project_id == project.id,
                     Transaction.file_path.is_(None),
-                    Transaction.tx_date >= current_month_start
+                    Transaction.tx_date >= current_year_start
                 )
             )
             missing_proof_count = (await self.db.execute(missing_proof_query)).scalar_one()
@@ -160,8 +161,8 @@ class ReportService:
                 "is_active": project.is_active,
                 "manager_id": project.manager_id,
                 "created_at": project.created_at.isoformat() if project.created_at else None,
-                "income_month_to_date": project_total_income,
-                "expense_month_to_date": monthly_expense,
+                "income_month_to_date": project_total_income,  # Calculated by year, keeping field name for frontend compatibility
+                "expense_month_to_date": yearly_expense,  # Calculated by year, keeping field name for frontend compatibility
                 "profit_percent": round(profit_percent, 1),
                 "status_color": status_color,
                 "budget_monthly": float(project.budget_monthly or 0),
@@ -171,7 +172,7 @@ class ReportService:
 
             projects_with_finance.append(project_data)
             total_income += project_total_income  # project_total_income includes budgets
-            total_expense += monthly_expense
+            total_expense += yearly_expense
 
         # Build project hierarchy
         project_map = {p["id"]: p for p in projects_with_finance}
@@ -194,7 +195,7 @@ class ReportService:
         ).where(
             and_(
                 Transaction.type == "Expense",
-                Transaction.tx_date >= current_month_start
+                Transaction.tx_date >= current_year_start
             )
         ).group_by(Transaction.category)
         

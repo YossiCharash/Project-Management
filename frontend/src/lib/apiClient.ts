@@ -1,5 +1,5 @@
 import api from '../lib/api'
-import { Project, ProjectCreate, Transaction, TransactionCreate, ProjectWithFinance, DashboardSnapshot, ExpenseCategory } from '../types/api'
+import { Project, ProjectCreate, Transaction, TransactionCreate, ProjectWithFinance, DashboardSnapshot, ExpenseCategory, RecurringTransactionTemplate, RecurringTransactionTemplateCreate, RecurringTransactionTemplateUpdate } from '../types/api'
 
 // Enhanced API client with proper TypeScript types
 export class ProjectAPI {
@@ -116,6 +116,37 @@ export class ReportAPI {
   // Get all transactions for a specific project
   static async getProjectTransactions(projectId: number): Promise<Transaction[]> {
     const { data } = await api.get<Transaction[]>(`/reports/project/${projectId}/transactions`)
+    return data
+  }
+}
+
+export class RecurringTransactionAPI {
+  // Get all recurring transaction templates for a project
+  static async getProjectRecurringTemplates(projectId: number): Promise<RecurringTransactionTemplate[]> {
+    const { data } = await api.get<RecurringTransactionTemplate[]>(`/recurring-transactions/project/${projectId}`)
+    return data
+  }
+
+  // Create a recurring transaction template
+  static async createTemplate(template: RecurringTransactionTemplateCreate): Promise<RecurringTransactionTemplate> {
+    const { data } = await api.post<RecurringTransactionTemplate>('/recurring-transactions', template)
+    return data
+  }
+
+  // Update a recurring transaction template
+  static async updateTemplate(templateId: number, updates: RecurringTransactionTemplateUpdate): Promise<RecurringTransactionTemplate> {
+    const { data } = await api.put<RecurringTransactionTemplate>(`/recurring-transactions/${templateId}`, updates)
+    return data
+  }
+
+  // Delete a recurring transaction template
+  static async deleteTemplate(templateId: number): Promise<void> {
+    await api.delete(`/recurring-transactions/${templateId}`)
+  }
+
+  // Deactivate a recurring transaction template
+  static async deactivateTemplate(templateId: number): Promise<RecurringTransactionTemplate> {
+    const { data } = await api.post<RecurringTransactionTemplate>(`/recurring-transactions/${templateId}/deactivate`)
     return data
   }
 }

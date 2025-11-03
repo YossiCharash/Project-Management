@@ -6,6 +6,7 @@ from backend.repositories.transaction_repository import TransactionRepository
 
 class ProjectService:
     def __init__(self, db: AsyncSession):
+        self.db = db
         self.projects = ProjectRepository(db)
         self.transactions = TransactionRepository(db)
 
@@ -38,36 +39,36 @@ class ProjectService:
         return project_data
 
     async def get_project_financial_data(self, project_id: int) -> dict:
-        """Get real-time financial calculations for a project"""
+        """Get real-time financial calculations for a project - by year"""
         from sqlalchemy import func, select, and_
         from datetime import date
         from backend.models.transaction import Transaction
         
         current_date = date.today()
-        current_month_start = current_date.replace(day=1)
+        current_year_start = current_date.replace(month=1, day=1)
         
-        # Get current month's income and expenses
-        monthly_income_query = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
+        # Get current year's income and expenses
+        yearly_income_query = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
             and_(
                 Transaction.project_id == project_id,
                 Transaction.type == "Income",
-                Transaction.tx_date >= current_month_start
+                Transaction.tx_date >= current_year_start
             )
         )
-        monthly_expense_query = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
+        yearly_expense_query = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
             and_(
                 Transaction.project_id == project_id,
                 Transaction.type == "Expense",
-                Transaction.tx_date >= current_month_start
+                Transaction.tx_date >= current_year_start
             )
         )
         
-        monthly_income = float((await self.db.execute(monthly_income_query)).scalar_one())
-        monthly_expense = float((await self.db.execute(monthly_expense_query)).scalar_one())
+        yearly_income = float((await self.db.execute(yearly_income_query)).scalar_one())
+        yearly_expense = float((await self.db.execute(yearly_expense_query)).scalar_one())
         
         # Calculate profit and percentage
-        profit = monthly_income - monthly_expense
-        profit_percent = (profit / monthly_income * 100) if monthly_income > 0 else 0
+        profit = yearly_income - yearly_expense
+        profit_percent = (profit / yearly_income * 100) if yearly_income > 0 else 0
         
         # Determine status color
         if profit_percent >= 10:
@@ -79,8 +80,8 @@ class ProjectService:
         
         return {
             "total_value": profit,
-            "income_month_to_date": monthly_income,
-            "expense_month_to_date": monthly_expense,
+            "income_month_to_date": yearly_income,  # Calculated by year, keeping field name for frontend compatibility
+            "expense_month_to_date": yearly_expense,  # Calculated by year, keeping field name for frontend compatibility
             "profit_percent": round(profit_percent, 1),
             "status_color": status_color
         }

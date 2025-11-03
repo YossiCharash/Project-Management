@@ -3,6 +3,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 
+# Import all models to ensure Base.metadata is populated
+from backend.models import (  # noqa: F401
+    User, Project, Subproject, Transaction, AuditLog, 
+    Supplier, SupplierDocument, AdminInvite, EmailVerification, 
+    GroupCode, RecurringTransactionTemplate
+)
+
 from backend.api.v1.router import api_router
 from backend.core.config import settings
 from backend.db.session import engine

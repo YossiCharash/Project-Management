@@ -53,6 +53,7 @@ export interface ProjectCreate {
   city?: string | null
   relation_project?: number | null // Parent project ID
   manager_id?: number | null
+  recurring_transactions?: RecurringTransactionTemplateCreate[] | null
 }
 
 export interface TransactionCreate {
@@ -94,4 +95,52 @@ export interface DashboardSnapshot {
     total_profit: number
   }
   expense_categories: ExpenseCategory[]
+}
+
+// Recurring Transaction types
+export interface RecurringTransactionTemplateCreate {
+  project_id: number
+  description: string
+  type: 'Income' | 'Expense'
+  amount: number
+  category?: string | null
+  notes?: string | null
+  frequency?: 'Monthly'
+  day_of_month: number
+  start_date: string
+  end_type?: 'No End' | 'After Occurrences' | 'On Date'
+  end_date?: string | null
+  max_occurrences?: number | null
+}
+
+export interface RecurringTransactionTemplate {
+  id: number
+  project_id: number
+  description: string
+  type: 'Income' | 'Expense'
+  amount: number
+  category?: string | null
+  notes?: string | null
+  frequency: 'Monthly'
+  day_of_month: number
+  start_date: string
+  end_type: 'No End' | 'After Occurrences' | 'On Date'
+  end_date?: string | null
+  max_occurrences?: number | null
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface RecurringTransactionTemplateUpdate {
+  description?: string | null
+  amount?: number
+  category?: string | null
+  notes?: string | null
+  day_of_month?: number
+  start_date?: string
+  end_type?: 'No End' | 'After Occurrences' | 'On Date'
+  end_date?: string | null
+  max_occurrences?: number | null
+  is_active?: boolean
 }

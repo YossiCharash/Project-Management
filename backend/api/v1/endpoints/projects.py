@@ -6,7 +6,9 @@ from backend.core.deps import DBSessionDep, require_roles, get_current_user, req
 from backend.repositories.project_repository import ProjectRepository
 from backend.repositories.transaction_repository import TransactionRepository
 from backend.schemas.project import ProjectCreate, ProjectOut, ProjectUpdate
+from backend.schemas.recurring_transaction import RecurringTransactionTemplateCreate
 from backend.services.project_service import ProjectService
+from backend.services.recurring_transaction_service import RecurringTransactionService
 from backend.services.financial_aggregation_service import FinancialAggregationService
 from backend.models.user import UserRole
 
@@ -42,7 +44,25 @@ async def get_project_values(project_id: int, db: DBSessionDep, user = Depends(g
 @router.post("/", response_model=ProjectOut)
 async def create_project(db: DBSessionDep, data: ProjectCreate, user = Depends(get_current_user)):
     """Create project - accessible to all authenticated users"""
-    return await ProjectService(db).create(**data.model_dump())
+    # Extract recurring transactions from project data
+    project_data = data.model_dump(exclude={'recurring_transactions'})
+    recurring_transactions = data.recurring_transactions or []
+    
+    # Create the project
+    project = await ProjectService(db).create(**project_data)
+    
+    # Create recurring transactions if provided
+    if recurring_transactions:
+        recurring_service = RecurringTransactionService(db)
+        for rt_data in recurring_transactions:
+            # Convert to dict and set the project_id for each recurring transaction
+            rt_dict = rt_data.model_dump()
+            rt_dict['project_id'] = project.id
+            # Create new instance with project_id set
+            rt_create = RecurringTransactionTemplateCreate(**rt_dict)
+            await recurring_service.create_template(rt_create)
+    
+    return project
 
 
 @router.put("/{project_id}", response_model=ProjectOut)
@@ -231,10 +251,10 @@ async def get_parent_project_financial_summary(
 async def get_financial_trends(
     project_id: int,
     db: DBSessionDep,
-    months_back: int = Query(12, description="Number of months to look back"),
+    years_back: int = Query(5, description="Number of years to look back"),
     user = Depends(get_current_user)
 ):
-    """Get financial trends over the last N months"""
+    """Get financial trends over the last N years"""
     try:
         from sqlalchemy import select, and_, func, extract
         from backend.models.project import Project
@@ -262,32 +282,23 @@ async def get_financial_trends(
         )
         subprojects = subprojects_result.scalars().all()
         
-        # Calculate trends for the last N months
+        # Calculate trends for the last N years
         trends = []
-        current_date = datetime.now().date()
+        current_year = datetime.now().year
         
-        for i in range(months_back):
-            # Calculate month and year
-            month = current_date.month - i
-            year = current_date.year
+        for i in range(years_back):
+            year = current_year - i
             
-            if month <= 0:
-                month += 12
-                year -= 1
+            # Get start and end of year
+            year_start = date(year, 1, 1)
+            year_end = date(year, 12, 31)
             
-            # Get start and end of month
-            month_start = date(year, month, 1)
-            if month == 12:
-                month_end = date(year + 1, 1, 1)
-            else:
-                month_end = date(year, month + 1, 1)
-            
-            # Get transactions for parent project in this month
+            # Get transactions for parent project in this year
             parent_transactions_query = select(Transaction).where(
                 and_(
                     Transaction.project_id == project_id,
-                    Transaction.tx_date >= month_start,
-                    Transaction.tx_date < month_end
+                    Transaction.tx_date >= year_start,
+                    Transaction.tx_date <= year_end
                 )
             )
             parent_transactions_result = await db.execute(parent_transactions_query)
@@ -296,7 +307,7 @@ async def get_financial_trends(
             parent_income = sum(t.amount for t in parent_transactions if t.type == 'Income')
             parent_expense = sum(t.amount for t in parent_transactions if t.type == 'Expense')
             
-            # Get transactions for subprojects in this month
+            # Get transactions for subprojects in this year
             total_subproject_income = 0
             total_subproject_expense = 0
             
@@ -304,8 +315,8 @@ async def get_financial_trends(
                 subproject_transactions_query = select(Transaction).where(
                     and_(
                         Transaction.project_id == subproject.id,
-                        Transaction.tx_date >= month_start,
-                        Transaction.tx_date < month_end
+                        Transaction.tx_date >= year_start,
+                        Transaction.tx_date <= year_end
                     )
                 )
                 subproject_transactions_result = await db.execute(subproject_transactions_query)
@@ -323,16 +334,8 @@ async def get_financial_trends(
             total_profit = total_income - total_expense
             total_profit_margin = (total_profit / total_income * 100) if total_income > 0 else 0
             
-            # Get Hebrew month name
-            month_names = [
-                'ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני',
-                'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'
-            ]
-            
             trends.append({
                 'year': year,
-                'month': month,
-                'month_name': month_names[month - 1],
                 'income': total_income,
                 'expense': total_expense,
                 'profit': total_profit,
@@ -344,7 +347,7 @@ async def get_financial_trends(
         
         return {
             'trends': trends,
-            'period_months': months_back
+            'period_years': years_back
         }
             
     except Exception as e:

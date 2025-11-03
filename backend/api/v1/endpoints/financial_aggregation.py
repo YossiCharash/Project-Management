@@ -156,21 +156,21 @@ async def get_subproject_performance_comparison(
 @router.get("/parent-project/{parent_project_id}/financial-trends")
 async def get_financial_trends(
     parent_project_id: int,
-    months_back: int = Query(12, description="Number of months to look back (default: 12)"),
+    years_back: int = Query(5, description="Number of years to look back (default: 5)"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
-    Get financial trends over the last N months
+    Get financial trends over the last N years
     
-    Returns monthly financial trends for trend analysis and forecasting.
+    Returns yearly financial trends for trend analysis and forecasting.
     """
     try:
-        if months_back < 1 or months_back > 60:
-            raise HTTPException(status_code=400, detail="Months back must be between 1 and 60")
+        if years_back < 1 or years_back > 20:
+            raise HTTPException(status_code=400, detail="Years back must be between 1 and 20")
         
         service = FinancialAggregationService(db)
-        trends = service.get_financial_trends(parent_project_id, months_back)
+        trends = service.get_financial_trends(parent_project_id, years_back)
         return trends
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -193,16 +193,15 @@ async def get_parent_project_dashboard_overview(
     try:
         service = FinancialAggregationService(db)
         
-        # Get current month summary
+        # Get current year summary
         current_date = datetime.now().date()
-        current_summary = service.get_monthly_financial_summary(
+        current_summary = service.get_yearly_financial_summary(
             parent_project_id, 
-            current_date.year, 
-            current_date.month
+            current_date.year
         )
         
-        # Get trends for last 6 months
-        trends = service.get_financial_trends(parent_project_id, 6)
+        # Get trends for last 5 years
+        trends = service.get_financial_trends(parent_project_id, 5)
         
         # Get subproject performance
         performance = service.get_subproject_performance_comparison(parent_project_id)

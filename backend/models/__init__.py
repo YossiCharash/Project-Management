@@ -9,6 +9,7 @@ from backend.models.supplier_document import SupplierDocument
 from backend.models.admin_invite import AdminInvite
 from backend.models.email_verification import EmailVerification
 from backend.models.group_code import GroupCode
+from backend.models.recurring_transaction import RecurringTransactionTemplate
 
 __all__ = [
     "User",
@@ -23,5 +24,6 @@ __all__ = [
     "SupplierDocument",
     "AdminInvite",
     "EmailVerification",
-    "GroupCode"
+    "GroupCode",
+    "RecurringTransactionTemplate"
 ]

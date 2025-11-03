@@ -136,19 +136,19 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
               <div className={`text-2xl font-bold ${(project.profit_percent || 0) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                 {(project.profit_percent || 0) >= 0 ? '+' : ''}{(project.profit_percent || 0).toFixed(1)}%
               </div>
-              <div className="text-xs text-gray-500 dark:text-gray-400">רווח/הפסד חודשי</div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">רווח/הפסד שנתי</div>
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
-              <div className="text-gray-500 dark:text-gray-400 text-xs">הכנסות החודש</div>
+              <div className="text-gray-500 dark:text-gray-400 text-xs">הכנסות השנה</div>
               <div className="font-semibold text-green-600 dark:text-green-400">
                 {(project.income_month_to_date || 0).toFixed(0)} ₪
               </div>
             </div>
             <div>
-              <div className="text-gray-500 dark:text-gray-400 text-xs">הוצאות החודש</div>
+              <div className="text-gray-500 dark:text-gray-400 text-xs">הוצאות השנה</div>
               <div className="font-semibold text-red-600 dark:text-red-400">
                 {(project.expense_month_to_date || 0).toFixed(0)} ₪
               </div>

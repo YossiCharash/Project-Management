@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Project, ProjectCreate } from '../types/api'
+import { Project, ProjectCreate, RecurringTransactionTemplateCreate } from '../types/api'
 import { ProjectAPI } from '../lib/apiClient'
 
 interface CreateProjectModalProps {
@@ -35,6 +35,8 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
   const [availableProjects, setAvailableProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [recurringTransactions, setRecurringTransactions] = useState<Partial<RecurringTransactionTemplateCreate>[]>([])
+  const [showRecurringSection, setShowRecurringSection] = useState(false)
 
   // Load available projects for parent selection
   useEffect(() => {
@@ -89,7 +91,43 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
       relation_project: parentProjectId || undefined,
       manager_id: undefined
     })
+    setRecurringTransactions([])
+    setShowRecurringSection(false)
     setError(null)
+  }
+
+  const addRecurringTransaction = () => {
+    setRecurringTransactions([...recurringTransactions, {
+      description: '',
+      type: 'Expense',
+      amount: 0,
+      category: null,
+      notes: null,
+      frequency: 'Monthly',
+      day_of_month: 1,
+      start_date: new Date().toISOString().split('T')[0],
+      end_type: 'No End',
+      end_date: null,
+      max_occurrences: null
+    }])
+    setShowRecurringSection(true)
+  }
+
+  const removeRecurringTransaction = (index: number) => {
+    setRecurringTransactions(recurringTransactions.filter((_, i) => i !== index))
+  }
+
+  const updateRecurringTransaction = (index: number, field: string, value: any) => {
+    const updated = [...recurringTransactions]
+    updated[index] = { ...updated[index], [field]: value }
+    
+    // Clear end_date or max_occurrences based on end_type
+    if (field === 'end_type') {
+      if (value !== 'On Date') updated[index].end_date = null
+      if (value !== 'After Occurrences') updated[index].max_occurrences = null
+    }
+    
+    setRecurringTransactions(updated)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -108,7 +146,13 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
         address: formData.address || undefined,
         city: formData.city || undefined,
         relation_project: formData.relation_project || undefined,
-        manager_id: formData.manager_id || undefined
+        manager_id: formData.manager_id || undefined,
+        recurring_transactions: recurringTransactions.length > 0 && !editingProject
+          ? recurringTransactions.filter(rt => rt.description && rt.amount).map(rt => ({
+              ...rt,
+              project_id: 0  // Will be set by backend
+            }))
+          : undefined
       }
 
       let result: Project
@@ -317,6 +361,186 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
               />
             </div>
           </div>
+
+          {/* Recurring Transactions Section - Only show for new projects */}
+          {!editingProject && (
+            <div className="border-t pt-4">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-medium text-gray-900">
+                  עסקאות מחזוריות
+                </h3>
+                <button
+                  type="button"
+                  onClick={addRecurringTransaction}
+                  className="text-sm px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  + הוסף עסקה מחזורית
+                </button>
+              </div>
+
+              {showRecurringSection && recurringTransactions.length > 0 && (
+                <div className="space-y-4">
+                  {recurringTransactions.map((rt, index) => (
+                    <div key={index} className="bg-gray-50 border border-gray-200 rounded-md p-4">
+                      <div className="flex justify-between items-center mb-3">
+                        <h4 className="font-medium text-gray-900">עסקה מחזורית #{index + 1}</h4>
+                        <button
+                          type="button"
+                          onClick={() => removeRecurringTransaction(index)}
+                          className="text-red-600 hover:text-red-800 text-sm"
+                        >
+                          ✕ מחק
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            תיאור *
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={rt.description || ''}
+                            onChange={(e) => updateRecurringTransaction(index, 'description', e.target.value)}
+                            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            סוג *
+                          </label>
+                          <select
+                            required
+                            value={rt.type || 'Expense'}
+                            onChange={(e) => updateRecurringTransaction(index, 'type', e.target.value)}
+                            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          >
+                            <option value="Expense">הוצאה</option>
+                            <option value="Income">הכנסה</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            סכום *
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            required
+                            value={rt.amount || ''}
+                            onChange={(e) => updateRecurringTransaction(index, 'amount', parseFloat(e.target.value))}
+                            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            יום בחודש *
+                          </label>
+                          <select
+                            required
+                            value={rt.day_of_month || 1}
+                            onChange={(e) => updateRecurringTransaction(index, 'day_of_month', parseInt(e.target.value))}
+                            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          >
+                            {Array.from({ length: 31 }, (_, i) => (
+                              <option key={i + 1} value={i + 1}>{i + 1}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            תאריך התחלה *
+                          </label>
+                          <input
+                            type="date"
+                            required
+                            value={rt.start_date || ''}
+                            onChange={(e) => updateRecurringTransaction(index, 'start_date', e.target.value)}
+                            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            סיום
+                          </label>
+                          <select
+                            value={rt.end_type || 'No End'}
+                            onChange={(e) => updateRecurringTransaction(index, 'end_type', e.target.value)}
+                            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          >
+                            <option value="No End">ללא סיום</option>
+                            <option value="After Occurrences">לאחר מספר הופעות</option>
+                            <option value="On Date">בתאריך מסוים</option>
+                          </select>
+                        </div>
+
+                        {rt.end_type === 'After Occurrences' && (
+                          <div className="md:col-span-2">
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                              מספר הופעות
+                            </label>
+                            <input
+                              type="number"
+                              min="1"
+                              value={rt.max_occurrences || ''}
+                              onChange={(e) => updateRecurringTransaction(index, 'max_occurrences', parseInt(e.target.value))}
+                              className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                          </div>
+                        )}
+
+                        {rt.end_type === 'On Date' && (
+                          <div className="md:col-span-2">
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                              תאריך סיום
+                            </label>
+                            <input
+                              type="date"
+                              value={rt.end_date || ''}
+                              onChange={(e) => updateRecurringTransaction(index, 'end_date', e.target.value)}
+                              className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="mt-3">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          קטגוריה
+                        </label>
+                        <select
+                          value={rt.category || ''}
+                          onChange={(e) => updateRecurringTransaction(index, 'category', e.target.value || null)}
+                          className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          <option value="">בחר קטגוריה</option>
+                          <option value="ניקיון">ניקיון</option>
+                          <option value="חשמל">חשמל</option>
+                          <option value="ביטוח">ביטוח</option>
+                          <option value="גינון">גינון</option>
+                          <option value="תחזוקה">תחזוקה</option>
+                          <option value="אחר">אחר</option>
+                        </select>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {showRecurringSection && recurringTransactions.length === 0 && (
+                <div className="text-center py-4 text-gray-500">
+                  אין עסקאות מחזוריות. לחץ על "הוסף עסקה מחזורית" כדי להתחיל.
+                </div>
+              )}
+            </div>
+          )}
 
           {error && (
             <div className="bg-red-50 border border-red-200 rounded-md p-3">

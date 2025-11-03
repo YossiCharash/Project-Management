@@ -65,13 +65,13 @@ const ProjectCard: React.FC<ProjectCardProps> = ({ project, onProjectClick, onPr
       <div className="mt-4 pt-3 border-t border-gray-200">
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div>
-            <div className="text-gray-500 text-xs">הכנסות החודש</div>
+            <div className="text-gray-500 text-xs">הכנסות השנה</div>
             <div className="font-semibold text-green-600">
               {project.income_month_to_date.toFixed(0)} ₪
             </div>
           </div>
           <div>
-            <div className="text-gray-500 text-xs">הוצאות החודש</div>
+            <div className="text-gray-500 text-xs">הוצאות השנה</div>
             <div className="font-semibold text-red-600">
               {project.expense_month_to_date.toFixed(0)} ₪
             </div>
@@ -146,7 +146,7 @@ const AlertsStrip: React.FC<AlertsStripProps> = ({ alerts, projects }) => {
               <ul className="list-disc list-inside ml-4">
                 {budgetOverrunProjects.map(project => (
                   <li key={project.id} className="text-red-600">
-                    {project.name} - הוצאות: {project.expense_month_to_date.toFixed(0)} ₪, תקציב: {project.budget_monthly.toFixed(0)} ₪
+                    {project.name} - הוצאות: {project.expense_month_to_date.toFixed(0)} ₪, תקציב שנתי: {(project.budget_annual + (project.budget_monthly * 12)).toFixed(0)} ₪
                   </li>
                 ))}
               </ul>

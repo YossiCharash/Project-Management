@@ -1,5 +1,10 @@
 from datetime import datetime, date
 from pydantic import BaseModel, Field
+from typing import Optional
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from backend.schemas.recurring_transaction import RecurringTransactionTemplateCreate
 
 
 class ProjectBase(BaseModel):
@@ -19,7 +24,7 @@ class ProjectBase(BaseModel):
 
 
 class ProjectCreate(ProjectBase):
-    pass
+    recurring_transactions: Optional[list["RecurringTransactionTemplateCreate"]] = None
 
 
 class ProjectUpdate(BaseModel):
@@ -47,3 +52,10 @@ class ProjectOut(ProjectBase):
 
     class Config:
         from_attributes = True
+
+
+# Import for model rebuild
+from backend.schemas.recurring_transaction import RecurringTransactionTemplateCreate
+
+# Rebuild models to resolve forward references
+ProjectCreate.model_rebuild()

@@ -222,45 +222,36 @@ class FinancialAggregationService:
     def get_financial_trends(
         self, 
         parent_project_id: int, 
-        months_back: int = 12
+        years_back: int = 5
     ) -> Dict[str, Any]:
         """
-        Get financial trends over the last N months
+        Get financial trends over the last N years
         
         Args:
             parent_project_id: ID of the parent project
-            months_back: Number of months to look back
+            years_back: Number of years to look back
             
         Returns:
-            Dictionary containing monthly trends
+            Dictionary containing yearly trends
         """
         trends = []
-        current_date = datetime.now().date()
+        current_year = datetime.now().year
         
-        for i in range(months_back):
-            # Calculate month and year
-            month = current_date.month - i
-            year = current_date.year
+        for i in range(years_back):
+            year = current_year - i
             
-            if month <= 0:
-                month += 12
-                year -= 1
-            
-            # Get monthly summary
-            monthly_summary = self.get_monthly_financial_summary(
+            # Get yearly summary
+            yearly_summary = self.get_yearly_financial_summary(
                 parent_project_id, 
-                year, 
-                month
+                year
             )
             
             trends.append({
                 'year': year,
-                'month': month,
-                'month_name': self._get_month_name(month),
-                'income': monthly_summary['financial_summary']['total_income'],
-                'expense': monthly_summary['financial_summary']['total_expense'],
-                'profit': monthly_summary['financial_summary']['net_profit'],
-                'profit_margin': monthly_summary['financial_summary']['profit_margin']
+                'income': yearly_summary['financial_summary']['total_income'],
+                'expense': yearly_summary['financial_summary']['total_expense'],
+                'profit': yearly_summary['financial_summary']['net_profit'],
+                'profit_margin': yearly_summary['financial_summary']['profit_margin']
             })
         
         # Reverse to get chronological order
@@ -268,7 +259,7 @@ class FinancialAggregationService:
         
         return {
             'trends': trends,
-            'period_months': months_back
+            'period_years': years_back
         }
     
     def _get_month_name(self, month: int) -> str:
