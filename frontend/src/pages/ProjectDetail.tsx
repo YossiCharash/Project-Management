@@ -1,4 +1,4 @@
-import { useEffect, useState, FormEvent } from 'react'
+import { useEffect, useState, FormEvent, ChangeEvent } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import api from '../lib/api'
@@ -7,6 +7,8 @@ import { ExpenseCategory, Transaction } from '../types/api'
 import ProjectExpensePieChart from '../components/charts/ProjectExpensePieChart'
 import ProjectTrendsChart from '../components/charts/ProjectTrendsChart'
 import EditTransactionModal from '../components/EditTransactionModal'
+import { useAppDispatch, useAppSelector } from '../utils/hooks'
+import { fetchSuppliers } from '../store/slices/suppliersSlice'
 
 interface Transaction {
   id: number
@@ -28,6 +30,8 @@ interface Subproject {
 export default function ProjectDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const dispatch = useAppDispatch()
+  const { items: suppliers } = useAppSelector(s => s.suppliers)
   const [txs, setTxs] = useState<Transaction[]>([])
   const [expenseCategories, setExpenseCategories] = useState<ExpenseCategory[]>([])
   const [projectName, setProjectName] = useState<string>('')
@@ -42,6 +46,7 @@ export default function ProjectDetail() {
   const [category, setCategory] = useState('')
   const [notes, setNotes] = useState('')
   const [subprojectId, setSubprojectId] = useState<number | ''>('')
+  const [supplierId, setSupplierId] = useState<number | ''>('')
   const [isExceptional, setIsExceptional] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -114,7 +119,8 @@ export default function ProjectDetail() {
       loadProjectInfo()
       loadChartsData()
     }
-  }, [id])
+    dispatch(fetchSuppliers())
+  }, [id, dispatch])
 
 
   useEffect(() => {
@@ -165,6 +171,7 @@ export default function ProjectDetail() {
         category: category || undefined,
         notes: notes || undefined,
         subproject_id: subprojectId === '' ? undefined : Number(subprojectId),
+        supplier_id: supplierId === '' ? undefined : Number(supplierId),
         is_exceptional: isExceptional,
       }
 
@@ -178,6 +185,7 @@ export default function ProjectDetail() {
       setCategory('')
       setNotes('')
       setSubprojectId('')
+      setSupplierId('')
       setIsExceptional(false)
 
       // Reload transactions and charts data
@@ -313,7 +321,7 @@ export default function ProjectDetail() {
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-xl font-semibold text-gray-900 dark:text-white">הוספת עסקה חדשה</h2>
         </div>
-        <form onSubmit={onCreate} className="grid md:grid-cols-6 gap-4 items-end">
+        <form onSubmit={onCreate} className="grid md:grid-cols-7 gap-4 items-end">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">סוג</label>
             <select
@@ -378,6 +386,20 @@ export default function ProjectDetail() {
             </select>
           </div>
 
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">ספק</label>
+            <select
+              className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              value={supplierId}
+              onChange={e => setSupplierId(e.target.value === '' ? '' : Number(e.target.value))}
+            >
+              <option value="">ללא ספק</option>
+              {suppliers.filter(s => s.is_active).map(s => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+          </div>
+
           <div className="flex items-center gap-2">
             <input
               id="exceptional"
@@ -389,7 +411,7 @@ export default function ProjectDetail() {
             <label htmlFor="exceptional" className="text-sm text-gray-700 dark:text-gray-300">הוצאה חריגה</label>
           </div>
 
-          <div className="md:col-span-6">
+          <div className="md:col-span-7">
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">הערות</label>
             <input
               className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -400,12 +422,12 @@ export default function ProjectDetail() {
           </div>
 
           {error && (
-            <div className="md:col-span-6 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-sm p-3 rounded-lg">
+            <div className="md:col-span-7 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-sm p-3 rounded-lg">
               {error}
             </div>
           )}
 
-          <div className="md:col-span-6 flex justify-end">
+          <div className="md:col-span-7 flex justify-end">
             <button
               type="submit"
               className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
@@ -461,6 +483,7 @@ export default function ProjectDetail() {
                   <th className="p-3 font-medium text-gray-700 dark:text-gray-300">תאריך</th>
                   <th className="p-3 font-medium text-gray-700 dark:text-gray-300">סכום</th>
                   <th className="p-3 font-medium text-gray-700 dark:text-gray-300">קטגוריה</th>
+                  <th className="p-3 font-medium text-gray-700 dark:text-gray-300">ספק</th>
                   <th className="p-3 font-medium text-gray-700 dark:text-gray-300">תיאור</th>
                   <th className="p-3 font-medium text-gray-700 dark:text-gray-300">הערות</th>
                   <th className="p-3 font-medium text-gray-700 dark:text-gray-300">פעולות</th>
@@ -493,15 +516,45 @@ export default function ProjectDetail() {
                       {Number(t.amount || 0).toFixed(2)} ₪
                     </td>
                     <td className="p-3 text-gray-700 dark:text-gray-300">{t.category ?? '-'}</td>
+                    <td className="p-3 text-gray-700 dark:text-gray-300">
+                      {(t as any).supplier_id ? suppliers.find(s => s.id === (t as any).supplier_id)?.name ?? '-' : '-'}
+                    </td>
                     <td className="p-3 text-gray-700 dark:text-gray-300">{t.description ?? '-'}</td>
                     <td className="p-3 text-gray-700 dark:text-gray-300">{t.notes ?? '-'}</td>
                     <td className="p-3">
-                      <button
-                        onClick={() => handleEditAnyTransaction(t)}
-                        className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
-                      >
-                        ערוך
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleEditAnyTransaction(t)}
+                          className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+                        >
+                          ערוך
+                        </button>
+                        {(t as any).supplier_id && (
+                          <label className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 cursor-pointer">
+                            העלה מסמך
+                            <input
+                              type="file"
+                              className="hidden"
+                              onChange={async (e: ChangeEvent<HTMLInputElement>) => {
+                                const file = e.target.files?.[0]
+                                if (!file) return
+                                try {
+                                  const formData = new FormData()
+                                  formData.append('file', file)
+                                  await api.post(`/transactions/${t.id}/supplier-document`, formData, {
+                                    headers: { 'Content-Type': 'multipart/form-data' }
+                                  })
+                                  alert('מסמך הועלה בהצלחה')
+                                  await loadChartsData()
+                                } catch (err: any) {
+                                  alert(err.response?.data?.detail ?? 'שגיאה בהעלאת מסמך')
+                                }
+                                e.target.value = ''
+                              }}
+                            />
+                          </label>
+                        )}
+                      </div>
                     </td>
                   </tr>
                   )

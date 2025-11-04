@@ -27,6 +27,8 @@ class Transaction(Base):
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), index=True)
     project: Mapped["Project"] = relationship(back_populates="transactions")
 
+    supplier_id: Mapped[int | None] = mapped_column(ForeignKey("suppliers.id"), nullable=True, index=True)
+    supplier: Mapped["Supplier | None"] = relationship("Supplier", lazy="selectin")
 
     tx_date: Mapped[date] = mapped_column(Date, index=True)
     type: Mapped[str] = mapped_column(String(20), index=True, default=TransactionType.EXPENSE.value)

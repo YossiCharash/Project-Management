@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react'
 import { Transaction, TransactionCreate } from '../types/api'
 import { TransactionAPI } from '../lib/apiClient'
+import { useAppDispatch, useAppSelector } from '../utils/hooks'
+import { fetchSuppliers } from '../store/slices/suppliersSlice'
 
 interface EditTransactionModalProps {
   isOpen: boolean
@@ -15,6 +17,8 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   onSuccess,
   transaction
 }) => {
+  const dispatch = useAppDispatch()
+  const { items: suppliers } = useAppSelector(s => s.suppliers)
   const [formData, setFormData] = useState<Partial<TransactionCreate>>({
     tx_date: '',
     type: 'Expense',
@@ -22,11 +26,18 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     description: '',
     category: '',
     notes: '',
-    is_exceptional: false
+    is_exceptional: false,
+    supplier_id: undefined
   })
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (isOpen) {
+      dispatch(fetchSuppliers())
+    }
+  }, [isOpen, dispatch])
 
   useEffect(() => {
     if (transaction && isOpen) {
@@ -37,7 +48,8 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
         description: transaction.description || '',
         category: transaction.category || '',
         notes: transaction.notes || '',
-        is_exceptional: transaction.is_exceptional || false
+        is_exceptional: transaction.is_exceptional || false,
+        supplier_id: (transaction as any).supplier_id || undefined
       })
     }
   }, [transaction, isOpen])
@@ -50,7 +62,8 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
       description: '',
       category: '',
       notes: '',
-      is_exceptional: false
+      is_exceptional: false,
+      supplier_id: undefined
     })
     setError(null)
   }
@@ -75,7 +88,8 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
         description: formData.description || undefined,
         category: formData.category || undefined,
         notes: formData.notes || undefined,
-        is_exceptional: formData.is_exceptional
+        is_exceptional: formData.is_exceptional,
+        supplier_id: formData.supplier_id || undefined
       }
 
       await TransactionAPI.updateTransaction(transaction.id, updateData)
@@ -188,6 +202,22 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                 <option value="ביטוח">ביטוח</option>
                 <option value="גינון">גינון</option>
                 <option value="אחר">אחר</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                ספק
+              </label>
+              <select
+                value={formData.supplier_id || ''}
+                onChange={(e) => setFormData({ ...formData, supplier_id: e.target.value === '' ? undefined : Number(e.target.value) })}
+                className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              >
+                <option value="">ללא ספק</option>
+                {suppliers.filter(s => s.is_active).map(s => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
               </select>
             </div>
           </div>

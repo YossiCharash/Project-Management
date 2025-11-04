@@ -13,6 +13,9 @@ class SupplierDocument(Base):
     supplier_id: Mapped[int] = mapped_column(ForeignKey("suppliers.id"), index=True)
     supplier: Mapped["Supplier"] = relationship(back_populates="documents")
 
+    transaction_id: Mapped[int | None] = mapped_column(ForeignKey("transactions.id"), nullable=True, index=True)
+    transaction: Mapped["Transaction | None"] = relationship("Transaction", lazy="selectin")
+
     file_path: Mapped[str] = mapped_column(String(500))
     description: Mapped[str | None] = mapped_column(Text, default=None)
     uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

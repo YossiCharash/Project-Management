@@ -16,3 +16,8 @@ class SupplierDocumentRepository:
     async def list_by_supplier(self, supplier_id: int) -> list[SupplierDocument]:
         res = await self.db.execute(select(SupplierDocument).where(SupplierDocument.supplier_id == supplier_id))
         return list(res.scalars().all())
+
+    async def update(self, doc: SupplierDocument) -> SupplierDocument:
+        await self.db.commit()
+        await self.db.refresh(doc)
+        return doc

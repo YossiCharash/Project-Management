@@ -12,6 +12,7 @@ class TransactionBase(BaseModel):
     category: str | None = None
     notes: str | None = None
     is_exceptional: bool = False
+    supplier_id: int | None = None
 
 
 class TransactionCreate(TransactionBase):
@@ -26,6 +27,7 @@ class TransactionUpdate(BaseModel):
     category: str | None = None
     notes: str | None = None
     is_exceptional: bool | None = None
+    supplier_id: int | None = None
 
 
 class TransactionOut(BaseModel):
@@ -40,6 +42,7 @@ class TransactionOut(BaseModel):
     is_exceptional: bool = False
     is_generated: bool = False
     file_path: str | None
+    supplier_id: int | None = None
     created_at: datetime
 
     class Config:

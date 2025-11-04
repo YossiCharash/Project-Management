@@ -18,6 +18,18 @@ from backend.models.user import UserRole
 router = APIRouter()
 
 
+def get_uploads_dir() -> str:
+    """Get absolute path to uploads directory, resolving relative paths relative to backend directory"""
+    if os.path.isabs(settings.FILE_UPLOAD_DIR):
+        return settings.FILE_UPLOAD_DIR
+    else:
+        # Get the directory where this file is located, then go up to backend directory
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        # Go from api/v1/endpoints to backend directory
+        backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(current_dir)))
+        return os.path.abspath(os.path.join(backend_dir, settings.FILE_UPLOAD_DIR))
+
+
 @router.get("/", response_model=list[ProjectOut])
 async def list_projects(db: DBSessionDep, include_archived: bool = Query(False), only_archived: bool = Query(False), user = Depends(get_current_user)):
     """List projects - accessible to all authenticated users"""
@@ -93,7 +105,8 @@ async def upload_project_image(project_id: int, db: DBSessionDep, file: UploadFi
         raise HTTPException(status_code=400, detail=f"Invalid file type. Allowed types: {', '.join(allowed_extensions)}")
     
     # Create projects directory in uploads if it doesn't exist
-    upload_dir = os.path.join(settings.FILE_UPLOAD_DIR, 'projects')
+    uploads_dir = get_uploads_dir()
+    upload_dir = os.path.join(uploads_dir, 'projects')
     os.makedirs(upload_dir, exist_ok=True)
     
     # Generate unique filename

@@ -19,6 +19,7 @@ import Subprojects from './pages/Subprojects'
 import ParentProjectDetail from './components/ParentProjectDetail'
 import Reports from './pages/Reports'
 import Suppliers from './pages/Suppliers'
+import SupplierDocuments from './pages/SupplierDocuments'
 import { logout, fetchMe } from './store/slices/authSlice'
 import { Sidebar, MobileSidebar } from './components/ui/Sidebar'
 import { ThemeProvider } from './contexts/ThemeContext'
@@ -151,6 +152,7 @@ function AppContent() {
               <Route path="/projects/:parentId/subprojects" element={<RequireAuth><Subprojects /></RequireAuth>} />
               <Route path="/reports" element={<RequireAuth><Reports /></RequireAuth>} />
               <Route path="/suppliers" element={<RequireAuth><Suppliers /></RequireAuth>} />
+              <Route path="/suppliers/:supplierId/documents" element={<RequireAuth><SupplierDocuments /></RequireAuth>} />
               <Route path="/users" element={<RequireAuth><UserManagement /></RequireAuth>} />
               <Route path="/admin-invites" element={<RequireAuth><AdminInviteManagement /></RequireAuth>} />
               <Route path="/admin-management" element={<RequireAuth><AdminManagement /></RequireAuth>} />

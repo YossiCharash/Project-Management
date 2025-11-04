@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from backend.api.v1.endpoints import transactions, auth, reports, suppliers, users, projects, financial_aggregation, admin_invites, email_verification, group_codes, recurring_transactions, debug_recurring
+from backend.api.v1.endpoints import transactions, auth, reports, suppliers, users, projects, financial_aggregation, admin_invites, email_verification, group_codes, recurring_transactions
 
 api_router = APIRouter()
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
@@ -14,4 +14,3 @@ api_router.include_router(financial_aggregation.router, prefix="/financial-aggre
 api_router.include_router(admin_invites.router, prefix="/admin-invites", tags=["admin-invites"])
 api_router.include_router(email_verification.router, prefix="/email-verification", tags=["email-verification"])
 api_router.include_router(group_codes.router, prefix="/group-codes", tags=["group-codes"])
-api_router.include_router(debug_recurring.router, prefix="", tags=["debug"])

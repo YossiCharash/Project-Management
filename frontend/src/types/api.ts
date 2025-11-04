@@ -39,6 +39,7 @@ export interface Transaction {
   is_exceptional: boolean
   is_generated?: boolean
   file_path?: string | null
+  supplier_id?: number | null
   created_at: string
 }
 
@@ -68,6 +69,7 @@ export interface TransactionCreate {
   category?: string | null
   notes?: string | null
   is_exceptional?: boolean
+  supplier_id?: number | null
 }
 
 // Dashboard-specific types

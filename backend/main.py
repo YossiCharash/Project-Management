@@ -84,9 +84,47 @@ def create_app() -> FastAPI:
     app.include_router(api_router, prefix=settings.API_V1_STR)
 
     # Mount static files for uploads (images, documents, etc.)
-    uploads_dir = os.path.abspath(settings.FILE_UPLOAD_DIR)
+    # Get absolute path to uploads directory
+    # If FILE_UPLOAD_DIR is relative, resolve it relative to backend directory
+    if os.path.isabs(settings.FILE_UPLOAD_DIR):
+        uploads_dir = settings.FILE_UPLOAD_DIR
+    else:
+        # Get the directory where this file (main.py) is located
+        backend_dir = os.path.dirname(os.path.abspath(__file__))
+        uploads_dir = os.path.abspath(os.path.join(backend_dir, settings.FILE_UPLOAD_DIR))
+    
     os.makedirs(uploads_dir, exist_ok=True)
-    app.mount("/uploads", StaticFiles(directory=uploads_dir), name="uploads")
+    
+    # Create subdirectories
+    projects_dir = os.path.join(uploads_dir, 'projects')
+    suppliers_dir = os.path.join(uploads_dir, 'suppliers')
+    os.makedirs(projects_dir, exist_ok=True)
+    os.makedirs(suppliers_dir, exist_ok=True)
+    # Note: Supplier-specific subdirectories will be created automatically when needed
+    
+    print(f"[INFO] Mounting uploads directory: {uploads_dir}")
+    print(f"[INFO] Uploads directory exists: {os.path.exists(uploads_dir)}")
+    print(f"[INFO] Projects directory exists: {os.path.exists(projects_dir)}")
+    print(f"[INFO] Suppliers directory exists: {os.path.exists(suppliers_dir)}")
+    
+    if os.path.exists(projects_dir):
+        files = os.listdir(projects_dir)
+        print(f"[INFO] Files in projects directory: {len(files)} files")
+    if os.path.exists(suppliers_dir):
+        files = os.listdir(suppliers_dir)
+        print(f"[INFO] Files in suppliers directory: {len(files)} files")
+        if files:
+            print(f"[INFO] Sample supplier files: {files[:5]}")
+    
+    # Mount static files - this allows serving files from /uploads/{path}
+    # Note: StaticFiles will serve files relative to the directory provided
+    # So /uploads/suppliers/file.txt will look for {uploads_dir}/suppliers/file.txt
+    try:
+        app.mount("/uploads", StaticFiles(directory=uploads_dir), name="uploads")
+        print(f"[INFO] Successfully mounted /uploads to {uploads_dir}")
+    except Exception as e:
+        print(f"[ERROR] Failed to mount /uploads: {e}")
+        raise
 
     @app.get("/health")
     async def health_check():

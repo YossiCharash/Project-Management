@@ -35,10 +35,13 @@ export const deleteSupplier = createAsyncThunk('suppliers/delete', async (id: nu
   try { await api.delete(`/suppliers/${id}`); return id } catch (e: any) { return rejectWithValue(e.response?.data?.detail ?? 'Delete failed') }
 })
 
-export const uploadSupplierDocument = createAsyncThunk('suppliers/uploadDoc', async ({ id, file }: { id: number; file: File }, { rejectWithValue }) => {
+export const uploadSupplierDocument = createAsyncThunk('suppliers/uploadDoc', async ({ id, file, description }: { id: number; file: File; description?: string }, { rejectWithValue }) => {
   try {
     const form = new FormData()
     form.append('file', file)
+    if (description && description.trim()) {
+      form.append('description', description.trim())
+    }
     const { data } = await api.post(`/suppliers/${id}/documents`, form, { headers: { 'Content-Type': 'multipart/form-data' } })
     return { id, ...data }
   } catch (e: any) {
@@ -55,7 +58,9 @@ const slice = createSlice({
       .addCase(fetchSuppliers.pending, (state)=>{ state.loading=true; state.error=null })
       .addCase(fetchSuppliers.fulfilled, (state, action)=>{ state.loading=false; state.items=action.payload })
       .addCase(fetchSuppliers.rejected, (state, action)=>{ state.loading=false; state.error=action.error.message ?? 'Failed to load' })
-      .addCase(createSupplier.fulfilled, (state, action)=>{ state.items.unshift(action.payload) })
+      .addCase(createSupplier.pending, (state)=>{ state.error=null })
+      .addCase(createSupplier.fulfilled, (state, action)=>{ state.items.unshift(action.payload); state.error=null })
+      .addCase(createSupplier.rejected, (state, action)=>{ state.error=action.payload as string ?? 'Failed to create supplier' })
       .addCase(updateSupplier.fulfilled, (state, action)=>{
         const idx = state.items.findIndex(s => s.id === action.payload.id)
         if (idx>=0) state.items[idx] = action.payload
