@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
-import { Project, ProjectCreate } from '../types/api'
-import { ProjectAPI } from '../lib/apiClient'
+import { Project, ProjectCreate, BudgetCreate } from '../types/api'
+import { ProjectAPI, BudgetAPI } from '../lib/apiClient'
 
 interface CreateProjectModalProps {
   isOpen: boolean
@@ -36,6 +36,10 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
   const [selectedImage, setSelectedImage] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [budgetInputType, setBudgetInputType] = useState<'monthly' | 'yearly'>('monthly')
+  const [categoryBudgets, setCategoryBudgets] = useState<BudgetCreate[]>([])
+  
+  // Available expense categories
+  const expenseCategories = ['ניקיון', 'חשמל', 'ביטוח', 'גינון', 'אחר']
 
   // Load available projects for parent selection
   useEffect(() => {
@@ -93,6 +97,7 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
     setSelectedImage(null)
     setImagePreview(null)
     setBudgetInputType('monthly')
+    setCategoryBudgets([])
   }
 
   const getImageUrl = (imageUrl: string): string => {
@@ -135,7 +140,19 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
     setError(null)
 
     try {
-      const projectData = {
+      // Filter and validate budgets - remove project_id if present (not needed for project creation)
+      const validBudgets = categoryBudgets
+        .filter(b => b.amount > 0 && b.category && b.start_date)
+        .map(b => {
+          const { project_id, ...budgetWithoutProjectId } = b
+          return {
+            ...budgetWithoutProjectId,
+            period_type: b.period_type || 'Annual',
+            end_date: b.end_date || null
+          }
+        })
+
+      const projectData: ProjectCreate = {
         ...formData,
         description: formData.description || undefined,
         start_date: formData.start_date || undefined,
@@ -143,7 +160,18 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
         address: formData.address || undefined,
         city: formData.city || undefined,
         relation_project: formData.relation_project || undefined,
-        manager_id: formData.manager_id || undefined
+        manager_id: formData.manager_id || undefined,
+        budgets: validBudgets.length > 0 ? validBudgets : undefined
+      }
+
+      console.log('Creating project with budgets:', validBudgets)
+      console.log('Full project data:', JSON.stringify(projectData, null, 2))
+      
+      // Validate that all required fields are present
+      if (!projectData.name || projectData.name.trim() === '') {
+        setError('שם הפרויקט נדרש')
+        setLoading(false)
+        return
       }
 
       let result: Project
@@ -166,6 +194,23 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
         }
       }
 
+      // Verify budgets were created successfully
+      if (validBudgets.length > 0) {
+        try {
+          // Wait a bit for the backend to process
+          await new Promise(resolve => setTimeout(resolve, 500))
+          const createdBudgets = await BudgetAPI.getProjectBudgets(result.id)
+          console.log('Budgets created successfully:', createdBudgets)
+          if (createdBudgets.length === 0) {
+            console.warn('Warning: No budgets found after creation. Expected', validBudgets.length)
+            setError(`הפרויקט נוצר בהצלחה, אך ייתכן שיש בעיה ביצירת התקציבים. אנא בדוק את הקונסול לפרטים.`)
+          }
+        } catch (budgetErr: any) {
+          console.error('Error verifying budgets:', budgetErr)
+          // Don't fail the whole operation, just log
+        }
+      }
+
       onSuccess(result)
       // Only close if there was no image upload error
       if (!imageUploadError) {
@@ -182,6 +227,38 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
   const handleClose = () => {
     onClose()
     resetForm()
+  }
+
+  const addCategoryBudget = () => {
+    const today = new Date().toISOString().split('T')[0]
+    const newBudget: BudgetCreate = {
+      category: expenseCategories[0],
+      amount: 0,
+      period_type: 'Annual',
+      start_date: today,
+      end_date: null
+    }
+    setCategoryBudgets([...categoryBudgets, newBudget])
+  }
+
+  const removeCategoryBudget = (index: number) => {
+    setCategoryBudgets(categoryBudgets.filter((_, i) => i !== index))
+  }
+
+  const updateCategoryBudget = (index: number, field: keyof BudgetCreate, value: any) => {
+    const updated = [...categoryBudgets]
+    updated[index] = { ...updated[index], [field]: value }
+    
+    // If period_type is Annual and start_date is set, calculate end_date
+    if (field === 'start_date' && updated[index].period_type === 'Annual' && value) {
+      const startDate = new Date(value)
+      const endDate = new Date(startDate)
+      endDate.setFullYear(endDate.getFullYear() + 1)
+      endDate.setDate(endDate.getDate() - 1) // One day before next year
+      updated[index].end_date = endDate.toISOString().split('T')[0]
+    }
+    
+    setCategoryBudgets(updated)
   }
 
   if (!isOpen) return null
@@ -416,6 +493,135 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                 onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
                 className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
+            </div>
+          </div>
+
+          {/* Category Budgets Section */}
+          <div className="space-y-4 border-t pt-4">
+            <div className="flex justify-between items-center">
+              <label className="block text-sm font-medium text-gray-700">
+                תקציבים לקטגוריות
+              </label>
+              <button
+                type="button"
+                onClick={addCategoryBudget}
+                className="px-3 py-1 text-sm bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500"
+              >
+                + הוסף תקציב לקטגוריה
+              </button>
+            </div>
+            
+            {categoryBudgets.length === 0 && (
+              <p className="text-sm text-gray-500 text-center py-4">
+                אין תקציבים לקטגוריות. לחץ על "הוסף תקציב לקטגוריה" כדי להוסיף תקציב לקטגוריה ספציפית (למשל: חשמל, ניקיון).
+              </p>
+            )}
+
+            <div className="space-y-3">
+              {categoryBudgets.map((budget, index) => (
+                <div key={index} className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                  <div className="flex justify-between items-start mb-3">
+                    <h4 className="text-sm font-semibold text-gray-700">תקציב #{index + 1}</h4>
+                    <button
+                      type="button"
+                      onClick={() => removeCategoryBudget(index)}
+                      className="text-red-600 hover:text-red-700 text-sm"
+                    >
+                      מחק
+                    </button>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">
+                        קטגוריה *
+                      </label>
+                      <select
+                        value={budget.category}
+                        onChange={(e) => updateCategoryBudget(index, 'category', e.target.value)}
+                        className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        required
+                      >
+                        {expenseCategories.map((cat) => (
+                          <option key={cat} value={cat}>
+                            {cat}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">
+                        סכום (₪) *
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={budget.amount}
+                        onChange={(e) => updateCategoryBudget(index, 'amount', parseFloat(e.target.value) || 0)}
+                        className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">
+                        סוג תקופה *
+                      </label>
+                      <select
+                        value={budget.period_type || 'Annual'}
+                        onChange={(e) => {
+                          updateCategoryBudget(index, 'period_type', e.target.value)
+                          // If changing to Annual and start_date exists, calculate end_date
+                          if (e.target.value === 'Annual' && budget.start_date) {
+                            const startDate = new Date(budget.start_date)
+                            const endDate = new Date(startDate)
+                            endDate.setFullYear(endDate.getFullYear() + 1)
+                            endDate.setDate(endDate.getDate() - 1)
+                            updateCategoryBudget(index, 'end_date', endDate.toISOString().split('T')[0])
+                          } else if (e.target.value === 'Monthly') {
+                            updateCategoryBudget(index, 'end_date', null)
+                          }
+                        }}
+                        className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        required
+                      >
+                        <option value="Annual">שנתי</option>
+                        <option value="Monthly">חודשי</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">
+                        תאריך התחלה *
+                      </label>
+                      <input
+                        type="date"
+                        value={budget.start_date}
+                        onChange={(e) => updateCategoryBudget(index, 'start_date', e.target.value)}
+                        className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        required
+                      />
+                    </div>
+
+                    {budget.period_type === 'Annual' && budget.end_date && (
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">
+                          תאריך סיום
+                        </label>
+                        <input
+                          type="date"
+                          value={budget.end_date}
+                          onChange={(e) => updateCategoryBudget(index, 'end_date', e.target.value)}
+                          className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
+                          readOnly
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 

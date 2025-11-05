@@ -43,6 +43,14 @@ export interface Transaction {
   created_at: string
 }
 
+export interface BudgetCreate {
+  category: string
+  amount: number
+  period_type?: 'Annual' | 'Monthly'
+  start_date: string
+  end_date?: string | null
+}
+
 export interface ProjectCreate {
   name: string
   description?: string | null
@@ -58,6 +66,7 @@ export interface ProjectCreate {
   image_url?: string | null
   manager_id?: number | null
   recurring_transactions?: RecurringTransactionTemplateCreate[] | null
+  budgets?: BudgetCreate[] | null
 }
 
 export interface TransactionCreate {
@@ -87,12 +96,45 @@ export interface ExpenseCategory {
   color: string
 }
 
+export interface CategoryBudgetAlert {
+  project_id: number
+  budget_id: number
+  category: string
+  amount: number
+  spent_amount: number
+  spent_percentage: number
+  expected_spent_percentage: number
+  is_over_budget: boolean
+  is_spending_too_fast: boolean
+  alert_type: 'over_budget' | 'spending_too_fast'
+}
+
+export interface BudgetWithSpending {
+  id: number
+  project_id: number
+  category: string
+  amount: number
+  period_type: 'Annual' | 'Monthly'
+  start_date: string
+  end_date?: string | null
+  is_active: boolean
+  created_at: string
+  updated_at: string
+  spent_amount: number
+  remaining_amount: number
+  spent_percentage: number
+  expected_spent_percentage: number
+  is_over_budget: boolean
+  is_spending_too_fast: boolean
+}
+
 export interface DashboardSnapshot {
   projects: ProjectWithFinance[]
   alerts: {
     budget_overrun: number[]
     missing_proof: number[]
     unpaid_recurring: number[]
+    category_budget_alerts: CategoryBudgetAlert[]
   }
   summary: {
     total_income: number

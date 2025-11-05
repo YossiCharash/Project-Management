@@ -13,6 +13,7 @@ from backend.schemas.recurring_transaction import RecurringTransactionTemplateCr
 from backend.services.project_service import ProjectService
 from backend.services.recurring_transaction_service import RecurringTransactionService
 from backend.services.financial_aggregation_service import FinancialAggregationService
+from backend.services.budget_service import BudgetService
 from backend.models.user import UserRole
 
 router = APIRouter()
@@ -207,9 +208,14 @@ async def get_project_values(project_id: int, db: DBSessionDep, user = Depends(g
 @router.post("/", response_model=ProjectOut)
 async def create_project(db: DBSessionDep, data: ProjectCreate, user = Depends(get_current_user)):
     """Create project - accessible to all authenticated users"""
-    # Extract recurring transactions from project data
-    project_data = data.model_dump(exclude={'recurring_transactions'})
+    # Extract recurring transactions and budgets from project data
+    project_data = data.model_dump(exclude={'recurring_transactions', 'budgets'})
     recurring_transactions = data.recurring_transactions or []
+    budgets = data.budgets or []
+    
+    print(f"[DEBUG] Creating project: name={project_data.get('name')}, budgets_count={len(budgets)}")
+    if budgets:
+        print(f"[DEBUG] First budget sample: {budgets[0].model_dump() if hasattr(budgets[0], 'model_dump') else budgets[0]}")
     
     # Create the project
     project = await ProjectService(db).create(**project_data)
@@ -224,6 +230,45 @@ async def create_project(db: DBSessionDep, data: ProjectCreate, user = Depends(g
             # Create new instance with project_id set
             rt_create = RecurringTransactionTemplateCreate(**rt_dict)
             await recurring_service.create_template(rt_create)
+    
+    # Create budgets if provided
+    if budgets:
+        print(f"[DEBUG] Creating {len(budgets)} budgets for project {project.id}")
+        budget_service = BudgetService(db)
+        for idx, budget_data in enumerate(budgets):
+            try:
+                print(f"[DEBUG] Processing budget {idx + 1}: category={budget_data.category}, amount={budget_data.amount}")
+                # Convert string dates to date objects
+                from datetime import date as date_type
+                start_date = None
+                end_date = None
+                
+                if budget_data.start_date:
+                    if isinstance(budget_data.start_date, str):
+                        start_date = date_type.fromisoformat(budget_data.start_date)
+                    else:
+                        start_date = budget_data.start_date
+                
+                if budget_data.end_date:
+                    if isinstance(budget_data.end_date, str):
+                        end_date = date_type.fromisoformat(budget_data.end_date)
+                    else:
+                        end_date = budget_data.end_date
+                
+                created_budget = await budget_service.create_budget(
+                    project_id=project.id,
+                    category=budget_data.category,
+                    amount=budget_data.amount,
+                    period_type=budget_data.period_type or "Annual",
+                    start_date=start_date,
+                    end_date=end_date
+                )
+                print(f"[DEBUG] Successfully created budget {created_budget.id} for category {budget_data.category}")
+            except Exception as e:
+                # Log error but don't fail the entire project creation
+                print(f"[ERROR] Failed to create budget for category {budget_data.category}: {str(e)}")
+                import traceback
+                traceback.print_exc()
     
     return project
 

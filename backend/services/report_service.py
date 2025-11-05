@@ -5,6 +5,7 @@ from typing import List, Dict, Any
 
 from backend.models.transaction import Transaction
 from backend.models.project import Project
+from backend.services.budget_service import BudgetService
 
 
 class ReportService:
@@ -49,7 +50,8 @@ class ReportService:
                 "alerts": {
                     "budget_overrun": [],
                     "missing_proof": [],
-                    "unpaid_recurring": []
+                    "unpaid_recurring": [],
+                    "category_budget_alerts": []
                 },
                 "summary": {
                     "total_income": 0,
@@ -63,6 +65,9 @@ class ReportService:
         current_date = date.today()
         current_year_start = current_date.replace(month=1, day=1)
 
+        # Initialize budget service for category budget alerts
+        budget_service = BudgetService(self.db)
+        
         # Calculate financial data for each project
         projects_with_finance = []
         total_income = 0
@@ -70,6 +75,7 @@ class ReportService:
         budget_overrun_projects = []
         missing_proof_projects = []
         unpaid_recurring_projects = []
+        category_budget_alerts = []  # Store category budget alerts
 
         for project in projects:
             # Get current year's transactions
@@ -143,6 +149,17 @@ class ReportService:
             unpaid_recurring_count = (await self.db.execute(unpaid_recurring_query)).scalar_one()
             if unpaid_recurring_count > 0:
                 unpaid_recurring_projects.append(project.id)
+            
+            # Check for category budget alerts
+            try:
+                project_budget_alerts = await budget_service.check_category_budget_alerts(
+                    project.id, 
+                    current_date
+                )
+                category_budget_alerts.extend(project_budget_alerts)
+            except Exception as e:
+                # If budget checking fails, continue without it
+                print(f"Warning: Could not check budget alerts for project {project.id}: {str(e)}")
 
             # Build project data
             project_data = {
@@ -216,7 +233,8 @@ class ReportService:
             "alerts": {
                 "budget_overrun": budget_overrun_projects,
                 "missing_proof": missing_proof_projects,
-                "unpaid_recurring": unpaid_recurring_projects
+                "unpaid_recurring": unpaid_recurring_projects,
+                "category_budget_alerts": category_budget_alerts
             },
             "summary": {
                 "total_income": round(total_income, 2),

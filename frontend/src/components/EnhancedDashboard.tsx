@@ -134,70 +134,283 @@ interface AlertsStripProps {
 
 const AlertsStrip: React.FC<AlertsStripProps> = ({ alerts, projects }) => {
   const [isExpanded, setIsExpanded] = useState(false)
+  const [dismissedProjects, setDismissedProjects] = useState<Set<number>>(() => {
+    // Load dismissed projects from localStorage
+    const stored = localStorage.getItem('dismissed_alert_projects')
+    return stored ? new Set(JSON.parse(stored)) : new Set()
+  })
 
-  const budgetOverrunProjects = projects.filter(p => alerts.budget_overrun.includes(p.id))
-  const missingProofProjects = projects.filter(p => alerts.missing_proof.includes(p.id))
-  const unpaidRecurringProjects = projects.filter(p => alerts.unpaid_recurring.includes(p.id))
+  // Filter out dismissed projects
+  const budgetOverrunProjects = projects.filter(p => 
+    alerts.budget_overrun.includes(p.id) && !dismissedProjects.has(p.id)
+  )
+  const missingProofProjects = projects.filter(p => 
+    alerts.missing_proof.includes(p.id) && !dismissedProjects.has(p.id)
+  )
+  const unpaidRecurringProjects = projects.filter(p => 
+    alerts.unpaid_recurring.includes(p.id) && !dismissedProjects.has(p.id)
+  )
+  const categoryBudgetAlerts = (alerts.category_budget_alerts || []).filter(alert => 
+    !dismissedProjects.has(alert.project_id)
+  )
 
-  const totalAlerts = alerts.budget_overrun.length + alerts.missing_proof.length + alerts.unpaid_recurring.length
+  // Filter unprofitable projects (red status, negative profit)
+  const unprofitableProjects = projects.filter(p => 
+    p.status_color === 'red' && p.profit_percent < 0 && !dismissedProjects.has(p.id)
+  )
+
+  // Group category budget alerts by project
+  const categoryAlertsByProject = categoryBudgetAlerts.reduce((acc, alert) => {
+    if (!acc[alert.project_id]) {
+      acc[alert.project_id] = []
+    }
+    acc[alert.project_id].push(alert)
+    return acc
+  }, {} as Record<number, typeof categoryBudgetAlerts>)
+
+  const totalAlerts = budgetOverrunProjects.length + 
+                     missingProofProjects.length + 
+                     unpaidRecurringProjects.length + 
+                     categoryBudgetAlerts.length +
+                     unprofitableProjects.length
+
+  const handleDismissProject = (projectId: number) => {
+    const newDismissed = new Set(dismissedProjects)
+    newDismissed.add(projectId)
+    setDismissedProjects(newDismissed)
+    localStorage.setItem('dismissed_alert_projects', JSON.stringify(Array.from(newDismissed)))
+  }
 
   if (totalAlerts === 0) return null
 
   return (
-    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-      <div className="flex items-center justify-between">
+    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm p-3 mb-4">
+      <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
-          <span className="text-yellow-600">⚠️</span>
-          <span className="font-semibold text-yellow-800">
+          <span className="text-lg">⚠️</span>
+          <span className="font-semibold text-base text-gray-900 dark:text-white">
             התראות ({totalAlerts})
           </span>
         </div>
         <button
           onClick={() => setIsExpanded(!isExpanded)}
-          className="text-yellow-600 hover:text-yellow-800"
+          className="text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-2 py-1 rounded text-sm transition-colors"
         >
-          {isExpanded ? '▼' : '▶'}
+          {isExpanded ? '▼ סגור' : '▶ פתח'}
         </button>
       </div>
 
       {isExpanded && (
-        <div className="mt-3 space-y-2">
-          {budgetOverrunProjects.length > 0 && (
-            <div className="text-sm">
-              <span className="font-medium text-red-600">חריגת תקציב:</span>
-              <ul className="list-disc list-inside ml-4">
-                {budgetOverrunProjects.map(project => (
-                  <li key={project.id} className="text-red-600">
-                    {project.name} - הוצאות: {project.expense_month_to_date.toFixed(0)} ₪, תקציב שנתי: {(project.budget_annual + (project.budget_monthly * 12)).toFixed(0)} ₪
-                  </li>
-                ))}
-              </ul>
+        <div className="mt-3 space-y-3 border-t border-gray-200 dark:border-gray-700 pt-3">
+          {/* Section 1: Project-Level Alerts */}
+          {(budgetOverrunProjects.length > 0 || missingProofProjects.length > 0 || unpaidRecurringProjects.length > 0) && (
+            <div className="bg-blue-50 dark:bg-blue-900/20 border-l-4 border-blue-500 rounded p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-lg">🏢</span>
+                <span className="font-semibold text-sm text-blue-900 dark:text-blue-100">התראות ברמת פרויקט</span>
+              </div>
+              <div className="space-y-2">
+                {/* General Budget Overrun */}
+                {budgetOverrunProjects.length > 0 && (
+                  <div className="bg-white dark:bg-gray-800 rounded p-2 border border-blue-200 dark:border-blue-800">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-sm">💰</span>
+                      <span className="font-medium text-xs text-blue-900 dark:text-blue-200">חריגת תקציב כללי:</span>
+                    </div>
+                    <div className="space-y-1.5">
+                      {budgetOverrunProjects.map(project => (
+                        <div key={project.id} className="bg-blue-50 dark:bg-blue-900/30 rounded p-2 flex items-center justify-between group">
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-sm text-blue-900 dark:text-blue-100 truncate">{project.name}</div>
+                            <div className="text-xs text-blue-700 dark:text-blue-300 mt-0.5">
+                              הוצא: {project.expense_month_to_date.toFixed(0)} ₪ | תקציב: {((project.budget_annual || 0) + ((project.budget_monthly || 0) * 12)).toFixed(0)} ₪
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => handleDismissProject(project.id)}
+                            className="ml-2 text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200 opacity-0 group-hover:opacity-100 transition-opacity text-xs px-2 py-1 rounded hover:bg-blue-100 dark:hover:bg-blue-900/50"
+                            title="החריג פרויקט"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Missing Proof */}
+                {missingProofProjects.length > 0 && (
+                  <div className="bg-white dark:bg-gray-800 rounded p-2 border border-blue-200 dark:border-blue-800">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-sm">📄</span>
+                      <span className="font-medium text-xs text-blue-900 dark:text-blue-200">חסרים אישורים:</span>
+                    </div>
+                    <div className="space-y-1.5">
+                      {missingProofProjects.map(project => (
+                        <div key={project.id} className="bg-blue-50 dark:bg-blue-900/30 rounded p-2 flex items-center justify-between group">
+                          <span className="font-medium text-sm text-blue-900 dark:text-blue-100">{project.name}</span>
+                          <button
+                            onClick={() => handleDismissProject(project.id)}
+                            className="ml-2 text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200 opacity-0 group-hover:opacity-100 transition-opacity text-xs px-2 py-1 rounded hover:bg-blue-100 dark:hover:bg-blue-900/50"
+                            title="החריג פרויקט"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Unpaid Recurring */}
+                {unpaidRecurringProjects.length > 0 && (
+                  <div className="bg-white dark:bg-gray-800 rounded p-2 border border-blue-200 dark:border-blue-800">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-sm">🔄</span>
+                      <span className="font-medium text-xs text-blue-900 dark:text-blue-200">הוצאות חוזרות לא שולמו:</span>
+                    </div>
+                    <div className="space-y-1.5">
+                      {unpaidRecurringProjects.map(project => (
+                        <div key={project.id} className="bg-blue-50 dark:bg-blue-900/30 rounded p-2 flex items-center justify-between group">
+                          <span className="font-medium text-sm text-blue-900 dark:text-blue-100">{project.name}</span>
+                          <button
+                            onClick={() => handleDismissProject(project.id)}
+                            className="ml-2 text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200 opacity-0 group-hover:opacity-100 transition-opacity text-xs px-2 py-1 rounded hover:bg-blue-100 dark:hover:bg-blue-900/50"
+                            title="החריג פרויקט"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
-          {missingProofProjects.length > 0 && (
-            <div className="text-sm">
-              <span className="font-medium text-orange-600">חסרים אישורים:</span>
-              <ul className="list-disc list-inside ml-4">
-                {missingProofProjects.map(project => (
-                  <li key={project.id} className="text-orange-600">
-                    {project.name}
-                  </li>
+          {/* Section 2: Unprofitable Projects - PURPLE/PINK */}
+          {unprofitableProjects.length > 0 && (
+            <div className="bg-purple-50 dark:bg-purple-900/20 border-l-4 border-purple-500 rounded p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-lg">📉</span>
+                <span className="font-semibold text-sm text-purple-900 dark:text-purple-100">פרויקטים לא רווחיים</span>
+              </div>
+              <div className="space-y-1.5">
+                {unprofitableProjects.map(project => (
+                  <div key={project.id} className="bg-white dark:bg-gray-800 rounded p-2 border border-purple-200 dark:border-purple-800 flex items-center justify-between group">
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-sm text-purple-900 dark:text-purple-100 truncate">{project.name}</div>
+                      <div className="text-xs text-purple-700 dark:text-purple-300 mt-0.5">
+                        רווח: {project.profit_percent.toFixed(1)}% ({project.income_month_to_date.toFixed(0)} ₪ - {project.expense_month_to_date.toFixed(0)} ₪)
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleDismissProject(project.id)}
+                      className="ml-2 text-purple-600 dark:text-purple-400 hover:text-purple-800 dark:hover:text-purple-200 opacity-0 group-hover:opacity-100 transition-opacity text-xs px-2 py-1 rounded hover:bg-purple-100 dark:hover:bg-purple-900/50"
+                      title="החריג פרויקט"
+                    >
+                      ✕
+                    </button>
+                  </div>
                 ))}
-              </ul>
+              </div>
             </div>
           )}
 
-          {unpaidRecurringProjects.length > 0 && (
-            <div className="text-sm">
-              <span className="font-medium text-purple-600">הוצאות חוזרות לא שולמו:</span>
-              <ul className="list-disc list-inside ml-4">
-                {unpaidRecurringProjects.map(project => (
-                  <li key={project.id} className="text-purple-600">
-                    {project.name}
-                  </li>
-                ))}
-              </ul>
+          {/* Section 3: Category Budget Alerts - Different styles for over budget vs spending too fast */}
+          {categoryBudgetAlerts.length > 0 && (
+            <div className="space-y-2">
+              {/* Over Budget Alerts - RED */}
+              {categoryBudgetAlerts.filter(a => a.is_over_budget).length > 0 && (
+                <div className="bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 rounded p-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-lg">🚨</span>
+                    <span className="font-semibold text-sm text-red-900 dark:text-red-100">חריגה מעל התקציב</span>
+                  </div>
+                  <div className="space-y-1.5">
+                    {Object.entries(categoryAlertsByProject).map(([projectId, projectAlerts]) => {
+                      const overBudgetAlerts = projectAlerts.filter(a => a.is_over_budget)
+                      if (overBudgetAlerts.length === 0) return null
+                      const project = projects.find(p => p.id === parseInt(projectId))
+                      return (
+                        <div key={projectId} className="bg-white dark:bg-gray-800 rounded p-2 border border-red-200 dark:border-red-800">
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="font-medium text-xs text-red-900 dark:text-red-100">📁 {project?.name || `פרויקט ${projectId}`}</span>
+                            <button
+                              onClick={() => handleDismissProject(parseInt(projectId))}
+                              className="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-200 text-xs px-2 py-1 rounded hover:bg-red-100 dark:hover:bg-red-900/50"
+                              title="החריג פרויקט"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                          <div className="space-y-1">
+                            {overBudgetAlerts.map((alert, idx) => (
+                              <div key={idx} className="bg-red-50 dark:bg-red-900/30 rounded p-1.5 border border-red-200 dark:border-red-800">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex-1 min-w-0">
+                                    <span className="font-medium text-xs text-red-900 dark:text-red-100">{alert.category}</span>
+                                    <div className="text-xs text-red-700 dark:text-red-300 mt-0.5">
+                                      {alert.spent_amount.toFixed(0)} ₪ / {alert.amount.toFixed(0)} ₪ ({alert.spent_percentage.toFixed(1)}%)
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Spending Too Fast Alerts - ORANGE */}
+              {categoryBudgetAlerts.filter(a => a.is_spending_too_fast && !a.is_over_budget).length > 0 && (
+                <div className="bg-orange-50 dark:bg-orange-900/20 border-l-4 border-orange-500 rounded p-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-lg">⚠️</span>
+                    <span className="font-semibold text-sm text-orange-900 dark:text-orange-100">הוצאה מהירה מהצפוי</span>
+                  </div>
+                  <div className="space-y-1.5">
+                    {Object.entries(categoryAlertsByProject).map(([projectId, projectAlerts]) => {
+                      const fastSpendingAlerts = projectAlerts.filter(a => a.is_spending_too_fast && !a.is_over_budget)
+                      if (fastSpendingAlerts.length === 0) return null
+                      const project = projects.find(p => p.id === parseInt(projectId))
+                      return (
+                        <div key={projectId} className="bg-white dark:bg-gray-800 rounded p-2 border border-orange-200 dark:border-orange-800">
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="font-medium text-xs text-orange-900 dark:text-orange-100">📁 {project?.name || `פרויקט ${projectId}`}</span>
+                            <button
+                              onClick={() => handleDismissProject(parseInt(projectId))}
+                              className="text-orange-600 dark:text-orange-400 hover:text-orange-800 dark:hover:text-orange-200 text-xs px-2 py-1 rounded hover:bg-orange-100 dark:hover:bg-orange-900/50"
+                              title="החריג פרויקט"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                          <div className="space-y-1">
+                            {fastSpendingAlerts.map((alert, idx) => (
+                              <div key={idx} className="bg-orange-50 dark:bg-orange-900/30 rounded p-1.5 border border-orange-200 dark:border-orange-800">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex-1 min-w-0">
+                                    <span className="font-medium text-xs text-orange-900 dark:text-orange-100">{alert.category}</span>
+                                    <div className="text-xs text-orange-700 dark:text-orange-300 mt-0.5">
+                                      הוצא: {alert.spent_percentage.toFixed(1)}% | צפוי: {alert.expected_spent_percentage.toFixed(1)}% ({alert.spent_amount.toFixed(0)} ₪)
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

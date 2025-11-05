@@ -1,5 +1,5 @@
 import api from '../lib/api'
-import { Project, ProjectCreate, Transaction, TransactionCreate, ProjectWithFinance, DashboardSnapshot, ExpenseCategory, RecurringTransactionTemplate, RecurringTransactionTemplateCreate, RecurringTransactionTemplateUpdate } from '../types/api'
+import { Project, ProjectCreate, Transaction, TransactionCreate, ProjectWithFinance, DashboardSnapshot, ExpenseCategory, RecurringTransactionTemplate, RecurringTransactionTemplateCreate, RecurringTransactionTemplateUpdate, BudgetWithSpending } from '../types/api'
 
 // Enhanced API client with proper TypeScript types
 export class ProjectAPI {
@@ -146,6 +146,20 @@ export class ReportAPI {
   // Get all transactions for a specific project
   static async getProjectTransactions(projectId: number): Promise<Transaction[]> {
     const { data } = await api.get<Transaction[]>(`/reports/project/${projectId}/transactions`)
+    return data
+  }
+}
+
+export class BudgetAPI {
+  // Get all budgets for a project with spending information
+  static async getProjectBudgets(projectId: number): Promise<BudgetWithSpending[]> {
+    const { data } = await api.get<BudgetWithSpending[]>(`/budgets/project/${projectId}`)
+    return data
+  }
+
+  // Get a specific budget with spending information
+  static async getBudget(budgetId: number): Promise<BudgetWithSpending> {
+    const { data } = await api.get<BudgetWithSpending>(`/budgets/${budgetId}`)
     return data
   }
 }

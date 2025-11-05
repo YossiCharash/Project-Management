@@ -14,8 +14,341 @@ import {
   ExternalLink
 } from 'lucide-react'
 import SystemFinancialPieChart from './charts/SystemFinancialPieChart'
+import { ProjectWithFinance } from '../types/api'
 
 // Removed all project-related components - simplified dashboard only shows central pie chart
+
+interface AlertsStripProps {
+  alerts: DashboardSnapshot['alerts']
+  projects: ProjectWithFinance[]
+}
+
+const AlertsStrip: React.FC<AlertsStripProps> = ({ alerts, projects }) => {
+  const [isExpanded, setIsExpanded] = React.useState(false)
+  const [dismissedProjects, setDismissedProjects] = React.useState<Set<number>>(() => {
+    // Load dismissed projects from localStorage
+    const stored = localStorage.getItem('dismissed_alert_projects')
+    return stored ? new Set(JSON.parse(stored)) : new Set()
+  })
+
+  // Filter out dismissed projects
+  const budgetOverrunProjects = projects.filter(p => 
+    alerts.budget_overrun.includes(p.id) && !dismissedProjects.has(p.id)
+  )
+  const missingProofProjects = projects.filter(p => 
+    alerts.missing_proof.includes(p.id) && !dismissedProjects.has(p.id)
+  )
+  const unpaidRecurringProjects = projects.filter(p => 
+    alerts.unpaid_recurring.includes(p.id) && !dismissedProjects.has(p.id)
+  )
+  const categoryBudgetAlerts = (alerts.category_budget_alerts || []).filter(alert => 
+    !dismissedProjects.has(alert.project_id)
+  )
+
+  // Filter unprofitable projects (red status, negative profit)
+  const unprofitableProjects = projects.filter(p => 
+    p.status_color === 'red' && p.profit_percent < 0 && !dismissedProjects.has(p.id)
+  )
+
+  // Group category budget alerts by project
+  const categoryAlertsByProject = categoryBudgetAlerts.reduce((acc, alert) => {
+    if (!acc[alert.project_id]) {
+      acc[alert.project_id] = []
+    }
+    acc[alert.project_id].push(alert)
+    return acc
+  }, {} as Record<number, typeof categoryBudgetAlerts>)
+
+  const totalAlerts = budgetOverrunProjects.length + 
+                     missingProofProjects.length + 
+                     unpaidRecurringProjects.length + 
+                     categoryBudgetAlerts.length +
+                     unprofitableProjects.length
+
+  const handleDismissProject = (projectId: number) => {
+    const newDismissed = new Set(dismissedProjects)
+    newDismissed.add(projectId)
+    setDismissedProjects(newDismissed)
+    localStorage.setItem('dismissed_alert_projects', JSON.stringify(Array.from(newDismissed)))
+  }
+
+  // Helper to flatten projects with children
+  const getAllProjectsFlat = (projects: ProjectWithFinance[]): ProjectWithFinance[] => {
+    const result: ProjectWithFinance[] = []
+    const flatten = (projs: ProjectWithFinance[]) => {
+      projs.forEach(project => {
+        result.push(project)
+        if (project.children) {
+          flatten(project.children)
+        }
+      })
+    }
+    flatten(projects)
+    return result
+  }
+
+  const allProjectsFlat = getAllProjectsFlat(projects)
+
+  // Debug logging
+  console.log('AlertsStrip - totalAlerts:', totalAlerts)
+  console.log('AlertsStrip - budgetOverrunProjects:', budgetOverrunProjects.length)
+  console.log('AlertsStrip - missingProofProjects:', missingProofProjects.length)
+  console.log('AlertsStrip - unpaidRecurringProjects:', unpaidRecurringProjects.length)
+  console.log('AlertsStrip - categoryBudgetAlerts:', categoryBudgetAlerts.length)
+  console.log('AlertsStrip - unprofitableProjects:', unprofitableProjects.length)
+  console.log('AlertsStrip - alerts:', alerts)
+
+  if (totalAlerts === 0) {
+    console.log('AlertsStrip - No alerts to show, returning null')
+    return null
+  }
+
+  return (
+    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm p-3 mb-4">
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <span className="text-lg">⚠️</span>
+          <span className="font-semibold text-base text-gray-900 dark:text-white">
+            התראות ({totalAlerts})
+          </span>
+        </div>
+        <button
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-2 py-1 rounded text-sm transition-colors"
+        >
+          {isExpanded ? '▼ סגור' : '▶ פתח'}
+        </button>
+      </div>
+
+      {isExpanded && (
+        <div className="mt-3 space-y-3 border-t border-gray-200 dark:border-gray-700 pt-3">
+          {/* Section 1: Project-Level Alerts */}
+          {(budgetOverrunProjects.length > 0 || missingProofProjects.length > 0 || unpaidRecurringProjects.length > 0) && (
+            <div className="bg-blue-50 dark:bg-blue-900/20 border-l-4 border-blue-500 rounded p-3">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-lg">🏢</span>
+                <span className="font-semibold text-sm text-blue-900 dark:text-blue-100">התראות ברמת פרויקט</span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {/* General Budget Overrun */}
+                {budgetOverrunProjects.length > 0 && (
+                  <div className="bg-white dark:bg-gray-800 rounded-lg p-3 border border-blue-200 dark:border-blue-800 shadow-sm">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-sm">💰</span>
+                      <span className="font-medium text-xs text-blue-900 dark:text-blue-200">חריגת תקציב כללי</span>
+                    </div>
+                    <div className="space-y-2">
+                      {budgetOverrunProjects.map(project => (
+                        <div key={project.id} className="bg-blue-50 dark:bg-blue-900/30 rounded p-2 border border-blue-200 dark:border-blue-800 relative group">
+                          <div className="flex items-center justify-between mb-1">
+                            <div className="font-medium text-sm text-blue-900 dark:text-blue-100">{project.name}</div>
+                            <button
+                              onClick={() => handleDismissProject(project.id)}
+                              className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200 text-xs px-1.5 py-0.5 rounded hover:bg-blue-100 dark:hover:bg-blue-900/50 opacity-0 group-hover:opacity-100 transition-opacity"
+                              title="החריג פרויקט"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                          <div className="text-xs text-blue-700 dark:text-blue-300 space-y-0.5">
+                            <div>הוצא: <span className="font-semibold">{project.expense_month_to_date.toFixed(0)} ₪</span></div>
+                            <div>תקציב: <span className="font-semibold">{((project.budget_annual || 0) + ((project.budget_monthly || 0) * 12)).toFixed(0)} ₪</span></div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Missing Proof */}
+                {missingProofProjects.length > 0 && (
+                  <div className="bg-white dark:bg-gray-800 rounded-lg p-3 border border-blue-200 dark:border-blue-800 shadow-sm">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-sm">📄</span>
+                      <span className="font-medium text-xs text-blue-900 dark:text-blue-200">חסרים אישורים</span>
+                    </div>
+                    <div className="space-y-2">
+                      {missingProofProjects.map(project => (
+                        <div key={project.id} className="bg-blue-50 dark:bg-blue-900/30 rounded p-2 border border-blue-200 dark:border-blue-800 relative group">
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium text-sm text-blue-900 dark:text-blue-100">{project.name}</span>
+                            <button
+                              onClick={() => handleDismissProject(project.id)}
+                              className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200 text-xs px-1.5 py-0.5 rounded hover:bg-blue-100 dark:hover:bg-blue-900/50 opacity-0 group-hover:opacity-100 transition-opacity"
+                              title="החריג פרויקט"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Unpaid Recurring */}
+                {unpaidRecurringProjects.length > 0 && (
+                  <div className="bg-white dark:bg-gray-800 rounded-lg p-3 border border-blue-200 dark:border-blue-800 shadow-sm">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-sm">🔄</span>
+                      <span className="font-medium text-xs text-blue-900 dark:text-blue-200">הוצאות חוזרות לא שולמו</span>
+                    </div>
+                    <div className="space-y-2">
+                      {unpaidRecurringProjects.map(project => (
+                        <div key={project.id} className="bg-blue-50 dark:bg-blue-900/30 rounded p-2 border border-blue-200 dark:border-blue-800 relative group">
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium text-sm text-blue-900 dark:text-blue-100">{project.name}</span>
+                            <button
+                              onClick={() => handleDismissProject(project.id)}
+                              className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200 text-xs px-1.5 py-0.5 rounded hover:bg-blue-100 dark:hover:bg-blue-900/50 opacity-0 group-hover:opacity-100 transition-opacity"
+                              title="החריג פרויקט"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Section 2: Unprofitable Projects - PURPLE/PINK */}
+          {unprofitableProjects.length > 0 && (
+            <div className="bg-purple-50 dark:bg-purple-900/20 border-l-4 border-purple-500 rounded p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-lg">📉</span>
+                <span className="font-semibold text-sm text-purple-900 dark:text-purple-100">פרויקטים לא רווחיים</span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {unprofitableProjects.map(project => (
+                  <div key={project.id} className="bg-white dark:bg-gray-800 rounded-lg p-3 border border-purple-200 dark:border-purple-800 shadow-sm relative group">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="font-medium text-sm text-purple-900 dark:text-purple-100">{project.name}</div>
+                      <button
+                        onClick={() => handleDismissProject(project.id)}
+                        className="text-purple-600 dark:text-purple-400 hover:text-purple-800 dark:hover:text-purple-200 text-xs px-1.5 py-0.5 rounded hover:bg-purple-100 dark:hover:bg-purple-900/50 opacity-0 group-hover:opacity-100 transition-opacity"
+                        title="החריג פרויקט"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    <div className="bg-purple-50 dark:bg-purple-900/30 rounded p-2 border border-purple-200 dark:border-purple-800">
+                      <div className="text-xs text-purple-700 dark:text-purple-300 mb-1">
+                        רווח: <span className="font-semibold">{project.profit_percent.toFixed(1)}%</span>
+                      </div>
+                      <div className="text-xs text-purple-700 dark:text-purple-300">
+                        הכנסות: {project.income_month_to_date.toFixed(0)} ₪
+                      </div>
+                      <div className="text-xs text-purple-700 dark:text-purple-300">
+                        הוצאות: {project.expense_month_to_date.toFixed(0)} ₪
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Section 3: Category Budget Alerts - Different styles for over budget vs spending too fast */}
+          {categoryBudgetAlerts.length > 0 && (
+            <div className="space-y-2">
+              {/* Over Budget Alerts - RED */}
+              {categoryBudgetAlerts.filter(a => a.is_over_budget).length > 0 && (
+                <div className="bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 rounded p-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-lg">🚨</span>
+                    <span className="font-semibold text-sm text-red-900 dark:text-red-100">חריגה מעל התקציב</span>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {Object.entries(categoryAlertsByProject).map(([projectId, projectAlerts]) => {
+                      const overBudgetAlerts = projectAlerts.filter(a => a.is_over_budget)
+                      if (overBudgetAlerts.length === 0) return null
+                      const project = allProjectsFlat.find(p => p.id === parseInt(projectId))
+                      return overBudgetAlerts.map((alert, idx) => (
+                        <div key={`${projectId}-${idx}`} className="bg-white dark:bg-gray-800 rounded-lg p-3 border border-red-200 dark:border-red-800 shadow-sm relative group">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="font-medium text-xs text-red-900 dark:text-red-100">📁 {project?.name || `פרויקט ${projectId}`}</span>
+                            <button
+                              onClick={() => handleDismissProject(parseInt(projectId))}
+                              className="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-200 text-xs px-1.5 py-0.5 rounded hover:bg-red-100 dark:hover:bg-red-900/50 opacity-0 group-hover:opacity-100 transition-opacity"
+                              title="החריג פרויקט"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                          <div className="bg-red-50 dark:bg-red-900/30 rounded p-2 border border-red-200 dark:border-red-800">
+                            <div className="flex items-center justify-between">
+                              <div className="flex-1 min-w-0">
+                                <span className="font-medium text-xs text-red-900 dark:text-red-100 block mb-1">{alert.category}</span>
+                                <div className="text-xs text-red-700 dark:text-red-300">
+                                  {alert.spent_amount.toFixed(0)} ₪ / {alert.amount.toFixed(0)} ₪
+                                </div>
+                                <div className="text-xs font-semibold text-red-800 dark:text-red-200 mt-0.5">
+                                  {alert.spent_percentage.toFixed(1)}%
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Spending Too Fast Alerts - ORANGE */}
+              {categoryBudgetAlerts.filter(a => a.is_spending_too_fast && !a.is_over_budget).length > 0 && (
+                <div className="bg-orange-50 dark:bg-orange-900/20 border-l-4 border-orange-500 rounded p-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-lg">⚠️</span>
+                    <span className="font-semibold text-sm text-orange-900 dark:text-orange-100">הוצאה מהירה מהצפוי</span>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {Object.entries(categoryAlertsByProject).map(([projectId, projectAlerts]) => {
+                      const fastSpendingAlerts = projectAlerts.filter(a => a.is_spending_too_fast && !a.is_over_budget)
+                      if (fastSpendingAlerts.length === 0) return null
+                      const project = allProjectsFlat.find(p => p.id === parseInt(projectId))
+                      return fastSpendingAlerts.map((alert, idx) => (
+                        <div key={`${projectId}-${idx}`} className="bg-white dark:bg-gray-800 rounded-lg p-3 border border-orange-200 dark:border-orange-800 shadow-sm relative group">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="font-medium text-xs text-orange-900 dark:text-orange-100">📁 {project?.name || `פרויקט ${projectId}`}</span>
+                            <button
+                              onClick={() => handleDismissProject(parseInt(projectId))}
+                              className="text-orange-600 dark:text-orange-400 hover:text-orange-800 dark:hover:text-orange-200 text-xs px-1.5 py-0.5 rounded hover:bg-orange-100 dark:hover:bg-orange-900/50 opacity-0 group-hover:opacity-100 transition-opacity"
+                              title="החריג פרויקט"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                          <div className="bg-orange-50 dark:bg-orange-900/30 rounded p-2 border border-orange-200 dark:border-orange-800">
+                            <div className="flex items-center justify-between">
+                              <div className="flex-1 min-w-0">
+                                <span className="font-medium text-xs text-orange-900 dark:text-orange-100 block mb-1">{alert.category}</span>
+                                <div className="text-xs text-orange-700 dark:text-orange-300">
+                                  הוצא: {alert.spent_percentage.toFixed(1)}% | צפוי: {alert.expected_spent_percentage.toFixed(1)}%
+                                </div>
+                                <div className="text-xs font-semibold text-orange-800 dark:text-orange-200 mt-0.5">
+                                  {alert.spent_amount.toFixed(0)} ₪
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
 
 interface ModernDashboardProps {
   onProjectClick?: (project: any) => void
@@ -207,198 +540,35 @@ export default function ModernDashboard({ onProjectClick, onProjectEdit }: Moder
   console.log('Visible alerts data:', visibleAlerts)
   console.log('=================================')
 
+  // Helper to flatten projects with children
+  const getAllProjectsFlat = (projects: ProjectWithFinance[]): ProjectWithFinance[] => {
+    const result: ProjectWithFinance[] = []
+    const flatten = (projs: ProjectWithFinance[]) => {
+      projs.forEach(project => {
+        result.push(project)
+        if (project.children) {
+          flatten(project.children)
+        }
+      })
+    }
+    flatten(projects)
+    return result
+  }
+
+  const allProjectsFlat = dashboardData ? getAllProjectsFlat(dashboardData.projects) : []
+
+  // Debug logging
+  console.log('ModernDashboard - dashboardData:', dashboardData)
+  console.log('ModernDashboard - alerts:', dashboardData?.alerts)
+  console.log('ModernDashboard - projects:', allProjectsFlat.length)
+
   return (
     <div className="space-y-8">
-      {/* Profitability Alerts - Always show section for debugging */}
-      {!alertsLoading && (
-        <>
-          {/* Debug info - show even if no alerts */}
-          {profitabilityAlerts.length === 0 && (
-            <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl p-4">
-              <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                ℹ️ אין התראות מהשרת (0 התראות). בדוק את הלוגים בקונסול.
-              </p>
-            </div>
-          )}
-          
-          {visibleAlerts.length > 0 ? (
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-gradient-to-br from-red-50 via-red-50/50 to-orange-50 dark:from-red-900/30 dark:via-red-900/20 dark:to-orange-900/20 border-2 border-red-300 dark:border-red-700 rounded-2xl p-6 shadow-lg"
-        >
-          <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-red-500 rounded-xl shadow-md">
-                <AlertTriangle className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <h3 className="text-xl font-bold text-red-900 dark:text-red-100">
-                  התראות רווחיות
-                </h3>
-                <p className="text-sm text-red-700 dark:text-red-300 mt-0.5">
-                  חצי שנה אחרונה
-                </p>
-              </div>
-              <span className="px-3 py-1.5 bg-red-500 text-white rounded-full text-sm font-bold shadow-sm">
-                {visibleAlerts.length}
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              {selectedAlerts.size > 0 && (
-                <button
-                  onClick={dismissSelectedAlerts}
-                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium shadow-md hover:shadow-lg transition-all duration-200 flex items-center gap-2"
-                >
-                  <X className="w-4 h-4" />
-                  <span>הסתר נבחרים ({selectedAlerts.size})</span>
-                </button>
-              )}
-              {dismissedAlerts.size > 0 && (
-                <button
-                  onClick={() => setShowRestoreDialog(true)}
-                  className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg font-medium shadow-md hover:shadow-lg transition-all duration-200 flex items-center gap-2"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                  <span>הצג שוב ({dismissedAlerts.size} מוסתרות)</span>
-                </button>
-              )}
-            </div>
-          </div>
-          
-          {/* Info box about alerts */}
-          <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-            <p className="text-sm text-blue-800 dark:text-blue-200">
-              💡 <strong>איך זה עובד:</strong> התראות מוסתרות נשמרות עד שהפרויקט משתפר. 
-              אם הפרויקט ממשיך להיות בעייתי (רווחיות שלילית של 10% ומעלה), ההתראה תחזור אוטומטית בבדיקה הבאה.
-            </p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {visibleAlerts.map((alert, index) => (
-              <motion.div
-                key={alert.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.1 }}
-                whileHover={{ scale: 1.03, y: -4 }}
-                className="bg-gradient-to-br from-white to-gray-50 dark:from-gray-800 dark:to-gray-900 rounded-xl p-5 border-2 border-red-200 dark:border-red-800 shadow-lg hover:shadow-xl transition-all duration-300 relative overflow-hidden group"
-              >
-                {/* Background decoration */}
-                <div className="absolute top-0 right-0 w-32 h-32 bg-red-100 dark:bg-red-900/20 rounded-bl-full opacity-20 group-hover:opacity-30 transition-opacity" />
-                <div className="absolute bottom-0 left-0 w-24 h-24 bg-orange-100 dark:bg-orange-900/20 rounded-tr-full opacity-15 group-hover:opacity-25 transition-opacity" />
-                
-                <div className="absolute top-3 left-3 flex items-center gap-2 z-10">
-                  <input
-                    type="checkbox"
-                    checked={selectedAlerts.has(alert.id)}
-                    onChange={() => toggleAlertSelection(alert.id)}
-                    className="w-5 h-5 text-red-600 rounded border-gray-300 focus:ring-red-500 cursor-pointer"
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      dismissAlert(alert.id)
-                    }}
-                    className="p-1.5 bg-white dark:bg-gray-700 text-gray-400 hover:text-red-600 dark:hover:text-red-400 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-all duration-200 shadow-sm"
-                    title="הסתר התראה"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-                
-                <div className="relative z-10">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <h4 className="font-bold text-lg text-gray-900 dark:text-white">
-                          {alert.name}
-                        </h4>
-                        {alert.is_subproject && (
-                          <span className="px-2 py-0.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white text-xs rounded-full font-medium shadow-sm">
-                            תת-פרויקט
-                          </span>
-                        )}
-                      </div>
-                      
-                      {/* Financial Summary */}
-                      <div className="space-y-2 mt-3">
-                        <div className="flex justify-between items-center text-xs">
-                          <span className="text-gray-500 dark:text-gray-400">הכנסות</span>
-                          <span className="font-semibold text-green-600 dark:text-green-400">
-                            {alert.income.toLocaleString('he-IL')} ₪
-                          </span>
-                        </div>
-                        <div className="flex justify-between items-center text-xs">
-                          <span className="text-gray-500 dark:text-gray-400">הוצאות</span>
-                          <span className="font-semibold text-red-600 dark:text-red-400">
-                            {alert.expense.toLocaleString('he-IL')} ₪
-                          </span>
-                        </div>
-                        <div className="flex justify-between items-center text-xs pt-1 border-t border-gray-200 dark:border-gray-700">
-                          <span className="text-gray-500 dark:text-gray-400">רווח/הפסד</span>
-                          <span className={`font-bold ${alert.profit >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                            {alert.profit >= 0 ? '+' : ''}{alert.profit.toLocaleString('he-IL')} ₪
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {/* Loss Percentage - Big and Bold */}
-                  <div className="mt-4 pt-4 border-t-2 border-red-200 dark:border-red-800">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">
-                          אחוז הפסד
-                        </div>
-                        <div className="flex items-baseline gap-1">
-                          <span className="text-3xl font-black text-red-600 dark:text-red-400">
-                            {Math.abs(alert.profit_margin).toFixed(1)}
-                          </span>
-                          <span className="text-xl font-bold text-red-600 dark:text-red-400">%</span>
-                        </div>
-                      </div>
-                      <div className="w-16 h-16 bg-gradient-to-br from-red-500 to-red-600 rounded-full flex items-center justify-center shadow-lg">
-                        <span className="text-2xl">⚠️</span>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {/* Action Button */}
-                  <button
-                    onClick={() => handleAlertClick(alert)}
-                    className="mt-4 w-full px-4 py-2.5 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white rounded-lg font-semibold shadow-md hover:shadow-lg transition-all duration-200 flex items-center justify-center gap-2 group"
-                  >
-                    <span>פתח פרויקט</span>
-                    <ExternalLink className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                  </button>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </motion.div>
-          ) : (
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl p-4"
-            >
-              <div className="flex items-center gap-2">
-                <span className="text-green-600 dark:text-green-400">✓</span>
-                <span className="text-green-800 dark:text-green-200 font-medium">
-                  אין פרויקטים בעייתיים מבחינת רווחיות בחצי שנה האחרונה
-                </span>
-              </div>
-            </motion.div>
-          )}
-        </>
+      {/* Budget and Project Alerts */}
+      {dashboardData && (
+        <AlertsStrip alerts={dashboardData.alerts} projects={allProjectsFlat} />
       )}
-      {alertsLoading && (
-        <div className="bg-gray-50 dark:bg-gray-800 rounded-xl p-4 text-center text-gray-600 dark:text-gray-400">
-          טוען התראות רווחיות...
-        </div>
-      )}
+
 
       {/* Central Financial Overview Pie Chart */}
       <motion.div

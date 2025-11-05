@@ -1,13 +1,13 @@
-import { useEffect, useState, FormEvent, ChangeEvent } from 'react'
+import { useEffect, useState, ChangeEvent } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import api from '../lib/api'
-import { ReportAPI } from '../lib/apiClient'
-import { ExpenseCategory } from '../types/api'
-import ProjectExpensePieChart from '../components/charts/ProjectExpensePieChart'
+import { ReportAPI, BudgetAPI } from '../lib/apiClient'
+import { ExpenseCategory, BudgetWithSpending } from '../types/api'
 import ProjectTrendsChart from '../components/charts/ProjectTrendsChart'
+import BudgetCard from '../components/charts/BudgetCard'
 import EditTransactionModal from '../components/EditTransactionModal'
-import CreateRecurringTransactionModal from '../components/CreateRecurringTransactionModal'
+import CreateTransactionModal from '../components/CreateTransactionModal'
 import { useAppDispatch, useAppSelector } from '../utils/hooks'
 import { fetchSuppliers } from '../store/slices/suppliersSlice'
 
@@ -21,6 +21,7 @@ interface Transaction {
   notes?: string | null
   subproject_id?: number | null
   is_exceptional?: boolean
+  supplier_id?: number | null
 }
 
 interface Subproject {
@@ -35,22 +36,12 @@ export default function ProjectDetail() {
   const { items: suppliers } = useAppSelector(s => s.suppliers)
   const [txs, setTxs] = useState<Transaction[]>([])
   const [expenseCategories, setExpenseCategories] = useState<ExpenseCategory[]>([])
+  const [projectBudgets, setProjectBudgets] = useState<BudgetWithSpending[]>([])
   const [projectName, setProjectName] = useState<string>('')
   const [loading, setLoading] = useState(false)
   const [chartsLoading, setChartsLoading] = useState(false)
   const [projectImageUrl, setProjectImageUrl] = useState<string | null>(null)
 
-  const [type, setType] = useState<'Income' | 'Expense'>('Expense')
-  const [txDate, setTxDate] = useState('')
-  const [amount, setAmount] = useState<number | ''>('')
-  const [desc, setDesc] = useState('')
-  const [category, setCategory] = useState('')
-  const [notes, setNotes] = useState('')
-  const [subprojectId, setSubprojectId] = useState<number | ''>('')
-  const [supplierId, setSupplierId] = useState<number | ''>('')
-  const [isExceptional, setIsExceptional] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   const [subprojects, setSubprojects] = useState<Subproject[]>([])
 
@@ -66,7 +57,7 @@ export default function ProjectDetail() {
 
   const [editTransactionModalOpen, setEditTransactionModalOpen] = useState(false)
   const [selectedTransactionForEdit, setSelectedTransactionForEdit] = useState<any | null>(null)
-  const [showRecurringModal, setShowRecurringModal] = useState(false)
+  const [showCreateTransactionModal, setShowCreateTransactionModal] = useState(false)
   const [showDocumentsModal, setShowDocumentsModal] = useState(false)
   const [selectedTransactionForDocuments, setSelectedTransactionForDocuments] = useState<any | null>(null)
   const [transactionDocuments, setTransactionDocuments] = useState<any[]>([])
@@ -75,8 +66,6 @@ export default function ProjectDetail() {
   const [showDescriptionModal, setShowDescriptionModal] = useState(false)
   const [uploadedDocuments, setUploadedDocuments] = useState<Array<{id: number, fileName: string, description: string}>>([])
   
-  // State for file uploads during transaction creation
-  const [filesToUpload, setFilesToUpload] = useState<File[]>([])
 
   const load = async () => {
     if (!id) return
@@ -100,14 +89,24 @@ export default function ProjectDetail() {
     setChartsLoading(true)
     try {
       console.log('Loading charts data for project:', id)
-      // Load expense categories and transactions for charts
-      const [categoriesData, transactionsData] = await Promise.all([
+      // Load expense categories, transactions, and budgets for charts
+      const [categoriesData, transactionsData, budgetsData] = await Promise.all([
         ReportAPI.getProjectExpenseCategories(parseInt(id)),
-        ReportAPI.getProjectTransactions(parseInt(id))
+        ReportAPI.getProjectTransactions(parseInt(id)),
+        BudgetAPI.getProjectBudgets(parseInt(id)).catch((err) => {
+          console.warn('Error loading budgets (might not exist):', err)
+          return []
+        }) // Don't fail if no budgets
       ])
+      
+      console.log('Loaded budgets:', budgetsData)
+      console.log('Number of budgets:', budgetsData?.length || 0)
+      console.log('Loaded transactions:', transactionsData)
+      console.log('Sample transaction supplier_id:', transactionsData?.[0]?.supplier_id)
       
       setExpenseCategories(categoriesData)
       setTxs(transactionsData)
+      setProjectBudgets(budgetsData || [])
     } catch (err: any) {
       console.error('Error loading charts data:', err)
       setError('שגיאה בטעינת נתוני הגרפים')
@@ -138,8 +137,11 @@ export default function ProjectDetail() {
       loadProjectInfo()
       loadChartsData()
     }
+  }, [id])
+
+  useEffect(() => {
     dispatch(fetchSuppliers())
-  }, [id, dispatch])
+  }, [dispatch])
 
 
   useEffect(() => {
@@ -158,119 +160,6 @@ export default function ProjectDetail() {
     }
   }, [id])
 
-  const onCreate = async (e: FormEvent) => {
-    e.preventDefault()
-
-    if (!id) {
-      setError('מזהה פרויקט חסר')
-      return
-    }
-
-    // Validate required fields
-    if (!txDate) {
-      setError('תאריך חיוב נדרש')
-      return
-    }
-
-    if (amount === '' || Number(amount) <= 0) {
-      setError('סכום חיובי נדרש')
-      return
-    }
-
-    setSaving(true)
-    setError(null)
-
-    try {
-      const payload: any = {
-        project_id: Number(id),
-        tx_date: txDate,
-        type,
-        amount: Number(amount),
-        description: desc || undefined,
-        category: category || undefined,
-        notes: notes || undefined,
-        subproject_id: subprojectId === '' ? undefined : Number(subprojectId),
-        supplier_id: supplierId === '' ? undefined : Number(supplierId),
-        is_exceptional: isExceptional,
-      }
-
-      const response = await api.post('/transactions', payload)
-      const newTransactionId = response.data?.id
-
-      // If files were selected, upload them
-      if (filesToUpload.length > 0 && newTransactionId) {
-        try {
-          let successCount = 0
-          let errorCount = 0
-          const uploadedDocs: Array<{id: number, fileName: string, description: string}> = []
-          
-          // Upload each file
-          for (let i = 0; i < filesToUpload.length; i++) {
-            const file = filesToUpload[i]
-            try {
-              const formData = new FormData()
-              formData.append('file', file)
-              const uploadResponse = await api.post(`/transactions/${newTransactionId}/supplier-document`, formData, {
-                headers: { 'Content-Type': 'multipart/form-data' }
-              })
-              
-              // Get document ID from response
-              if (uploadResponse.data && uploadResponse.data.id) {
-                successCount++
-                uploadedDocs.push({
-                  id: uploadResponse.data.id,
-                  fileName: file.name,
-                  description: uploadResponse.data.description || ''
-                })
-              }
-            } catch (err: any) {
-              console.error(`Error uploading file ${file.name}:`, err)
-              errorCount++
-            }
-          }
-          
-          // If some files were uploaded successfully, show description modal
-          if (successCount > 0 && uploadedDocs.length > 0) {
-            setUploadedDocuments(uploadedDocs)
-            setSelectedTransactionForDocuments({ id: newTransactionId })
-            setShowDescriptionModal(true)
-          }
-          
-          // Show result message if there were errors
-          if (errorCount > 0) {
-            if (successCount > 0) {
-              alert(`הועלו ${successCount} מסמכים, ${errorCount} נכשלו`)
-            } else {
-              alert(`שגיאה בהעלאת המסמכים`)
-            }
-          }
-        } catch (err: any) {
-          console.error('Error uploading files:', err)
-          alert('העסקה נוצרה בהצלחה אך הייתה שגיאה בהעלאת חלק מהמסמכים')
-        }
-      }
-
-      // Reset form
-      setType('Expense')
-      setTxDate('')
-      setAmount('')
-      setDesc('')
-      setCategory('')
-      setNotes('')
-      setSubprojectId('')
-      setSupplierId('')
-      setIsExceptional(false)
-      setFilesToUpload([])
-
-      // Reload transactions and charts data
-      await loadChartsData()
-    } catch (e: any) {
-      console.error('Transaction creation error:', e)
-      setError(e.response?.data?.detail ?? 'שמירה נכשלה')
-    } finally {
-      setSaving(false)
-    }
-  }
 
   const handleEditAnyTransaction = (transaction: Transaction) => {
     setSelectedTransactionForEdit(transaction)
@@ -389,292 +278,68 @@ export default function ProjectDetail() {
         </button>
       </motion.div>
 
-      {/* Charts Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Project Expense Pie Chart */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-        >
-          {chartsLoading ? (
-            <div className="h-96 bg-gray-100 dark:bg-gray-700 rounded-2xl animate-pulse flex items-center justify-center">
-              <div className="text-gray-500 dark:text-gray-400">טוען נתוני גרפים...</div>
+      {/* Budget Cards and Charts */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+      >
+        <div className="mb-4">
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+            תקציבים לקטגוריות ומגמות פיננסיות
+          </h2>
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            מעקב אחר התקציבים וההוצאות בכל קטגוריה ומגמות פיננסיות
+          </p>
+        </div>
+        
+        {chartsLoading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="h-96 bg-gray-100 dark:bg-gray-700 rounded-xl animate-pulse" />
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {projectBudgets && projectBudgets.length > 0 && projectBudgets.map((budget) => (
+              <BudgetCard key={budget.id} budget={budget} />
+            ))}
+            <div className={
+              !projectBudgets || projectBudgets.length === 0 ? 'lg:col-span-4' :
+              projectBudgets.length === 1 ? 'lg:col-span-3' :
+              projectBudgets.length === 2 ? 'lg:col-span-2' :
+              projectBudgets.length === 3 ? 'lg:col-span-1' :
+              'lg:col-span-4'
+            }>
+              <ProjectTrendsChart
+                projectId={parseInt(id || '0')}
+                projectName={projectName}
+                transactions={txs}
+                expenseCategories={expenseCategories}
+                compact={true}
+              />
             </div>
-          ) : (
-            <ProjectExpensePieChart
-              expenseCategories={expenseCategories}
-              projectName={projectName}
-            />
-          )}
-        </motion.div>
+          </div>
+        )}
+      </motion.div>
 
-        {/* Project Trends Chart */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-        >
-          {chartsLoading ? (
-            <div className="h-96 bg-gray-100 dark:bg-gray-700 rounded-2xl animate-pulse flex items-center justify-center">
-              <div className="text-gray-500 dark:text-gray-400">טוען נתוני גרפים...</div>
-            </div>
-          ) : (
-            <ProjectTrendsChart
-              projectId={parseInt(id || '0')}
-              projectName={projectName}
-              transactions={txs}
-            />
-          )}
-        </motion.div>
-      </div>
 
-      {/* Transaction Management Section */}
+      {/* Create Transaction Button */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.3 }}
-        className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6"
+        className="flex justify-end"
       >
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white">הוספת עסקה חדשה</h2>
-          <button
-            onClick={() => setShowRecurringModal(true)}
-            className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm"
-          >
-            + עסקה מחזורית
-          </button>
-        </div>
-        <form onSubmit={onCreate} className="grid md:grid-cols-7 gap-4 items-end">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">סוג</label>
-            <select
-              className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={type}
-              onChange={e => setType(e.target.value as any)}
-            >
-              <option value="Income">הכנסה</option>
-              <option value="Expense">הוצאה</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">תאריך חיוב</label>
-            <input
-              className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              type="date"
-              value={txDate}
-              onChange={e => setTxDate(e.target.value)}
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">סכום</label>
-            <input
-              className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              type="number"
-              value={amount}
-              onChange={e => setAmount(e.target.value === '' ? '' : Number(e.target.value))}
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">קטגוריה</label>
-            <select
-              className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={category}
-              onChange={e => setCategory(e.target.value)}
-            >
-              <option value="">בחר קטגוריה</option>
-              <option value="ניקיון">ניקיון</option>
-              <option value="חשמל">חשמל</option>
-              <option value="ביטוח">ביטוח</option>
-              <option value="גינון">גינון</option>
-              <option value="אחר">אחר</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">תת־פרויקט</label>
-            <select
-              className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={subprojectId}
-              onChange={e => setSubprojectId(e.target.value === '' ? '' : Number(e.target.value))}
-            >
-              <option value="">ללא</option>
-              {subprojects.map(sp => (
-                <option key={sp.id} value={sp.id}>{sp.name}</option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">ספק</label>
-            <select
-              className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={supplierId}
-              onChange={e => setSupplierId(e.target.value === '' ? '' : Number(e.target.value))}
-            >
-              <option value="">ללא ספק</option>
-              {suppliers.filter(s => s.is_active).map(s => (
-                <option key={s.id} value={s.id}>{s.name}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <input
-              id="exceptional"
-              type="checkbox"
-              checked={isExceptional}
-              onChange={e => setIsExceptional(e.target.checked)}
-              className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
-            />
-            <label htmlFor="exceptional" className="text-sm text-gray-700 dark:text-gray-300">הוצאה חריגה</label>
-          </div>
-
-          <div className="md:col-span-7">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">הערות</label>
-            <input
-              className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="הערות"
-              value={notes}
-              onChange={e => setNotes(e.target.value)}
-            />
-          </div>
-
-          <div className="md:col-span-7">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              <span className="flex items-center gap-2">
-                <svg className="w-5 h-5 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                העלה מסמכים (אופציונלי)
-              </span>
-            </label>
-            <div className="relative">
-              <label 
-                className="flex flex-col items-center justify-center w-full h-40 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl cursor-pointer bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-700/50 dark:to-gray-800/50 hover:from-blue-50 hover:to-blue-100 dark:hover:from-blue-900/20 dark:hover:to-blue-800/20 transition-all duration-300 group hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-lg"
-                onDragOver={(e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                }}
-                onDragLeave={(e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                }}
-                onDrop={(e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  const files = Array.from(e.dataTransfer.files)
-                  if (files.length > 0) {
-                    setFilesToUpload(prev => [...prev, ...files])
-                  }
-                }}
-              >
-                <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                  <div className="w-16 h-16 mb-4 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-lg">
-                    <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                    </svg>
-                  </div>
-                  <p className="mb-2 text-sm font-semibold text-gray-700 dark:text-gray-300 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                    <span className="font-bold">לחץ להעלאה</span> או גרור קבצים לכאן
-                  </p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">PDF, תמונות, מסמכים (מרובה)</p>
-                </div>
-                <input
-                  type="file"
-                  multiple
-                  className="hidden"
-                  onChange={(e: ChangeEvent<HTMLInputElement>) => {
-                    if (e.target.files) {
-                      setFilesToUpload(prev => [...prev, ...Array.from(e.target.files || [])])
-                    }
-                  }}
-                />
-              </label>
-            </div>
-            {filesToUpload.length > 0 && (
-              <motion.div 
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="mt-4 space-y-2"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
-                    <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    נבחרו {filesToUpload.length} קבצים
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setFilesToUpload([])}
-                    className="text-xs text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 font-medium"
-                  >
-                    נקה הכל
-                  </button>
-                </div>
-                <div className="space-y-2 max-h-48 overflow-y-auto bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 border border-gray-200 dark:border-gray-700">
-                  {filesToUpload.map((file, index) => (
-                    <motion.div
-                      key={`${file.name}-${index}`}
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      className="flex items-center justify-between bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-3 hover:shadow-md transition-shadow"
-                    >
-                      <div className="flex items-center gap-3 flex-1 min-w-0">
-                        <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center flex-shrink-0">
-                          <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                          </svg>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{file.name}</p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400">
-                            {(file.size / 1024).toFixed(1)} KB
-                          </p>
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const newFiles = filesToUpload.filter((_, i) => i !== index)
-                          setFilesToUpload(newFiles)
-                        }}
-                        className="ml-3 p-1.5 text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors flex-shrink-0"
-                        title="הסר קובץ"
-                      >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
-                    </motion.div>
-                  ))}
-                </div>
-              </motion.div>
-            )}
-          </div>
-
-          {error && (
-            <div className="md:col-span-7 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-sm p-3 rounded-lg">
-              {error}
-            </div>
-          )}
-
-          <div className="md:col-span-7 flex justify-end">
-            <button
-              type="submit"
-              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              disabled={saving}
-            >
-              {saving ? 'שומר...' : 'הוסף עסקה'}
-            </button>
-          </div>
-        </form>
+        <button
+          onClick={() => setShowCreateTransactionModal(true)}
+          className="px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all shadow-lg hover:shadow-xl flex items-center gap-2 font-medium"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+          צור עסקה חדשה
+        </button>
       </motion.div>
 
       {/* Transactions List */}
@@ -845,7 +510,12 @@ export default function ProjectDetail() {
                     </td>
                     <td className="p-3 text-gray-700 dark:text-gray-300">{t.category ?? '-'}</td>
                     <td className="p-3 text-gray-700 dark:text-gray-300">
-                      {(t as any).supplier_id ? suppliers.find(s => s.id === (t as any).supplier_id)?.name ?? '-' : '-'}
+                      {(() => {
+                        const supplierId = t.supplier_id
+                        if (!supplierId) return '-'
+                        const supplier = suppliers.find(s => s.id === supplierId)
+                        return supplier?.name ?? '-'
+                      })()}
                     </td>
                     <td className="p-3 text-gray-700 dark:text-gray-300">{t.description ?? '-'}</td>
                     <td className="p-3 text-gray-700 dark:text-gray-300">{t.notes ?? '-'}</td>
@@ -1014,11 +684,11 @@ export default function ProjectDetail() {
       </motion.div>
 
       {/* Modals */}
-      <CreateRecurringTransactionModal
-        isOpen={showRecurringModal}
-        onClose={() => setShowRecurringModal(false)}
+      <CreateTransactionModal
+        isOpen={showCreateTransactionModal}
+        onClose={() => setShowCreateTransactionModal(false)}
         onSuccess={async () => {
-          setShowRecurringModal(false)
+          setShowCreateTransactionModal(false)
           await loadChartsData()
         }}
         projectId={parseInt(id || '0')}

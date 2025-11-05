@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from backend.schemas.recurring_transaction import RecurringTransactionTemplateCreate
+    from backend.schemas.budget import BudgetCreateWithoutProject
 
 
 class ProjectBase(BaseModel):
@@ -26,6 +27,7 @@ class ProjectBase(BaseModel):
 
 class ProjectCreate(ProjectBase):
     recurring_transactions: Optional[list["RecurringTransactionTemplateCreate"]] = None
+    budgets: Optional[list["BudgetCreateWithoutProject"]] = None
 
 
 class ProjectUpdate(BaseModel):
@@ -58,6 +60,7 @@ class ProjectOut(ProjectBase):
 
 # Import for model rebuild
 from backend.schemas.recurring_transaction import RecurringTransactionTemplateCreate
+from backend.schemas.budget import BudgetCreateWithoutProject
 
 # Rebuild models to resolve forward references
 ProjectCreate.model_rebuild()
