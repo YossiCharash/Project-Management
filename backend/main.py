@@ -103,28 +103,12 @@ def create_app() -> FastAPI:
     os.makedirs(suppliers_dir, exist_ok=True)
     # Note: Supplier-specific subdirectories will be created automatically when needed
     
-    print(f"[INFO] Mounting uploads directory: {uploads_dir}")
-    print(f"[INFO] Uploads directory exists: {os.path.exists(uploads_dir)}")
-    print(f"[INFO] Projects directory exists: {os.path.exists(projects_dir)}")
-    print(f"[INFO] Suppliers directory exists: {os.path.exists(suppliers_dir)}")
-    
-    if os.path.exists(projects_dir):
-        files = os.listdir(projects_dir)
-        print(f"[INFO] Files in projects directory: {len(files)} files")
-    if os.path.exists(suppliers_dir):
-        files = os.listdir(suppliers_dir)
-        print(f"[INFO] Files in suppliers directory: {len(files)} files")
-        if files:
-            print(f"[INFO] Sample supplier files: {files[:5]}")
-    
     # Mount static files - this allows serving files from /uploads/{path}
     # Note: StaticFiles will serve files relative to the directory provided
     # So /uploads/suppliers/file.txt will look for {uploads_dir}/suppliers/file.txt
     try:
         app.mount("/uploads", StaticFiles(directory=uploads_dir), name="uploads")
-        print(f"[INFO] Successfully mounted /uploads to {uploads_dir}")
     except Exception as e:
-        print(f"[ERROR] Failed to mount /uploads: {e}")
         raise
 
     @app.get("/health")

@@ -45,7 +45,6 @@ async def get_profitability_alerts(
     Get projects and sub-projects with profitability issues based on last 6 months of data.
     Returns projects with profit margin <= -10% (loss-making projects).
     """
-    print(f"[DEBUG] profitability-alerts endpoint called, user: {user.id if user else 'None'}")
     try:
         from sqlalchemy import select, and_
         from backend.models.project import Project
@@ -56,20 +55,11 @@ async def get_profitability_alerts(
         today = date.today()
         six_months_ago = today - timedelta(days=180)
         
-        print(f"[DEBUG] Calculating profitability alerts for period: {six_months_ago} to {today}")
-        
         # Get all projects (both active and inactive) - we'll check transactions for all
         projects_result = await db.execute(
             select(Project)
         )
         all_projects = projects_result.scalars().all()
-        
-        print(f"[DEBUG] Found {len(all_projects)} total projects")
-        
-        # Log active status for debugging
-        active_projects = [p for p in all_projects if p.is_active]
-        inactive_projects = [p for p in all_projects if not p.is_active]
-        print(f"[DEBUG] Active projects: {len(active_projects)}, Inactive projects: {len(inactive_projects)}")
         
         alerts = []
         
@@ -85,16 +75,6 @@ async def get_profitability_alerts(
             transactions_result = await db.execute(transactions_query)
             transactions = transactions_result.scalars().all()
             
-            print(f"[DEBUG] Project {project.id} ({project.name}): {len(transactions)} transactions in last 6 months")
-            
-            # Log transaction details for debugging
-            if len(transactions) > 0:
-                print(f"[DEBUG] Project {project.id} transaction details:")
-                for t in transactions[:5]:  # Show first 5 transactions
-                    print(f"  - Date: {t.tx_date}, Type: {t.type}, Amount: {t.amount}")
-                if len(transactions) > 5:
-                    print(f"  ... and {len(transactions) - 5} more transactions")
-            
             # Calculate income and expenses
             income = sum(float(t.amount) for t in transactions if t.type == 'Income')
             expense = sum(float(t.amount) for t in transactions if t.type == 'Expense')
@@ -104,16 +84,11 @@ async def get_profitability_alerts(
             all_transactions_query = select(Transaction).where(Transaction.project_id == project.id)
             all_transactions_result = await db.execute(all_transactions_query)
             all_transactions = all_transactions_result.scalars().all()
-            print(f"[DEBUG] Project {project.id}: Total transactions in DB: {len(all_transactions)}")
-            
-            print(f"[DEBUG] Project {project.id}: income={income}, expense={expense}, profit={profit}")
             
             # If no transactions in the last 6 months, check if there are any transactions at all
             if len(transactions) == 0 and len(all_transactions) > 0:
-                print(f"[DEBUG] Project {project.id}: No transactions in last 6 months, but has {len(all_transactions)} total transactions")
                 # Check if the oldest transaction is recent (within last year)
                 oldest_tx = min(all_transactions, key=lambda t: t.tx_date)
-                print(f"[DEBUG] Project {project.id}: Oldest transaction date: {oldest_tx.tx_date}")
                 # If the oldest transaction is within the last year, include it in calculation
                 one_year_ago = today - timedelta(days=365)
                 if oldest_tx.tx_date >= one_year_ago:
@@ -127,12 +102,10 @@ async def get_profitability_alerts(
                     )
                     transactions_result = await db.execute(transactions_query)
                     transactions = transactions_result.scalars().all()
-                    print(f"[DEBUG] Project {project.id}: Using {len(transactions)} transactions from last year")
                     # Recalculate with new transactions
                     income = sum(float(t.amount) for t in transactions if t.type == 'Income')
                     expense = sum(float(t.amount) for t in transactions if t.type == 'Expense')
                     profit = income - expense
-                    print(f"[DEBUG] Project {project.id}: Recalculated - income={income}, expense={expense}, profit={profit}")
             
             # Calculate profit margin
             if income > 0:
@@ -140,17 +113,12 @@ async def get_profitability_alerts(
             elif expense > 0:
                 # If no income but there are expenses, consider it as 100% loss
                 profit_margin = -100
-                print(f"[DEBUG] Project {project.id}: No income but has expenses, setting profit_margin to -100%")
             else:
                 # No transactions, skip this project
-                print(f"[DEBUG] Project {project.id}: No transactions, skipping")
                 continue
-            
-            print(f"[DEBUG] Project {project.id}: profit_margin={profit_margin}%")
             
             # Only include projects with profit margin <= -10% (loss-making)
             if profit_margin <= -10:
-                print(f"[DEBUG] Project {project.id}: Adding to alerts (profit_margin={profit_margin}% <= -10%)")
                 # Determine if it's a sub-project
                 is_subproject = project.relation_project is not None
                 
@@ -175,13 +143,9 @@ async def get_profitability_alerts(
             'period_end': str(today.isoformat())
         }
         
-        print(f"[DEBUG] Returning {len(alerts)} alerts")
         return result
             
     except Exception as e:
-        import traceback
-        print(f"[ERROR] Error in profitability alerts: {str(e)}")
-        print(f"[ERROR] Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Error retrieving profitability alerts: {str(e)}")
 
 @router.get("/{project_id}", response_model=ProjectOut)
@@ -213,10 +177,6 @@ async def create_project(db: DBSessionDep, data: ProjectCreate, user = Depends(g
     recurring_transactions = data.recurring_transactions or []
     budgets = data.budgets or []
     
-    print(f"[DEBUG] Creating project: name={project_data.get('name')}, budgets_count={len(budgets)}")
-    if budgets:
-        print(f"[DEBUG] First budget sample: {budgets[0].model_dump() if hasattr(budgets[0], 'model_dump') else budgets[0]}")
-    
     # Create the project
     project = await ProjectService(db).create(**project_data)
     
@@ -233,11 +193,9 @@ async def create_project(db: DBSessionDep, data: ProjectCreate, user = Depends(g
     
     # Create budgets if provided
     if budgets:
-        print(f"[DEBUG] Creating {len(budgets)} budgets for project {project.id}")
         budget_service = BudgetService(db)
         for idx, budget_data in enumerate(budgets):
             try:
-                print(f"[DEBUG] Processing budget {idx + 1}: category={budget_data.category}, amount={budget_data.amount}")
                 # Convert string dates to date objects
                 from datetime import date as date_type
                 start_date = None
@@ -255,7 +213,7 @@ async def create_project(db: DBSessionDep, data: ProjectCreate, user = Depends(g
                     else:
                         end_date = budget_data.end_date
                 
-                created_budget = await budget_service.create_budget(
+                await budget_service.create_budget(
                     project_id=project.id,
                     category=budget_data.category,
                     amount=budget_data.amount,
@@ -263,12 +221,9 @@ async def create_project(db: DBSessionDep, data: ProjectCreate, user = Depends(g
                     start_date=start_date,
                     end_date=end_date
                 )
-                print(f"[DEBUG] Successfully created budget {created_budget.id} for category {budget_data.category}")
             except Exception as e:
                 # Log error but don't fail the entire project creation
-                print(f"[ERROR] Failed to create budget for category {budget_data.category}: {str(e)}")
-                import traceback
-                traceback.print_exc()
+                pass
     
     return project
 

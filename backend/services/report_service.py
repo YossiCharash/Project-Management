@@ -157,9 +157,9 @@ class ReportService:
                     current_date
                 )
                 category_budget_alerts.extend(project_budget_alerts)
-            except Exception as e:
+            except Exception:
                 # If budget checking fails, continue without it
-                print(f"Warning: Could not check budget alerts for project {project.id}: {str(e)}")
+                pass
 
             # Build project data
             project_data = {

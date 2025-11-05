@@ -89,17 +89,7 @@ const AlertsStrip: React.FC<AlertsStripProps> = ({ alerts, projects }) => {
 
   const allProjectsFlat = getAllProjectsFlat(projects)
 
-  // Debug logging
-  console.log('AlertsStrip - totalAlerts:', totalAlerts)
-  console.log('AlertsStrip - budgetOverrunProjects:', budgetOverrunProjects.length)
-  console.log('AlertsStrip - missingProofProjects:', missingProofProjects.length)
-  console.log('AlertsStrip - unpaidRecurringProjects:', unpaidRecurringProjects.length)
-  console.log('AlertsStrip - categoryBudgetAlerts:', categoryBudgetAlerts.length)
-  console.log('AlertsStrip - unprofitableProjects:', unprofitableProjects.length)
-  console.log('AlertsStrip - alerts:', alerts)
-
   if (totalAlerts === 0) {
-    console.log('AlertsStrip - No alerts to show, returning null')
     return null
   }
 
@@ -391,7 +381,7 @@ export default function ModernDashboard({ onProjectClick, onProjectEdit }: Moder
       try {
         setDismissedAlerts(new Set(JSON.parse(dismissed)))
       } catch (e) {
-        console.error('Failed to load dismissed alerts:', e)
+        // Ignore parsing errors
       }
     }
   }, [])
@@ -410,17 +400,9 @@ export default function ModernDashboard({ onProjectClick, onProjectEdit }: Moder
   const loadProfitabilityAlerts = async () => {
     setAlertsLoading(true)
     try {
-      console.log('Loading profitability alerts...')
       const data = await ProjectAPI.getProfitabilityAlerts()
-      console.log('Profitability alerts loaded:', data)
-      console.log('Number of alerts:', data.alerts?.length || 0)
       setProfitabilityAlerts(data.alerts || [])
     } catch (err: any) {
-      console.error('Failed to load profitability alerts:', err)
-      console.error('Error details:', err.response?.data || err.message)
-      console.error('Error status:', err.response?.status)
-      console.error('Error statusText:', err.response?.statusText)
-      console.error('Full error:', JSON.stringify(err, null, 2))
       setProfitabilityAlerts([])
     } finally {
       setAlertsLoading(false)
@@ -530,16 +512,6 @@ export default function ModernDashboard({ onProjectClick, onProjectEdit }: Moder
   // Filter out dismissed alerts
   const visibleAlerts = profitabilityAlerts.filter(alert => !dismissedAlerts.has(alert.id))
 
-  // Debug logging
-  console.log('=== PROFITABILITY ALERTS DEBUG ===')
-  console.log('Total alerts from API:', profitabilityAlerts.length)
-  console.log('Dismissed alerts:', Array.from(dismissedAlerts))
-  console.log('Visible alerts (after filtering):', visibleAlerts.length)
-  console.log('Alerts loading:', alertsLoading)
-  console.log('Profitability alerts data:', profitabilityAlerts)
-  console.log('Visible alerts data:', visibleAlerts)
-  console.log('=================================')
-
   // Helper to flatten projects with children
   const getAllProjectsFlat = (projects: ProjectWithFinance[]): ProjectWithFinance[] => {
     const result: ProjectWithFinance[] = []
@@ -556,11 +528,6 @@ export default function ModernDashboard({ onProjectClick, onProjectEdit }: Moder
   }
 
   const allProjectsFlat = dashboardData ? getAllProjectsFlat(dashboardData.projects) : []
-
-  // Debug logging
-  console.log('ModernDashboard - dashboardData:', dashboardData)
-  console.log('ModernDashboard - alerts:', dashboardData?.alerts)
-  console.log('ModernDashboard - projects:', allProjectsFlat.length)
 
   return (
     <div className="space-y-8">

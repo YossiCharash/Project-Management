@@ -118,8 +118,6 @@ async def list_supplier_documents(supplier_id: int, db: DBSessionDep, user = Dep
     
     result = []
     
-    print(f"[INFO] Found {len(docs)} documents in database for supplier {supplier_id}")
-    
     for doc in docs:
         original_path = doc.file_path
         actual_file_path = None
@@ -127,7 +125,6 @@ async def list_supplier_documents(supplier_id: int, db: DBSessionDep, user = Dep
         # Strategy 1: Check if file exists at stored path (absolute)
         if os.path.exists(doc.file_path):
             actual_file_path = doc.file_path
-            print(f"[DEBUG] Document {doc.id}: Found at stored path: {doc.file_path}")
         
         # Strategy 2: If not found, try to resolve relative paths
         elif not os.path.isabs(doc.file_path):
@@ -147,14 +144,12 @@ async def list_supplier_documents(supplier_id: int, db: DBSessionDep, user = Dep
             for possible_path in possible_paths:
                 if os.path.exists(possible_path):
                     actual_file_path = possible_path
-                    print(f"[DEBUG] Document {doc.id}: Found at alternative path: {possible_path}")
                     # Update the database record with correct path
                     try:
                         doc.file_path = actual_file_path
                         await SupplierDocumentRepository(db).update(doc)
-                        print(f"[DEBUG] Updated document {doc.id} path in database")
-                    except Exception as e:
-                        print(f"[WARNING] Could not update document path in DB: {e}")
+                    except Exception:
+                        pass
                     break
         
         # Strategy 3: If still not found, check if filename exists in supplier directories
@@ -164,19 +159,16 @@ async def list_supplier_documents(supplier_id: int, db: DBSessionDep, user = Dep
             possible_path = os.path.join(supplier_specific_dir, filename)
             if os.path.exists(possible_path):
                 actual_file_path = possible_path
-                print(f"[DEBUG] Document {doc.id}: Found by filename in supplier name dir: {possible_path}")
                 # Update the database record
                 try:
                     doc.file_path = actual_file_path
                     await SupplierDocumentRepository(db).update(doc)
-                    print(f"[DEBUG] Updated document {doc.id} path in database")
-                except Exception as e:
-                    print(f"[WARNING] Could not update document path in DB: {e}")
+                except Exception:
+                    pass
             # Check ID-based directory (old format)
             elif os.path.exists(os.path.join(supplier_id_dir, filename)):
                 possible_path = os.path.join(supplier_id_dir, filename)
                 actual_file_path = possible_path
-                print(f"[DEBUG] Document {doc.id}: Found by filename in supplier ID dir: {possible_path}")
                 # Move to supplier name-based directory and update DB
                 try:
                     new_path = os.path.join(supplier_specific_dir, filename)
@@ -185,14 +177,12 @@ async def list_supplier_documents(supplier_id: int, db: DBSessionDep, user = Dep
                     doc.file_path = new_path
                     await SupplierDocumentRepository(db).update(doc)
                     actual_file_path = new_path
-                    print(f"[DEBUG] Moved and updated document {doc.id} to supplier name-based directory")
-                except Exception as e:
-                    print(f"[WARNING] Could not move/update document: {e}")
+                except Exception:
+                    pass
             # Fallback to old suppliers directory
             elif os.path.exists(os.path.join(suppliers_dir, filename)):
                 possible_path = os.path.join(suppliers_dir, filename)
                 actual_file_path = possible_path
-                print(f"[DEBUG] Document {doc.id}: Found by filename in old suppliers dir: {possible_path}")
                 # Move to supplier name-based directory and update DB
                 try:
                     new_path = os.path.join(supplier_specific_dir, filename)
@@ -201,27 +191,20 @@ async def list_supplier_documents(supplier_id: int, db: DBSessionDep, user = Dep
                     doc.file_path = new_path
                     await SupplierDocumentRepository(db).update(doc)
                     actual_file_path = new_path
-                    print(f"[DEBUG] Moved and updated document {doc.id} to supplier name-based directory")
-                except Exception as e:
-                    print(f"[WARNING] Could not move/update document: {e}")
+                except Exception:
+                    pass
         
         # If file still not found, skip this document (don't show it)
         if not actual_file_path:
-            print(f"[WARNING] Document {doc.id}: File not found at any location, skipping.")
-            print(f"[WARNING] Original path in DB: {original_path}")
-            print(f"[WARNING] Uploads dir: {uploads_dir}")
-            print(f"[WARNING] Suppliers dir: {suppliers_dir}")
             # Skip this document - don't add it to the result
             continue
         
         # Verify file actually exists before adding to result
         if not os.path.exists(actual_file_path):
-            print(f"[WARNING] Document {doc.id}: File path found but file doesn't exist: {actual_file_path}, skipping.")
             continue
         
         # Final verification: make absolutely sure file exists
         if not os.path.isfile(actual_file_path):
-            print(f"[WARNING] Document {doc.id}: Path exists but is not a file: {actual_file_path}, skipping.")
             continue
         
         # Get relative path from uploads directory

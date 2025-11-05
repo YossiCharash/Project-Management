@@ -75,7 +75,6 @@ export default function ProjectDetail() {
       const { data } = await api.get(`/transactions/project/${id}`)
       setTxs(data || [])
     } catch (err: any) {
-      console.error('Error loading transactions:', err)
       setError('שגיאה בטעינת העסקאות')
       setTxs([])
     } finally {
@@ -88,27 +87,19 @@ export default function ProjectDetail() {
 
     setChartsLoading(true)
     try {
-      console.log('Loading charts data for project:', id)
       // Load expense categories, transactions, and budgets for charts
       const [categoriesData, transactionsData, budgetsData] = await Promise.all([
         ReportAPI.getProjectExpenseCategories(parseInt(id)),
         ReportAPI.getProjectTransactions(parseInt(id)),
-        BudgetAPI.getProjectBudgets(parseInt(id)).catch((err) => {
-          console.warn('Error loading budgets (might not exist):', err)
+        BudgetAPI.getProjectBudgets(parseInt(id)).catch(() => {
           return []
         }) // Don't fail if no budgets
       ])
-      
-      console.log('Loaded budgets:', budgetsData)
-      console.log('Number of budgets:', budgetsData?.length || 0)
-      console.log('Loaded transactions:', transactionsData)
-      console.log('Sample transaction supplier_id:', transactionsData?.[0]?.supplier_id)
       
       setExpenseCategories(categoriesData)
       setTxs(transactionsData)
       setProjectBudgets(budgetsData || [])
     } catch (err: any) {
-      console.error('Error loading charts data:', err)
       setError('שגיאה בטעינת נתוני הגרפים')
     } finally {
       setChartsLoading(false)
@@ -127,7 +118,6 @@ export default function ProjectDetail() {
         setProjectImageUrl(`${baseUrl}/uploads/${data.image_url}`)
       }
     } catch (err: any) {
-      console.error('Error loading project info:', err)
       setProjectName(`פרויקט ${id}`)
     }
   }
@@ -513,13 +503,9 @@ export default function ProjectDetail() {
                       {(() => {
                         const supplierId = t.supplier_id
                         if (!supplierId) {
-                          console.log('Transaction', t.id, 'has no supplier_id')
                           return '-'
                         }
                         const supplier = suppliers.find(s => s.id === supplierId)
-                        if (!supplier) {
-                          console.log('Supplier not found for id:', supplierId, 'Available suppliers:', suppliers.map(s => s.id))
-                        }
                         return supplier?.name ?? `[ספק ${supplierId}]`
                       })()}
                     </td>
@@ -548,7 +534,6 @@ export default function ProjectDetail() {
                               const { data } = await api.get(`/transactions/${t.id}/documents`)
                               setTransactionDocuments(data || [])
                             } catch (err: any) {
-                              console.error('Error loading documents:', err)
                               setTransactionDocuments([])
                             } finally {
                               setDocumentsLoading(false)
@@ -593,7 +578,6 @@ export default function ProjectDetail() {
                                       })
                                     }
                                   } catch (err: any) {
-                                    console.error(`Error uploading file ${file.name}:`, err)
                                     errorCount++
                                   }
                                 }
@@ -1131,7 +1115,7 @@ export default function ProjectDetail() {
                           })
                           updateCount++
                         } catch (err: any) {
-                          console.error(`Error updating description for doc ${doc.id}:`, err)
+                          // Ignore errors
                         }
                       }
                     }
@@ -1146,7 +1130,6 @@ export default function ProjectDetail() {
                       setTransactionDocuments(data || [])
                     }
                   } catch (err: any) {
-                    console.error('Error saving descriptions:', err)
                     alert('שגיאה בשמירת התיאורים')
                   }
                 }}

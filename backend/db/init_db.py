@@ -59,8 +59,6 @@ async def ensure_oauth_columns(engine: AsyncEngine):
             return
 
         if not oauth_provider_exists:
-            print("[DB] Adding OAuth columns to users table...")
-            
             # Add oauth_provider column
             await conn.execute(text("""
                 ALTER TABLE users 
@@ -100,8 +98,6 @@ async def ensure_oauth_columns(engine: AsyncEngine):
             await conn.execute(text("""
                 CREATE INDEX IF NOT EXISTS ix_users_oauth_id ON users(oauth_id);
             """))
-            
-            print("[DB] OAuth columns added successfully!")
 
 
 async def init_database(engine: AsyncEngine):
@@ -110,16 +106,12 @@ async def init_database(engine: AsyncEngine):
     This should be called on application startup
     """
     # First, create enums
-    print("[DB] Creating enums...")
     await create_enums(engine)
     
     # Then, create all tables (this will also create indexes and foreign keys)
-    print("[DB] Creating tables...")
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     
     # Ensure OAuth columns exist (for existing databases)
     await ensure_oauth_columns(engine)
-    
-    print("[DB] Database initialization completed successfully!")
 

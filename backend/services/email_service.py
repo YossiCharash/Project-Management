@@ -68,8 +68,7 @@ class EmailService:
                 """
 
             return await self._send_email(email, subject, body)
-        except Exception as e:
-            print(f"Error sending verification email: {e}")
+        except Exception:
             return False
 
     async def send_admin_invite_email(self, email: str, full_name: str, invite_code: str) -> bool:
@@ -93,8 +92,7 @@ class EmailService:
             """
 
             return await self._send_email(email, subject, body)
-        except Exception as e:
-            print(f"Error sending invite email: {e}")
+        except Exception:
             return False
 
     async def send_member_invite_email(self, email: str, full_name: str, registration_link: str, expires_days: int) -> bool:
@@ -118,20 +116,14 @@ class EmailService:
             """
 
             return await self._send_email(email, subject, body)
-        except Exception as e:
-            print(f"Error sending member invite email: {e}")
+        except Exception:
             return False
 
     async def _send_email(self, to_email: str, subject: str, body: str) -> bool:
         """Send email using SMTP"""
         try:
-            # If no SMTP credentials, just print to console (for development)
+            # If no SMTP credentials, return True (for development)
             if not self.smtp_username or not self.smtp_password:
-                print(f"\n{'='*50}")
-                print(f"EMAIL TO: {to_email}")
-                print(f"SUBJECT: {subject}")
-                print(f"BODY:\n{body}")
-                print(f"{'='*50}\n")
                 return True
 
             # Create message
@@ -151,6 +143,5 @@ class EmailService:
                 server.sendmail(self.from_email, to_email, message.as_string())
 
             return True
-        except Exception as e:
-            print(f"Error sending email: {e}")
+        except Exception:
             return False

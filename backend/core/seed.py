@@ -26,7 +26,6 @@ async def create_super_admin() -> User:
             # Check if super admin already exists
             existing_admin = await user_repo.get_by_email(settings.SUPER_ADMIN_EMAIL)
             if existing_admin:
-                print(f"Super admin already exists: {existing_admin.email}")
                 return existing_admin
             
             # Create super admin
@@ -41,11 +40,9 @@ async def create_super_admin() -> User:
             )
             
             created_admin = await user_repo.create(super_admin)
-            print(f"Super admin created: {created_admin.email}")
             return created_admin
             
-        except Exception as e:
-            print(f"Error creating super admin: {e}")
+        except Exception:
             return None
         finally:
             await db.close()
@@ -53,14 +50,8 @@ async def create_super_admin() -> User:
 
 async def seed_database():
     """Seed the database with initial data"""
-    print("Starting database seeding...")
-    
     # Create super admin
-    admin = await create_super_admin()
-    if admin:
-        print("Database seeding completed successfully")
-    else:
-        print("Database seeding skipped - super admin already exists")
+    await create_super_admin()
 
 
 if __name__ == "__main__":

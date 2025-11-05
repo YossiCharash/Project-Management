@@ -61,10 +61,6 @@ class RecurringTransactionService:
         """Generate transactions for a specific date based on active templates"""
         templates = await self.recurring_repo.get_templates_to_generate(target_date)
         generated_transactions = []
-        
-        # Debug logging
-        if len(templates) > 0:
-            print(f"[DEBUG] Found {len(templates)} templates for date {target_date}")
 
         for template in templates:
             try:
@@ -89,13 +85,11 @@ class RecurringTransactionService:
                         tx_query = select(Transaction).where(Transaction.id == existing_row[0])
                         tx_res = await self.db.execute(tx_query)
                         existing_transaction = tx_res.scalar_one_or_none()
-                except Exception as sql_error:
+                except Exception:
                     # If raw SQL fails, the column might not exist in DB - skip the check
-                    print(f"[WARNING] Could not check for existing transaction (column may not exist): {str(sql_error)}")
                     existing_transaction = None
 
                 if existing_transaction:
-                    print(f"[DEBUG] Transaction already exists for template {template.id} on {target_date}")
                     continue  # Skip if already generated
 
                 # Check end conditions
@@ -104,7 +98,6 @@ class RecurringTransactionService:
                 
                 if end_type_str == "On Date" and template.end_date and target_date > template.end_date:
                     should_create = False
-                    print(f"[DEBUG] Template {template.id} skipped: end_date {template.end_date} < target_date {target_date}")
                 
                 if not should_create:
                     continue
@@ -128,15 +121,12 @@ class RecurringTransactionService:
                     "is_generated": True
                 }
 
-                print(f"[DEBUG] Creating transaction for template {template.id}: {transaction_data}")
                 try:
                     # Try to create transaction - handle missing columns gracefully
                     transaction = Transaction(**transaction_data)
                     self.db.add(transaction)
                     generated_transactions.append(transaction)
-                    print(f"[DEBUG] Created transaction: {transaction.description} - {transaction.amount} on {transaction.tx_date}")
-                except Exception as create_error:
-                    print(f"[ERROR] Failed to create Transaction object: {str(create_error)}")
+                except Exception:
                     # Try without recurring fields if they cause issues
                     try:
                         transaction_data_fallback = {k: v for k, v in transaction_data.items() 
@@ -149,14 +139,9 @@ class RecurringTransactionService:
                             transaction.is_generated = transaction_data.get('is_generated', False)
                         self.db.add(transaction)
                         generated_transactions.append(transaction)
-                        print(f"[DEBUG] Created transaction with fallback method")
-                    except Exception as fallback_error:
-                        print(f"[ERROR] Fallback also failed: {str(fallback_error)}")
+                    except Exception:
                         raise
-            except Exception as e:
-                import traceback
-                print(f"[ERROR] Failed to create transaction for template {template.id}: {str(e)}")
-                print(f"[ERROR] Traceback: {traceback.format_exc()}")
+            except Exception:
                 raise
 
         if generated_transactions:
@@ -175,10 +160,6 @@ class RecurringTransactionService:
             select(RecurringTransactionTemplate).where(RecurringTransactionTemplate.is_active == True)
         )
         all_templates = list(all_active.scalars().all())
-        print(f"[DEBUG] Total active templates: {len(all_templates)}")
-        
-        for t in all_templates:
-            print(f"[DEBUG] Template {t.id}: project_id={t.project_id}, day_of_month={t.day_of_month}, start_date={t.start_date}, end_type={t.end_type}, description={t.description}")
         
         # Get the number of days in the month
         if month == 12:
@@ -187,8 +168,6 @@ class RecurringTransactionService:
             next_month = date(year, month + 1, 1)
         
         last_day = (next_month - timedelta(days=1)).day
-        
-        print(f"[DEBUG] Generating transactions for {year}-{month:02d} (days 1-{last_day})")
         
         # Generate transactions for each day of the month
         # Also handle cases where day_of_month > last_day (e.g., template for day 31 in February)
@@ -222,9 +201,8 @@ class RecurringTransactionService:
                         tx_query = select(Transaction).where(Transaction.id == existing_row[0])
                         tx_res = await self.db.execute(tx_query)
                         existing = tx_res.scalar_one_or_none()
-                except Exception as sql_error:
+                except Exception:
                     # If raw SQL fails, the column might not exist in DB - skip the check
-                    print(f"[WARNING] Could not check for existing transaction (column may not exist): {str(sql_error)}")
                     existing = None
                 
                 if not existing and template.start_date <= target_date:
@@ -257,9 +235,7 @@ class RecurringTransactionService:
                             transaction = Transaction(**transaction_data)
                             self.db.add(transaction)
                             generated_transactions.append(transaction)
-                            print(f"[DEBUG] Created transaction for day {template.day_of_month} on last day {last_day}: {transaction.description}")
-                        except Exception as create_error:
-                            print(f"[ERROR] Failed to create Transaction for template {template.id}: {str(create_error)}")
+                        except Exception:
                             # Try without recurring fields
                             try:
                                 transaction_data_fallback = {k: v for k, v in transaction_data.items() 
@@ -271,9 +247,7 @@ class RecurringTransactionService:
                                     transaction.is_generated = True
                                 self.db.add(transaction)
                                 generated_transactions.append(transaction)
-                                print(f"[DEBUG] Created transaction with fallback method")
-                            except Exception as fallback_error:
-                                print(f"[ERROR] Fallback also failed: {str(fallback_error)}")
+                            except Exception:
                                 # Don't raise - continue with next template
                                 continue
         
@@ -282,7 +256,6 @@ class RecurringTransactionService:
             for tx in generated_transactions:
                 await self.db.refresh(tx)
         
-        print(f"[DEBUG] Total generated: {len(generated_transactions)} transactions")
         return generated_transactions
 
     async def get_template_transactions(self, template_id: int) -> List[Transaction]:
@@ -307,9 +280,8 @@ class RecurringTransactionService:
                 select(Transaction).where(Transaction.id.in_(tx_ids)).order_by(Transaction.tx_date.desc())
             )
             return list(res.scalars().all())
-        except Exception as e:
+        except Exception:
             # Fallback: try without recurring_template_id filter
-            print(f"[WARNING] Could not query by recurring_template_id: {str(e)}")
             return []
 
     async def update_transaction_instance(self, transaction_id: int, data: RecurringTransactionInstanceUpdate) -> Optional[Transaction]:
