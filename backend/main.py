@@ -7,16 +7,20 @@ import re
 import os
 
 # Import all models to ensure Base.metadata is populated
+# This import ensures all models are registered before create_all is called
 from backend.models import (  # noqa: F401
-    User, Project, Subproject, Transaction, AuditLog, 
-    Supplier, SupplierDocument, AdminInvite, EmailVerification, 
-    GroupCode, RecurringTransactionTemplate
+    User, Project, Subproject, Transaction, AuditLog,
+    Supplier, SupplierDocument, AdminInvite, EmailVerification,
+    GroupCode, RecurringTransactionTemplate, MemberInvite
 )
+# Also import base_models to ensure all models are loaded
+from backend.db import base_models  # noqa: F401
 
 from backend.api.v1.router import api_router
 from backend.core.config import settings
 from backend.db.session import engine
 from backend.db.base import Base
+from backend.db.init_db import init_database
 
 
 def create_app() -> FastAPI:
@@ -49,11 +53,8 @@ def create_app() -> FastAPI:
 
     @app.on_event("startup")
     async def on_startup() -> None:
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-
-        # Import the new models to ensure they're created
-        from backend.models import admin_invite, email_verification, group_code
+        # Initialize database - creates all tables, enums, indexes, and foreign keys
+        await init_database(engine)
 
         # Create super admin from environment variables
         from backend.core.seed import create_super_admin

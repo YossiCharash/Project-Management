@@ -1,9 +1,8 @@
-import { useEffect, useState, ChangeEvent, FormEvent } from 'react'
+import { useEffect, useState, FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAppDispatch, useAppSelector } from '../utils/hooks'
-import { createSupplier, deleteSupplier, fetchSuppliers, updateSupplier, uploadSupplierDocument } from '../store/slices/suppliersSlice'
-import { Eye, Upload, CheckCircle2, AlertCircle } from 'lucide-react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { createSupplier, deleteSupplier, fetchSuppliers, updateSupplier } from '../store/slices/suppliersSlice'
+import { Eye } from 'lucide-react'
 
 export default function Suppliers() {
   const dispatch = useAppDispatch()
@@ -16,11 +15,6 @@ export default function Suppliers() {
   const [annualBudget, setAnnualBudget] = useState<number | ''>('')
   const [formError, setFormError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
-  const [uploading, setUploading] = useState<Record<number, boolean>>({})
-  const [successMessage, setSuccessMessage] = useState<{ fileName: string; supplierId: number } | null>(null)
-  const [uploadError, setUploadError] = useState<{ message: string; supplierId: number } | null>(null)
-  const [uploadModal, setUploadModal] = useState<{ supplierId: number; file: File } | null>(null)
-  const [documentDescription, setDocumentDescription] = useState('')
 
   const [editId, setEditId] = useState<number | null>(null)
 
@@ -60,57 +54,6 @@ export default function Suppliers() {
     if (confirm('למחוק ספק לצמיתות?')) await dispatch(deleteSupplier(id))
   }
 
-  const onFileSelect = (id: number, e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setUploadModal({ supplierId: id, file })
-    setDocumentDescription('')
-    e.target.value = ''
-  }
-
-  const handleUploadConfirm = async () => {
-    if (!uploadModal) return
-    
-    const { supplierId, file } = uploadModal
-    setUploadModal(null)
-    setUploading(prev => ({ ...prev, [supplierId]: true }))
-    setUploadError(null)
-    
-    try {
-      const result = await dispatch(uploadSupplierDocument({ 
-        id: supplierId, 
-        file,
-        description: documentDescription.trim() || undefined
-      }))
-      if (uploadSupplierDocument.fulfilled.match(result)) {
-        setSuccessMessage({ fileName: file.name, supplierId })
-        setTimeout(() => setSuccessMessage(null), 5000)
-        // Refresh suppliers to update the list
-        await dispatch(fetchSuppliers())
-      } else if (uploadSupplierDocument.rejected.match(result)) {
-        setUploadError({ 
-          message: result.payload as string || 'שגיאה בהעלאת הקובץ', 
-          supplierId 
-        })
-        setTimeout(() => setUploadError(null), 5000)
-      }
-    } catch (err: any) {
-      console.error('Upload error:', err)
-      setUploadError({ 
-        message: err.message || 'שגיאה בהעלאת הקובץ', 
-        supplierId 
-      })
-      setTimeout(() => setUploadError(null), 5000)
-    } finally {
-      setUploading(prev => ({ ...prev, [supplierId]: false }))
-      setDocumentDescription('')
-    }
-  }
-
-  const handleUploadCancel = () => {
-    setUploadModal(null)
-    setDocumentDescription('')
-  }
 
   const startEdit = (id: number) => {
     const s = items.find(x=>x.id===id)
@@ -124,57 +67,6 @@ export default function Suppliers() {
 
   return (
     <div className="space-y-4 relative">
-      {/* Success Toast Notification */}
-      <AnimatePresence>
-        {successMessage && (
-          <motion.div
-            initial={{ opacity: 0, y: -50, x: '-50%' }}
-            animate={{ opacity: 1, y: 0, x: '-50%' }}
-            exit={{ opacity: 0, y: -50, x: '-50%' }}
-            className="fixed top-4 left-1/2 z-50 transform -translate-x-1/2"
-          >
-            <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-lg shadow-lg p-4 flex items-center gap-3 min-w-[300px] max-w-md">
-              <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400 flex-shrink-0" />
-              <div className="flex-1">
-                <p className="text-green-800 dark:text-green-200 font-semibold">הקובץ הועלה בהצלחה!</p>
-                <p className="text-green-700 dark:text-green-300 text-sm truncate">{successMessage.fileName}</p>
-              </div>
-              <button
-                onClick={() => setSuccessMessage(null)}
-                className="text-green-600 dark:text-green-400 hover:text-green-800 dark:hover:text-green-200 text-xl leading-none"
-              >
-                ×
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Error Toast Notification */}
-      <AnimatePresence>
-        {uploadError && (
-          <motion.div
-            initial={{ opacity: 0, y: -50, x: '-50%' }}
-            animate={{ opacity: 1, y: 0, x: '-50%' }}
-            exit={{ opacity: 0, y: -50, x: '-50%' }}
-            className="fixed top-20 left-1/2 z-50 transform -translate-x-1/2"
-          >
-            <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg shadow-lg p-4 flex items-center gap-3 min-w-[300px] max-w-md">
-              <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0" />
-              <div className="flex-1">
-                <p className="text-red-800 dark:text-red-200 font-semibold">שגיאה בהעלאת הקובץ</p>
-                <p className="text-red-700 dark:text-red-300 text-sm">{uploadError.message}</p>
-              </div>
-              <button
-                onClick={() => setUploadError(null)}
-                className="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-200 text-xl leading-none"
-              >
-                ×
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       <h1 className="text-2xl font-semibold text-gray-900 dark:text-white">ספקים</h1>
 
@@ -250,34 +142,13 @@ export default function Suppliers() {
                   <td className="p-2 text-gray-900 dark:text-white">{editId===s.id ? <input className="border p-1 bg-white dark:bg-gray-700 text-gray-900 dark:text-white" value={phone} onChange={e=>setPhone(e.target.value)} /> : (s.phone ?? '')}</td>
                   <td className="p-2 text-gray-900 dark:text-white">{editId===s.id ? <input className="border p-1 bg-white dark:bg-gray-700 text-gray-900 dark:text-white" type="number" value={annualBudget} onChange={e=>setAnnualBudget(e.target.value === '' ? '' : Number(e.target.value))} /> : (s.annual_budget ?? '')}</td>
                   <td className="p-2">
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => navigate(`/suppliers/${s.id}/documents`)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors text-sm font-medium"
-                      >
-                        <Eye className="w-4 h-4" />
-                        צפה במסמכים
-                      </button>
-                      <label className="flex items-center gap-1.5 px-3 py-1.5 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors text-sm font-medium cursor-pointer">
-                        {uploading[s.id] ? (
-                          <>
-                            <div className="w-4 h-4 border-2 border-green-600 border-t-transparent rounded-full animate-spin" />
-                            מעלה...
-                          </>
-                        ) : (
-                          <>
-                            <Upload className="w-4 h-4" />
-                            העלה מסמך
-                          </>
-                        )}
-                        <input 
-                          type="file" 
-                          className="hidden" 
-                          onChange={(e)=>onFileSelect(s.id, e)}
-                          disabled={uploading[s.id]}
-                        />
-                      </label>
-                    </div>
+                    <button
+                      onClick={() => navigate(`/suppliers/${s.id}/documents`)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors text-sm font-medium"
+                    >
+                      <Eye className="w-4 h-4" />
+                      צפה במסמכים
+                    </button>
                   </td>
                   <td className="p-2 text-right">
                     {editId===s.id ? (
@@ -300,88 +171,6 @@ export default function Suppliers() {
         {error && <div className="text-red-600 text-sm mt-2">{error}</div>}
       </div>
 
-      {/* Upload Document Modal */}
-      <AnimatePresence>
-        {uploadModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-            onClick={handleUploadCancel}
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full p-6"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
-                  העלאת מסמך
-                </h3>
-                <button
-                  onClick={handleUploadCancel}
-                  className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 text-2xl leading-none"
-                >
-                  ×
-                </button>
-              </div>
-
-              <div className="space-y-4">
-                <div>
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">קובץ נבחר:</p>
-                  <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 flex items-center gap-2">
-                    <Upload className="w-5 h-5 text-gray-500 dark:text-gray-400" />
-                    <span className="text-sm font-medium text-gray-900 dark:text-white truncate flex-1">
-                      {uploadModal.file.name}
-                    </span>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    תיאור המסמך (אופציונלי)
-                  </label>
-                  <input
-                    type="text"
-                    value={documentDescription}
-                    onChange={(e) => setDocumentDescription(e.target.value)}
-                    placeholder="הזן תיאור למסמך..."
-                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    autoFocus
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        handleUploadConfirm()
-                      }
-                    }}
-                  />
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    התיאור יוצג במקום שם הקובץ
-                  </p>
-                </div>
-
-                <div className="flex justify-end gap-3 pt-4">
-                  <button
-                    onClick={handleUploadCancel}
-                    className="px-4 py-2 text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
-                  >
-                    ביטול
-                  </button>
-                  <button
-                    onClick={handleUploadConfirm}
-                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2"
-                  >
-                    <Upload className="w-4 h-4" />
-                    העלה
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   )
 }

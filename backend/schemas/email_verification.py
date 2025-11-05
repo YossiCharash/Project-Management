@@ -11,8 +11,9 @@ class EmailVerificationRequest(BaseModel):
 
 
 class EmailVerificationConfirm(BaseModel):
-    email: EmailStr
-    verification_code: str = Field(min_length=6, max_length=6)
+    email: Optional[EmailStr] = None  # Optional when using token
+    verification_code: Optional[str] = Field(None, min_length=6, max_length=6)  # For code-based verification
+    verification_token: Optional[str] = None  # For link-based verification
     password: str = Field(min_length=8, max_length=128)
 
 

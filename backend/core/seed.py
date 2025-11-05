@@ -8,6 +8,13 @@ from backend.models.user import User, UserRole
 from backend.core.security import hash_password
 from backend.core.config import settings
 
+# Import all models to ensure SQLAlchemy relationships are properly configured
+from backend.models import (  # noqa: F401
+    Project, Subproject, Transaction, AuditLog, 
+    Supplier, SupplierDocument, AdminInvite, EmailVerification, 
+    GroupCode, RecurringTransactionTemplate
+)
+
 
 async def create_super_admin() -> User:
     """Create super admin user from environment variables"""
@@ -29,7 +36,8 @@ async def create_super_admin() -> User:
                 password_hash=hash_password(settings.SUPER_ADMIN_PASSWORD),
                 role=UserRole.ADMIN.value,
                 is_active=True,
-                group_id=None  # Super admin doesn't need group_id
+                group_id=None,  # Super admin doesn't need group_id
+                email_verified=True  # Super admin email is considered verified
             )
             
             created_admin = await user_repo.create(super_admin)

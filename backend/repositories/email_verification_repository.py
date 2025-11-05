@@ -12,6 +12,11 @@ class EmailVerificationRepository:
         res = await self.db.execute(select(EmailVerification).where(EmailVerification.verification_code == verification_code))
         return res.scalar_one_or_none()
 
+    async def get_by_token(self, verification_token: str) -> EmailVerification | None:
+        """Get verification by token"""
+        res = await self.db.execute(select(EmailVerification).where(EmailVerification.verification_token == verification_token))
+        return res.scalar_one_or_none()
+
     async def get_by_email_and_type(self, email: str, verification_type: str) -> EmailVerification | None:
         """Get verification by email and type"""
         res = await self.db.execute(

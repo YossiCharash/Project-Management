@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 from datetime import datetime, date
 from enum import Enum
 from sqlalchemy import String, Date, DateTime, ForeignKey, Numeric, Text, Boolean, Enum as SAEnum, Integer
@@ -30,6 +30,10 @@ class RecurringTransactionTemplate(Base):
     amount: Mapped[float] = mapped_column(Numeric(14, 2))
     category: Mapped[str | None] = mapped_column(Text, default=None)
     notes: Mapped[str | None] = mapped_column(Text, default=None)
+    
+    # Supplier relationship
+    supplier_id: Mapped[int] = mapped_column(ForeignKey("suppliers.id"), nullable=False, index=True)
+    supplier: Mapped["Supplier"] = relationship("Supplier", lazy="selectin")
 
     # Recurring settings
     frequency: Mapped[str] = mapped_column(SAEnum(RecurringFrequency, name="recurring_frequency", create_constraint=True, native_enum=True), default=RecurringFrequency.MONTHLY.value)
@@ -48,5 +52,7 @@ class RecurringTransactionTemplate(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Note: No relationship to generated_transactions defined here`n    # Access generated transactions via query:`n    # select(Transaction).where(Transaction.recurring_template_id == self.id)`n    # The relationship is only one-way from Transaction.recurring_template
-
+    # Note: No relationship to generated_transactions defined here
+    # Access generated transactions via query: 
+    # select(Transaction).where(Transaction.recurring_template_id == self.id)
+    # The relationship is only one-way from Transaction.recurring_template

@@ -14,7 +14,14 @@ class AuthService:
 
     async def authenticate(self, email: str, password: str) -> str:
         user = await self.users.get_by_email(email)
-        if not user or not verify_password(password, user.password_hash):
+        if not user:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+        if not user.password_hash:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED, 
+                detail="This account uses OAuth login. Please use Google to sign in."
+            )
+        if not verify_password(password, user.password_hash):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
         if not user.is_active:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User is inactive")
@@ -23,32 +30,33 @@ class AuthService:
     async def authenticate_user(self, email: str, password: str) -> User | None:
         """Authenticate user and return user object if valid"""
         user = await self.users.get_by_email(email)
-        if not user or not verify_password(password, user.password_hash):
+        if not user or not verify_password(password, user.password_hash):       
             return None
         if not user.is_active:
             return None
         return user
 
-    async def register(self, email: str, full_name: str, password: str, role: str = UserRole.MEMBER.value, group_id: int | None = None) -> User:
+    async def register(self, email: str, full_name: str, password: str, role: str = UserRole.MEMBER.value, group_id: int | None = None, email_verified: bool = False) -> User:                                                                  
         existing = await self.users.get_by_email(email)
         if existing:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")                                                     
         user = User(
-            email=email, 
+            email=email,
             full_name=full_name, 
-            password_hash=hash_password(password), 
+            password_hash=hash_password(password),
             role=role,
-            group_id=group_id
+            group_id=group_id,
+            email_verified=email_verified
         )
         return await self.users.create(user)
 
-    async def register_admin(self, email: str, full_name: str, password: str) -> User:
-        """Register a new admin user - only accessible by existing admin or secret key"""
-        return await self.register(email, full_name, password, UserRole.ADMIN.value)
+    async def register_admin(self, email: str, full_name: str, password: str, email_verified: bool = False) -> User:
+        """Register a new admin user - only accessible by existing admin or secret key"""                                                                       
+        return await self.register(email, full_name, password, UserRole.ADMIN.value, email_verified=email_verified)
 
-    async def register_member(self, email: str, full_name: str, password: str, group_id: int) -> User:
+    async def register_member(self, email: str, full_name: str, password: str, group_id: int, email_verified: bool = False) -> User:                            
         """Register a new member user - only accessible by admin"""
-        return await self.register(email, full_name, password, UserRole.MEMBER.value, group_id)
+        return await self.register(email, full_name, password, UserRole.MEMBER.value, group_id, email_verified=email_verified)
 
     async def get_user_profile(self, user_id: int) -> User:
         """Get user profile by ID"""

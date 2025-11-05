@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 import os
 import re
 from uuid import uuid4
@@ -76,41 +76,137 @@ async def upload_receipt(tx_id: int, db: DBSessionDep, file: UploadFile = File(.
     return await TransactionService(db).attach_file(tx, file)
 
 
-@router.post("/{tx_id}/supplier-document", response_model=dict)
-async def upload_supplier_document(tx_id: int, db: DBSessionDep, file: UploadFile = File(...), user = Depends(get_current_user)):
-    """Upload document for transaction with supplier - accessible to all authenticated users"""
+@router.get("/{tx_id}/documents", response_model=list[dict])
+async def get_transaction_documents(tx_id: int, db: DBSessionDep, user = Depends(get_current_user)):
+    """Get all documents for a transaction - accessible to all authenticated users"""
+    from sqlalchemy import select, and_
+    
     tx = await TransactionRepository(db).get_by_id(tx_id)
     if not tx:
         raise HTTPException(status_code=404, detail="Transaction not found")
     
-    if not tx.supplier_id:
-        raise HTTPException(status_code=400, detail="Transaction must have a supplier to upload supplier documents")
+    # Get all documents for this transaction
+    docs_query = select(SupplierDocument).where(SupplierDocument.transaction_id == tx_id)
+    docs_result = await db.execute(docs_query)
+    docs = docs_result.scalars().all()
     
-    supplier = await SupplierRepository(db).get(tx.supplier_id)
-    if not supplier:
-        raise HTTPException(status_code=404, detail="Supplier not found")
+    uploads_dir = get_uploads_dir()
+    result = []
+    
+    for doc in docs:
+        # Get relative path from uploads directory
+        if os.path.isabs(doc.file_path):
+            rel_path = os.path.relpath(doc.file_path, uploads_dir).replace('\\', '/')
+        else:
+            rel_path = doc.file_path.replace('\\', '/').lstrip('./')
+        
+        result.append({
+            "id": doc.id,
+            "supplier_id": doc.supplier_id,
+            "transaction_id": doc.transaction_id,
+            "file_path": f"/uploads/{rel_path}",
+            "description": doc.description,
+            "uploaded_at": doc.uploaded_at.isoformat() if doc.uploaded_at else None
+        })
+    
+    return result
+
+
+@router.put("/{tx_id}/documents/{doc_id}", response_model=dict)
+async def update_transaction_document(
+    tx_id: int, 
+    doc_id: int, 
+    db: DBSessionDep, 
+    description: str | None = Form(None),
+    user = Depends(get_current_user)
+):
+    """Update document description for a transaction - accessible to all authenticated users"""
+    from sqlalchemy import select, and_
+    
+    # Verify transaction exists
+    tx = await TransactionRepository(db).get_by_id(tx_id)
+    if not tx:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    
+    # Get the document
+    docs_query = select(SupplierDocument).where(
+        and_(
+            SupplierDocument.id == doc_id,
+            SupplierDocument.transaction_id == tx_id
+        )
+    )
+    docs_result = await db.execute(docs_query)
+    doc = docs_result.scalar_one_or_none()
+    
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    # Update description
+    doc.description = description.strip() if description and description.strip() else None
+    await SupplierDocumentRepository(db).update(doc)
+    
+    uploads_dir = get_uploads_dir()
+    if os.path.isabs(doc.file_path):
+        rel_path = os.path.relpath(doc.file_path, uploads_dir).replace('\\', '/')
+    else:
+        rel_path = doc.file_path.replace('\\', '/').lstrip('./')
+    
+    return {
+        "id": doc.id,
+        "transaction_id": doc.transaction_id,
+        "description": doc.description,
+        "file_path": f"/uploads/{rel_path}"
+    }
+
+
+@router.post("/{tx_id}/supplier-document", response_model=dict)
+async def upload_supplier_document(tx_id: int, db: DBSessionDep, file: UploadFile = File(...), user = Depends(get_current_user)):
+    """Upload document for transaction - accessible to all authenticated users"""
+    tx = await TransactionRepository(db).get_by_id(tx_id)
+    if not tx:
+        raise HTTPException(status_code=404, detail="Transaction not found")
     
     # Save file
     uploads_dir = get_uploads_dir()
     suppliers_dir = os.path.join(uploads_dir, 'suppliers')
-    # Create directory for this specific supplier using supplier name
-    supplier_name_sanitized = sanitize_filename(supplier.name)
-    supplier_specific_dir = os.path.join(suppliers_dir, supplier_name_sanitized)
-    os.makedirs(supplier_specific_dir, exist_ok=True)
     
-    ext = os.path.splitext(file.filename or "")[1]
-    path = os.path.join(supplier_specific_dir, f"{uuid4().hex}{ext}")
+    # If transaction has supplier, use supplier directory structure
+    if tx.supplier_id:
+        supplier = await SupplierRepository(db).get(tx.supplier_id)
+        if not supplier:
+            raise HTTPException(status_code=404, detail="Supplier not found")
+        # Create directory for this specific supplier using supplier name
+        supplier_name_sanitized = sanitize_filename(supplier.name)
+        supplier_specific_dir = os.path.join(suppliers_dir, supplier_name_sanitized)
+        os.makedirs(supplier_specific_dir, exist_ok=True)
+        ext = os.path.splitext(file.filename or "")[1]
+        path = os.path.join(supplier_specific_dir, f"{uuid4().hex}{ext}")
+        supplier_id = tx.supplier_id
+    else:
+        # If no supplier, use a generic transactions directory
+        transactions_dir = os.path.join(uploads_dir, 'transactions')
+        os.makedirs(transactions_dir, exist_ok=True)
+        ext = os.path.splitext(file.filename or "")[1]
+        path = os.path.join(transactions_dir, f"{uuid4().hex}{ext}")
+        supplier_id = None
+    
     content = await file.read()
     with open(path, 'wb') as f:
         f.write(content)
     
-    # Create supplier document linked to transaction
-    doc = SupplierDocument(supplier_id=tx.supplier_id, transaction_id=tx_id, file_path=path)
+    # Create supplier document linked to transaction (supplier_id can be None)
+    doc = SupplierDocument(supplier_id=supplier_id, transaction_id=tx_id, file_path=path)
     await SupplierDocumentRepository(db).create(doc)
     
     # Return relative path for frontend
     rel_path = os.path.relpath(path, uploads_dir).replace('\\', '/')
-    return {"file_path": f"/uploads/{rel_path}", "supplier_id": tx.supplier_id, "transaction_id": tx_id}
+    return {
+        "id": doc.id,
+        "file_path": f"/uploads/{rel_path}", 
+        "supplier_id": supplier_id, 
+        "transaction_id": tx_id,
+        "description": doc.description
+    }
 
 
 @router.put("/{tx_id}", response_model=TransactionOut)

@@ -35,6 +35,154 @@ async def list_projects(db: DBSessionDep, include_archived: bool = Query(False),
     """List projects - accessible to all authenticated users"""
     return await ProjectRepository(db).list(include_archived=include_archived, only_archived=only_archived)
 
+@router.get("/profitability-alerts")
+async def get_profitability_alerts(
+    db: DBSessionDep,
+    user = Depends(get_current_user)
+):
+    """
+    Get projects and sub-projects with profitability issues based on last 6 months of data.
+    Returns projects with profit margin <= -10% (loss-making projects).
+    """
+    print(f"[DEBUG] profitability-alerts endpoint called, user: {user.id if user else 'None'}")
+    try:
+        from sqlalchemy import select, and_
+        from backend.models.project import Project
+        from backend.models.transaction import Transaction
+        from datetime import timedelta
+        
+        # Calculate date 6 months ago
+        today = date.today()
+        six_months_ago = today - timedelta(days=180)
+        
+        print(f"[DEBUG] Calculating profitability alerts for period: {six_months_ago} to {today}")
+        
+        # Get all projects (both active and inactive) - we'll check transactions for all
+        projects_result = await db.execute(
+            select(Project)
+        )
+        all_projects = projects_result.scalars().all()
+        
+        print(f"[DEBUG] Found {len(all_projects)} total projects")
+        
+        # Log active status for debugging
+        active_projects = [p for p in all_projects if p.is_active]
+        inactive_projects = [p for p in all_projects if not p.is_active]
+        print(f"[DEBUG] Active projects: {len(active_projects)}, Inactive projects: {len(inactive_projects)}")
+        
+        alerts = []
+        
+        for project in all_projects:
+            # Get transactions for the last 6 months
+            transactions_query = select(Transaction).where(
+                and_(
+                    Transaction.project_id == project.id,
+                    Transaction.tx_date >= six_months_ago,
+                    Transaction.tx_date <= today
+                )
+            )
+            transactions_result = await db.execute(transactions_query)
+            transactions = transactions_result.scalars().all()
+            
+            print(f"[DEBUG] Project {project.id} ({project.name}): {len(transactions)} transactions in last 6 months")
+            
+            # Log transaction details for debugging
+            if len(transactions) > 0:
+                print(f"[DEBUG] Project {project.id} transaction details:")
+                for t in transactions[:5]:  # Show first 5 transactions
+                    print(f"  - Date: {t.tx_date}, Type: {t.type}, Amount: {t.amount}")
+                if len(transactions) > 5:
+                    print(f"  ... and {len(transactions) - 5} more transactions")
+            
+            # Calculate income and expenses
+            income = sum(float(t.amount) for t in transactions if t.type == 'Income')
+            expense = sum(float(t.amount) for t in transactions if t.type == 'Expense')
+            profit = income - expense
+            
+            # Also check all transactions regardless of date for debugging
+            all_transactions_query = select(Transaction).where(Transaction.project_id == project.id)
+            all_transactions_result = await db.execute(all_transactions_query)
+            all_transactions = all_transactions_result.scalars().all()
+            print(f"[DEBUG] Project {project.id}: Total transactions in DB: {len(all_transactions)}")
+            
+            print(f"[DEBUG] Project {project.id}: income={income}, expense={expense}, profit={profit}")
+            
+            # If no transactions in the last 6 months, check if there are any transactions at all
+            if len(transactions) == 0 and len(all_transactions) > 0:
+                print(f"[DEBUG] Project {project.id}: No transactions in last 6 months, but has {len(all_transactions)} total transactions")
+                # Check if the oldest transaction is recent (within last year)
+                oldest_tx = min(all_transactions, key=lambda t: t.tx_date)
+                print(f"[DEBUG] Project {project.id}: Oldest transaction date: {oldest_tx.tx_date}")
+                # If the oldest transaction is within the last year, include it in calculation
+                one_year_ago = today - timedelta(days=365)
+                if oldest_tx.tx_date >= one_year_ago:
+                    # Use all transactions from the last year
+                    transactions_query = select(Transaction).where(
+                        and_(
+                            Transaction.project_id == project.id,
+                            Transaction.tx_date >= one_year_ago,
+                            Transaction.tx_date <= today
+                        )
+                    )
+                    transactions_result = await db.execute(transactions_query)
+                    transactions = transactions_result.scalars().all()
+                    print(f"[DEBUG] Project {project.id}: Using {len(transactions)} transactions from last year")
+                    # Recalculate with new transactions
+                    income = sum(float(t.amount) for t in transactions if t.type == 'Income')
+                    expense = sum(float(t.amount) for t in transactions if t.type == 'Expense')
+                    profit = income - expense
+                    print(f"[DEBUG] Project {project.id}: Recalculated - income={income}, expense={expense}, profit={profit}")
+            
+            # Calculate profit margin
+            if income > 0:
+                profit_margin = (profit / income) * 100
+            elif expense > 0:
+                # If no income but there are expenses, consider it as 100% loss
+                profit_margin = -100
+                print(f"[DEBUG] Project {project.id}: No income but has expenses, setting profit_margin to -100%")
+            else:
+                # No transactions, skip this project
+                print(f"[DEBUG] Project {project.id}: No transactions, skipping")
+                continue
+            
+            print(f"[DEBUG] Project {project.id}: profit_margin={profit_margin}%")
+            
+            # Only include projects with profit margin <= -10% (loss-making)
+            if profit_margin <= -10:
+                print(f"[DEBUG] Project {project.id}: Adding to alerts (profit_margin={profit_margin}% <= -10%)")
+                # Determine if it's a sub-project
+                is_subproject = project.relation_project is not None
+                
+                alerts.append({
+                    'id': int(project.id),
+                    'name': str(project.name),
+                    'profit_margin': float(round(profit_margin, 1)),
+                    'income': float(income),
+                    'expense': float(expense),
+                    'profit': float(profit),
+                    'is_subproject': bool(is_subproject),
+                    'parent_project_id': int(project.relation_project) if project.relation_project else None
+                })
+        
+        # Sort by profit margin (most negative first)
+        alerts.sort(key=lambda x: x['profit_margin'])
+        
+        result = {
+            'alerts': alerts,
+            'count': int(len(alerts)),
+            'period_start': str(six_months_ago.isoformat()),
+            'period_end': str(today.isoformat())
+        }
+        
+        print(f"[DEBUG] Returning {len(alerts)} alerts")
+        return result
+            
+    except Exception as e:
+        import traceback
+        print(f"[ERROR] Error in profitability alerts: {str(e)}")
+        print(f"[ERROR] Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving profitability alerts: {str(e)}")
+
 @router.get("/{project_id}", response_model=ProjectOut)
 async def get_project(project_id: int, db: DBSessionDep, user = Depends(get_current_user)):
     """Get project details - accessible to all authenticated users"""

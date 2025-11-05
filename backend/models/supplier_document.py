@@ -10,8 +10,8 @@ class SupplierDocument(Base):
     __tablename__ = "supplier_documents"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    supplier_id: Mapped[int] = mapped_column(ForeignKey("suppliers.id"), index=True)
-    supplier: Mapped["Supplier"] = relationship(back_populates="documents")
+    supplier_id: Mapped[int | None] = mapped_column(ForeignKey("suppliers.id"), nullable=True, index=True)
+    supplier: Mapped["Supplier | None"] = relationship(back_populates="documents")
 
     transaction_id: Mapped[int | None] = mapped_column(ForeignKey("transactions.id"), nullable=True, index=True)
     transaction: Mapped["Transaction | None"] = relationship("Transaction", lazy="selectin")

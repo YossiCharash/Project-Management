@@ -32,6 +32,19 @@ class Settings(BaseModel):
     SUPER_ADMIN_EMAIL: str = Field(default=os.getenv("SUPER_ADMIN_EMAIL", "c0548508540@gmail.com"))
     SUPER_ADMIN_PASSWORD: str = Field(default=os.getenv("SUPER_ADMIN_PASSWORD", "c98C98@98"))
     SUPER_ADMIN_NAME: str = Field(default=os.getenv("SUPER_ADMIN_NAME", "Super Administrator"))
+    
+    # Email Configuration
+    SMTP_SERVER: str = Field(default=os.getenv("SMTP_SERVER", "smtp.gmail.com"))
+    SMTP_PORT: int = Field(default=int(os.getenv("SMTP_PORT", "587")))
+    SMTP_USERNAME: str = Field(default=os.getenv("SMTP_USERNAME", ""))
+    SMTP_PASSWORD: str = Field(default=os.getenv("SMTP_PASSWORD", ""))
+    FROM_EMAIL: str = Field(default=os.getenv("FROM_EMAIL", "noreply@example.com"))
+    FRONTEND_URL: str = Field(default=os.getenv("FRONTEND_URL", "http://localhost:5173"))
+    
+    # Google OAuth Configuration
+    GOOGLE_CLIENT_ID: str = Field(default=os.getenv("GOOGLE_CLIENT_ID", ""))
+    GOOGLE_CLIENT_SECRET: str = Field(default=os.getenv("GOOGLE_CLIENT_SECRET", ""))
+    GOOGLE_REDIRECT_URI: str = Field(default=os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/api/v1/auth/google/callback"))
 
     class Config:
         arbitrary_types_allowed = True

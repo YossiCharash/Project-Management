@@ -1,15 +1,18 @@
 # Import all models to ensure they are registered with SQLAlchemy
+# Import models with dependencies first to ensure proper relationship configuration
+# RecurringTransactionTemplate must be imported before Project since Project references it
 from backend.models.user import User, UserRole
+from backend.models.transaction import Transaction, TransactionType, ExpenseCategory
+from backend.models.recurring_transaction import RecurringTransactionTemplate
 from backend.models.project import Project
 from backend.models.subproject import Subproject
-from backend.models.transaction import Transaction, TransactionType, ExpenseCategory
 from backend.models.audit_log import AuditLog
 from backend.models.supplier import Supplier
 from backend.models.supplier_document import SupplierDocument
 from backend.models.admin_invite import AdminInvite
 from backend.models.email_verification import EmailVerification
 from backend.models.group_code import GroupCode
-from backend.models.recurring_transaction import RecurringTransactionTemplate
+from backend.models.member_invite import MemberInvite
 
 __all__ = [
     "User",
@@ -25,5 +28,6 @@ __all__ = [
     "AdminInvite",
     "EmailVerification",
     "GroupCode",
-    "RecurringTransactionTemplate"
+    "RecurringTransactionTemplate",
+    "MemberInvite"
 ]

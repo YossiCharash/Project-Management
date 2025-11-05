@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react'
 import { RecurringTransactionTemplate, RecurringTransactionTemplateUpdate } from '../types/api'
 import { RecurringTransactionAPI } from '../lib/apiClient'
+import { useAppDispatch, useAppSelector } from '../utils/hooks'
+import { fetchSuppliers } from '../store/slices/suppliersSlice'
 
 interface EditRecurringTemplateModalProps {
   isOpen: boolean
@@ -15,11 +17,15 @@ const EditRecurringTemplateModal: React.FC<EditRecurringTemplateModalProps> = ({
   onSuccess,
   template
 }) => {
+  const dispatch = useAppDispatch()
+  const { items: suppliers } = useAppSelector(s => s.suppliers)
+  
   const [formData, setFormData] = useState<RecurringTransactionTemplateUpdate>({
     description: '',
     amount: 0,
     category: '',
     notes: '',
+    supplier_id: null,
     day_of_month: 1,
     start_date: '',
     end_type: 'No End',
@@ -31,12 +37,16 @@ const EditRecurringTemplateModal: React.FC<EditRecurringTemplateModalProps> = ({
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    if (isOpen) {
+      dispatch(fetchSuppliers())
+    }
     if (template && isOpen) {
       setFormData({
         description: template.description,
         amount: template.amount,
         category: template.category || '',
         notes: template.notes || '',
+        supplier_id: template.supplier_id || null,
         day_of_month: template.day_of_month,
         start_date: template.start_date,
         end_type: template.end_type,
@@ -44,7 +54,7 @@ const EditRecurringTemplateModal: React.FC<EditRecurringTemplateModalProps> = ({
         max_occurrences: template.max_occurrences || null
       })
     }
-  }, [template, isOpen])
+  }, [template, isOpen, dispatch])
 
   const resetForm = () => {
     setFormData({
@@ -52,6 +62,7 @@ const EditRecurringTemplateModal: React.FC<EditRecurringTemplateModalProps> = ({
       amount: 0,
       category: '',
       notes: '',
+      supplier_id: null,
       day_of_month: 1,
       start_date: '',
       end_type: 'No End',
@@ -164,6 +175,23 @@ const EditRecurringTemplateModal: React.FC<EditRecurringTemplateModalProps> = ({
               <option value="גינון">גינון</option>
               <option value="תחזוקה">תחזוקה</option>
               <option value="אחר">אחר</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              ספק *
+            </label>
+            <select
+              required
+              value={formData.supplier_id || 0}
+              onChange={(e) => setFormData({ ...formData, supplier_id: parseInt(e.target.value) || null })}
+              className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+            >
+              <option value="0">בחר ספק</option>
+              {suppliers.filter(s => s.is_active).map(s => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
             </select>
           </div>
 

@@ -14,9 +14,11 @@ class EmailService:
         self.smtp_password = getattr(settings, 'SMTP_PASSWORD', '')
         self.from_email = getattr(settings, 'FROM_EMAIL', 'noreply@example.com')
 
-    async def send_verification_email(self, email: str, verification_code: str, full_name: str, verification_type: str) -> bool:
-        """Send email verification code"""
+    async def send_verification_email(self, email: str, verification_code: str, full_name: str, verification_type: str, verification_link: str = None) -> bool:
+        """Send email verification code and/or link"""
         try:
+            link_text = f"\n\nאו לחצו על הקישור הבא:\n{verification_link}\n" if verification_link else ""
+
             if verification_type == 'admin_register':
                 subject = "אימות כתובת אימייל - רישום מנהל מערכת"
                 body = f"""
@@ -25,6 +27,7 @@ class EmailService:
                 קיבלתם הודעה זו כי נרשמתם כמנהל מערכת במערכת ניהול פרויקטי החזקת מבנים.
 
                 קוד האימות שלכם הוא: {verification_code}
+                {link_text}
 
                 קוד זה תקף למשך 15 דקות.
 
@@ -41,6 +44,7 @@ class EmailService:
                 קיבלתם הודעה זו כי נרשמתם כמשתמש במערכת ניהול פרויקטי החזקת מבנים.
 
                 קוד האימות שלכם הוא: {verification_code}
+                {link_text}
 
                 קוד זה תקף למשך 15 דקות.
 
@@ -55,6 +59,7 @@ class EmailService:
                 שלום,
 
                 קוד האימות שלכם הוא: {verification_code}
+                {link_text}
 
                 קוד זה תקף למשך 15 דקות.
 
@@ -90,6 +95,31 @@ class EmailService:
             return await self._send_email(email, subject, body)
         except Exception as e:
             print(f"Error sending invite email: {e}")
+            return False
+
+    async def send_member_invite_email(self, email: str, full_name: str, registration_link: str, expires_days: int) -> bool:
+        """Send member/employee invite email with registration link"""
+        try:
+            subject = "הזמנה להצטרפות למערכת ניהול פרויקטים"
+            body = f"""
+            שלום {full_name},
+
+            הוזמנתם להצטרף למערכת ניהול פרויקטי החזקת מבנים.
+
+            כדי להשלים את ההרשמה, לחצו על הקישור הבא:
+            {registration_link}
+
+            הקישור תקף למשך {expires_days} ימים.
+
+            אם לא יצרתם את הקישור הזה, אנא התעלמו מהודעה זו.
+
+            בברכה,
+            צוות המערכת
+            """
+
+            return await self._send_email(email, subject, body)
+        except Exception as e:
+            print(f"Error sending member invite email: {e}")
             return False
 
     async def _send_email(self, to_email: str, subject: str, body: str) -> bool:

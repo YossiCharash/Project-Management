@@ -110,6 +110,7 @@ export interface RecurringTransactionTemplateCreate {
   amount: number
   category?: string | null
   notes?: string | null
+  supplier_id: number
   frequency?: 'Monthly'
   day_of_month: number
   start_date: string
@@ -126,6 +127,7 @@ export interface RecurringTransactionTemplate {
   amount: number
   category?: string | null
   notes?: string | null
+  supplier_id: number
   frequency: 'Monthly'
   day_of_month: number
   start_date: string
@@ -142,6 +144,7 @@ export interface RecurringTransactionTemplateUpdate {
   amount?: number
   category?: string | null
   notes?: string | null
+  supplier_id?: number | null
   day_of_month?: number
   start_date?: string
   end_type?: 'No End' | 'After Occurrences' | 'On Date'

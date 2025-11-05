@@ -8,6 +8,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { Eye, EyeOff, Building2, Mail, Lock, ArrowRight } from 'lucide-react'
 import { LoadingSpinner } from '../components/ui/Loading'
 import { cn } from '../lib/utils'
+import api from '../lib/api'
 
 export default function Login() {
   const dispatch = useAppDispatch()
@@ -42,6 +43,13 @@ export default function Login() {
     } finally {
       setIsSubmitting(false)
     }
+  }
+
+  const handleGoogleLogin = () => {
+    // Redirect to backend OAuth endpoint
+    const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
+    const redirectUrl = window.location.origin + '/auth/callback'
+    window.location.href = `${apiBaseUrl}/auth/google?redirect_url=${encodeURIComponent(redirectUrl)}`
   }
 
   return (
@@ -157,6 +165,45 @@ export default function Login() {
                 <>
                   <span>התחברות</span>
                   <ArrowRight className="w-5 h-5" />
+                </>
+              )}
+            </motion.button>
+
+            {/* Google OAuth Login Button */}
+            <motion.button
+              type="button"
+              onClick={handleGoogleLogin}
+              disabled={loading}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              className={cn(
+                "w-full py-3 px-6 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-gray-900 dark:text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center gap-2",
+                loading && "opacity-50 cursor-not-allowed"
+              )}
+            >
+              {loading ? (
+                <LoadingSpinner size="sm" className="text-gray-900 dark:text-white" />
+              ) : (
+                <>
+                  <svg className="w-5 h-5" viewBox="0 0 24 24">
+                    <path
+                      fill="#EA4335"
+                      d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09L2.2 7.72c-.56 1.14-.88 2.4-.88 3.78 0 1.38.32 2.64.88 3.78l3.64-2.19z"
+                    />
+                    <path
+                      fill="#4285F4"
+                      d="M12 5.54c1.77 0 3.36.61 4.62 1.83l3.43-3.43C17.56 2.32 14.92 1 12 1 7.4 1 3.35 3.48 1.32 7.07l3.52 2.76c.99-3.01 3.93-5.29 7.16-5.29z"
+                    />
+                    <path
+                      fill="#FBBC05"
+                      d="M12 19.36c-3.23 0-6.17-2.28-7.16-5.29L1.32 16.83C3.35 20.42 7.4 22.9 12 22.9c2.92 0 5.56-1.32 7.05-3.94l-3.43-3.43c-1.26 1.22-2.85 1.83-4.62 1.83z"
+                    />
+                    <path
+                      fill="#34A853"
+                      d="M21.04 12.13c0-.75-.07-1.47-.2-2.18H12v4.1h5.05c-.28 1.48-1.12 2.73-2.39 3.57l3.43 3.43c2.08-1.92 3.35-4.75 3.35-8.92z"
+                    />
+                  </svg>
+                  <span>התחבר עם Google</span>
                 </>
               )}
             </motion.button>

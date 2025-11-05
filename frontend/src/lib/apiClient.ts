@@ -48,6 +48,26 @@ export class ProjectAPI {
     })
     return data
   }
+
+  // Get profitability alerts
+  static async getProfitabilityAlerts(): Promise<{
+    alerts: Array<{
+      id: number
+      name: string
+      profit_margin: number
+      income: number
+      expense: number
+      profit: number
+      is_subproject: boolean
+      parent_project_id: number | null
+    }>
+    count: number
+    period_start: string
+    period_end: string
+  }> {
+    const { data } = await api.get('/projects/profitability-alerts')
+    return data
+  }
 }
 
 export class TransactionAPI {

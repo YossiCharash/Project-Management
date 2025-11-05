@@ -266,7 +266,6 @@ export default function Projects() {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [editingProject, setEditingProject] = useState<ProjectWithFinance | null>(null)
   const [archivingProject, setArchivingProject] = useState<number | null>(null)
-
   useEffect(() => {
     if (!me) dispatch(fetchMe())
     loadProjectsData(archiveFilter !== 'active')

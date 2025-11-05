@@ -13,13 +13,14 @@ class EmailVerification(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     email: Mapped[str] = mapped_column(String(255), index=True)
-    verification_code: Mapped[str] = mapped_column(String(6), index=True)
-    verification_type: Mapped[str] = mapped_column(String(50))  # 'admin_register', 'member_register', 'password_reset'
+    verification_code: Mapped[str] = mapped_column(String(6), nullable=True, index=True)  # For code-based verification       
+    verification_token: Mapped[str] = mapped_column(String(64), nullable=True, unique=True, index=True)  # For link-based verification
+    verification_type: Mapped[str] = mapped_column(String(50))  # 'admin_register', 'member_register', 'password_reset'                                         
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
-    verified_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+    verified_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)      
     expires_at: Mapped[datetime] = mapped_column(DateTime)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)                                                                             
+
     # Additional data for registration
     full_name: Mapped[str] = mapped_column(String(255), nullable=True)
     group_id: Mapped[int] = mapped_column(nullable=True)
@@ -29,6 +30,11 @@ class EmailVerification(Base):
     def generate_verification_code(cls) -> str:
         """Generate a 6-digit verification code"""
         return ''.join(secrets.choice(string.digits) for _ in range(6))
+    
+    @classmethod
+    def generate_verification_token(cls) -> str:
+        """Generate a secure verification token for links"""
+        return secrets.token_urlsafe(32)
 
     @classmethod
     def create_verification(

@@ -16,14 +16,27 @@ DBSessionDep = Annotated[AsyncSession, Depends(get_db)]
 
 
 async def get_current_user(db: DBSessionDep, token: Annotated[str, Depends(oauth2_scheme)]):
-    payload = decode_token(token)
-    if not payload or "sub" not in payload:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
-    user_id = int(payload["sub"]) 
-    user = await UserRepository(db).get_by_id(user_id)
-    if not user or not user.is_active:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Inactive user")
-    return user
+    print(f"[DEBUG] get_current_user called with token: {token[:20] if token else 'None'}...")
+    try:
+        payload = decode_token(token)
+        if not payload or "sub" not in payload:
+            print(f"[DEBUG] Invalid token payload: {payload}")
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+        user_id = int(payload["sub"]) 
+        print(f"[DEBUG] Decoded user_id: {user_id}")
+        user = await UserRepository(db).get_by_id(user_id)
+        if not user or not user.is_active:
+            print(f"[DEBUG] User not found or inactive: {user}")
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Inactive user")
+        print(f"[DEBUG] User authenticated: {user.id} ({user.email})")
+        return user
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ERROR] Error in get_current_user: {str(e)}")
+        import traceback
+        print(f"[ERROR] Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Authentication error: {str(e)}")
 
 
 async def get_current_user_with_details(db: DBSessionDep, token: Annotated[str, Depends(oauth2_scheme)]):

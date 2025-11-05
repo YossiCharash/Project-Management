@@ -90,12 +90,22 @@ async def delete_supplier(supplier_id: int, db: DBSessionDep, user = Depends(req
 
 @router.get("/{supplier_id}/documents", response_model=list[dict])
 async def list_supplier_documents(supplier_id: int, db: DBSessionDep, user = Depends(get_current_user)):
-    """List all documents for a supplier - accessible to all authenticated users"""
+    """List all documents for a supplier (only from transactions) - accessible to all authenticated users"""
+    from sqlalchemy import select, and_
+    
     supplier = await SupplierRepository(db).get(supplier_id)
     if not supplier:
         raise HTTPException(status_code=404, detail="Supplier not found")
     
-    docs = await SupplierDocumentRepository(db).list_by_supplier(supplier_id)
+    # Only get documents that are linked to transactions (transaction_id is not null)
+    docs_query = select(SupplierDocument).where(
+        and_(
+            SupplierDocument.supplier_id == supplier_id,
+            SupplierDocument.transaction_id.isnot(None)
+        )
+    )
+    docs_result = await db.execute(docs_query)
+    docs = docs_result.scalars().all()
     # Convert file paths to relative URLs
     uploads_dir = get_uploads_dir()
     suppliers_dir = os.path.join(uploads_dir, 'suppliers')
@@ -262,49 +272,5 @@ async def list_supplier_documents(supplier_id: int, db: DBSessionDep, user = Dep
     return result
 
 
-@router.post("/{supplier_id}/documents", response_model=dict)
-async def upload_supplier_document(
-    supplier_id: int, 
-    db: DBSessionDep, 
-    file: UploadFile = File(...),
-    description: str | None = Form(None),
-    user = Depends(get_current_user)
-):
-    """Upload supplier document - accessible to all authenticated users"""
-    supplier = await SupplierRepository(db).get(supplier_id)
-    if not supplier:
-        raise HTTPException(status_code=404, detail="Supplier not found")
-    
-    uploads_dir = get_uploads_dir()
-    suppliers_dir = os.path.join(uploads_dir, 'suppliers')
-    # Create directory for this specific supplier using supplier name
-    supplier_name = sanitize_filename(supplier.name)
-    supplier_specific_dir = os.path.join(suppliers_dir, supplier_name)
-    os.makedirs(supplier_specific_dir, exist_ok=True)
-    
-    ext = os.path.splitext(file.filename or "")[1]
-    path = os.path.join(supplier_specific_dir, f"{uuid4().hex}{ext}")
-    
-    # Log for debugging
-    print(f"[DEBUG] Uploading supplier document to: {path}")
-    print(f"[DEBUG] Uploads dir: {uploads_dir}")
-    print(f"[DEBUG] Suppliers dir exists: {os.path.exists(suppliers_dir)}")
-    
-    content = await file.read()
-    with open(path, 'wb') as f:
-        f.write(content)
-    
-    # Verify file was saved
-    if os.path.exists(path):
-        print(f"[DEBUG] File saved successfully: {path}")
-    else:
-        print(f"[ERROR] File was not saved: {path}")
-    doc = SupplierDocument(
-        supplier_id=supplier_id, 
-        file_path=path,
-        description=description.strip() if description and description.strip() else None
-    )
-    await SupplierDocumentRepository(db).create(doc)
-    # Return relative path for frontend
-    rel_path = os.path.relpath(path, uploads_dir).replace('\\', '/')
-    return {"file_path": f"/uploads/{rel_path}", "id": doc.id}
+# Removed: Direct upload to suppliers is no longer allowed
+# Documents must be uploaded through transactions

@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from backend.core.deps import DBSessionDep
+from backend.core.config import settings
 from backend.schemas.email_verification import (
     EmailVerificationRequest, 
     EmailVerificationConfirm, 
@@ -24,7 +25,7 @@ async def send_verification_email(
     db: DBSessionDep,
     request: EmailVerificationRequest
 ):
-    """Send email verification code"""
+    """Send email verification code or link"""
     verification_repo = EmailVerificationRepository(db)
     email_service = EmailService()
     
@@ -46,7 +47,7 @@ async def send_verification_email(
     if existing_verification and not existing_verification.is_expired():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Verification code already sent. Please wait before requesting another."
+            detail="Verification already sent. Please wait before requesting another."
         )
     
     # Validate group code for member registration
@@ -68,21 +69,29 @@ async def send_verification_email(
             )
         group_id = group_code.id
 
-    # Create new verification
-    verification = EmailVerification.create_verification(
+    # Create verification with both code and token (support both methods)
+    verification_code = EmailVerification.generate_verification_code()
+    verification_token = EmailVerification.generate_verification_token()
+    
+    verification = EmailVerification(
         email=request.email,
+        verification_code=verification_code,
+        verification_token=verification_token,
         verification_type=request.verification_type,
         full_name=request.full_name,
         group_id=group_id,
-        role=UserRole.ADMIN.value if request.verification_type == 'admin_register' else UserRole.MEMBER.value
+        role=UserRole.ADMIN.value if request.verification_type == 'admin_register' else UserRole.MEMBER.value,
+        expires_at=datetime.utcnow() + timedelta(minutes=15)
     )
     
     created_verification = await verification_repo.create(verification)
     
-    # Send email
+    # Send email with both code and link (user can use either)
+    verification_link = f"{settings.FRONTEND_URL}/email-register?token={verification_token}"
     email_sent = await email_service.send_verification_email(
         email=request.email,
         verification_code=created_verification.verification_code,
+        verification_link=verification_link,
         full_name=request.full_name,
         verification_type=request.verification_type
     )
@@ -96,7 +105,7 @@ async def send_verification_email(
     return EmailVerificationStatus(
         email=request.email,
         verification_sent=True,
-        message="Verification code sent successfully"
+        message="Verification email sent successfully"
     )
 
 
@@ -105,16 +114,26 @@ async def confirm_verification(
     db: DBSessionDep,
     request: EmailVerificationConfirm
 ):
-    """Confirm email verification and create user"""
+    """Confirm verification using either code or token"""
     verification_repo = EmailVerificationRepository(db)
     auth_service = AuthService(db)
     
-    # Get verification
-    verification = await verification_repo.get_by_code(request.verification_code)
+    # Get verification by code or token
+    verification = None
+    if request.verification_code:
+        verification = await verification_repo.get_by_code(request.verification_code)
+    elif request.verification_token:
+        verification = await verification_repo.get_by_token(request.verification_token)
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Either verification_code or verification_token must be provided"
+        )
+    
     if not verification:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Invalid verification code"
+            detail="Invalid verification code or token"
         )
     
     # Check if verification is valid
@@ -122,41 +141,45 @@ async def confirm_verification(
         if verification.is_verified:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Verification code has already been used"
+                detail="Verification has already been used"
             )
         else:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Verification code has expired"
+                detail="Verification has expired"
             )
     
-    # Check email matches
-    if verification.email != request.email:
+    # Check email matches (if provided)
+    if request.email and verification.email != request.email:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email does not match verification code"
+            detail="Email does not match verification"
         )
     
-    # Create user based on verification type
+        # Create user based on verification type with email verified
     if verification.verification_type == 'admin_register':
-        user = await auth_service.register_admin(
-            email=verification.email,
-            full_name=verification.full_name,
-            password=request.password
-        )
-    elif verification.verification_type == 'member_register':
-        user = await auth_service.register_member(
+        user = await auth_service.register(
             email=verification.email,
             full_name=verification.full_name,
             password=request.password,
-            group_id=verification.group_id
+            role=UserRole.ADMIN.value,
+            email_verified=True  # Email is verified through this flow
+        )
+    elif verification.verification_type == 'member_register':
+        user = await auth_service.register(
+            email=verification.email,
+            full_name=verification.full_name,
+            password=request.password,
+            role=UserRole.MEMBER.value,
+            group_id=verification.group_id,
+            email_verified=True  # Email is verified through this flow
         )
     else:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid verification type"
         )
-    
+
     # Mark verification as used
     verification.is_verified = True
     verification.verified_at = datetime.utcnow()

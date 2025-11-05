@@ -124,6 +124,7 @@ class RecurringTransactionService:
                     "description": template.description,
                     "category": category_value,
                     "notes": template.notes,
+                    "supplier_id": template.supplier_id,
                     "is_generated": True
                 }
 
@@ -249,6 +250,7 @@ class RecurringTransactionService:
                             "description": template.description,
                             "category": category_value,
                             "notes": template.notes,
+                            "supplier_id": template.supplier_id,
                             "is_generated": True
                         }
                         try:

@@ -12,6 +12,7 @@ class RecurringTransactionTemplateBase(BaseModel):
     amount: float
     category: Optional[str] = None
     notes: Optional[str] = None
+    supplier_id: int = Field(..., description="Supplier ID is required")
     frequency: Literal["Monthly"] = "Monthly"
     day_of_month: int = Field(ge=1, le=31)
     start_date: date
@@ -29,6 +30,7 @@ class RecurringTransactionTemplateUpdate(BaseModel):
     amount: Optional[float] = None
     category: Optional[str] = None
     notes: Optional[str] = None
+    supplier_id: Optional[int] = None
     day_of_month: Optional[int] = Field(None, ge=1, le=31)
     start_date: Optional[date] = None
     end_type: Optional[Literal["No End", "After Occurrences", "On Date"]] = None

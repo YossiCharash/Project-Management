@@ -30,6 +30,9 @@ class Transaction(Base):
     supplier_id: Mapped[int | None] = mapped_column(ForeignKey("suppliers.id"), nullable=True, index=True)
     supplier: Mapped["Supplier | None"] = relationship("Supplier", lazy="selectin")
 
+    recurring_template_id: Mapped[int | None] = mapped_column(ForeignKey("recurring_transaction_templates.id"), index=True, nullable=True)
+    recurring_template: Mapped["RecurringTransactionTemplate | None"] = relationship()
+
     tx_date: Mapped[date] = mapped_column(Date, index=True)
     type: Mapped[str] = mapped_column(String(20), index=True, default=TransactionType.EXPENSE.value)
     amount: Mapped[float] = mapped_column(Numeric(14, 2))
@@ -38,6 +41,7 @@ class Transaction(Base):
     category: Mapped[str | None] = mapped_column(SAEnum(ExpenseCategory, name="expense_category", create_constraint=True, native_enum=True), default=ExpenseCategory.OTHER.value, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, default=None)
     is_exceptional: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    is_generated: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
 
     file_path: Mapped[str | None] = mapped_column(String(500), default=None)
 

@@ -9,6 +9,7 @@ import AdminRegister from './pages/AdminRegister'
 import AdminInviteRegister from './pages/AdminInviteRegister'
 import AdminInviteManagement from './pages/AdminInviteManagement'
 import EmailVerificationRegister from './pages/EmailVerificationRegister'
+import OAuthCallback from './pages/OAuthCallback'
 import AdminManagement from './pages/AdminManagement'
 import GroupCodeManagement from './pages/GroupCodeManagement'
 import UserManagement from './pages/UserManagement'
@@ -76,6 +77,7 @@ function AppContent() {
           <Route path="/admin-register" element={<AdminRegister />} />
           <Route path="/admin-invite" element={<AdminInviteRegister />} />
           <Route path="/email-register" element={<EmailVerificationRegister />} />
+          <Route path="/auth/callback" element={<OAuthCallback />} />
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
       </div>
