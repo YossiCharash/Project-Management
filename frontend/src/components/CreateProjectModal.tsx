@@ -76,7 +76,7 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
       const projects = await ProjectAPI.getProjects()
       setAvailableProjects(projects.filter(p => p.is_active))
     } catch (err) {
-      console.error('Failed to load projects:', err)
+      // Ignore
     }
   }
 
@@ -164,8 +164,6 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
         budgets: validBudgets.length > 0 ? validBudgets : undefined
       }
 
-      console.log('Creating project with budgets:', validBudgets)
-      console.log('Full project data:', JSON.stringify(projectData, null, 2))
       
       // Validate that all required fields are present
       if (!projectData.name || projectData.name.trim() === '') {
@@ -187,7 +185,6 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
         try {
           result = await ProjectAPI.uploadProjectImage(result.id, selectedImage)
         } catch (imgErr: any) {
-          console.error('Failed to upload image:', imgErr)
           // Don't fail the whole operation if image upload fails
           imageUploadError = true
           setError(`הפרויקט נוצר בהצלחה אך העלאת התמונה נכשלה: ${imgErr.response?.data?.detail || 'שגיאה לא ידועה'}`)
@@ -200,14 +197,11 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
           // Wait a bit for the backend to process
           await new Promise(resolve => setTimeout(resolve, 500))
           const createdBudgets = await BudgetAPI.getProjectBudgets(result.id)
-          console.log('Budgets created successfully:', createdBudgets)
-          if (createdBudgets.length === 0) {
-            console.warn('Warning: No budgets found after creation. Expected', validBudgets.length)
-            setError(`הפרויקט נוצר בהצלחה, אך ייתכן שיש בעיה ביצירת התקציבים. אנא בדוק את הקונסול לפרטים.`)
+          if (createdBudgets.length === 0 && validBudgets.length > 0) {
+            setError(`הפרויקט נוצר בהצלחה, אך ייתכן שיש בעיה ביצירת התקציבים.`)
           }
         } catch (budgetErr: any) {
-          console.error('Error verifying budgets:', budgetErr)
-          // Don't fail the whole operation, just log
+          // Don't fail the whole operation
         }
       }
 

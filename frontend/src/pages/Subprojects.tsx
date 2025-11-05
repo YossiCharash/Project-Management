@@ -214,7 +214,7 @@ export default function Subprojects() {
       // Load charts for subprojects
       await loadProjectCharts(data || [])
     } catch (err: any) {
-      console.error('Subprojects data loading error:', err)
+      // Subprojects data loading error
       setError(err.message || 'שגיאה בטעינת התת-פרויקטים')
     } finally {
       setLoading(false)
@@ -255,7 +255,7 @@ export default function Subprojects() {
   const handleProjectArchive = (project: ProjectWithFinance) => {
     if (confirm('האם לארכב את הפרויקט? ניתן לשחזר מאוחר יותר.')) {
       // Archive logic here
-      console.log('Archive project:', project.id)
+      // Archive project
     }
   }
 

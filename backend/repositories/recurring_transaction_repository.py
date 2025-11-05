@@ -76,12 +76,10 @@ class RecurringTransactionRepository:
             select(RecurringTransactionTemplate).where(RecurringTransactionTemplate.is_active == True)
         )
         all_templates = list(all_active.scalars().all())
-        print(f"[DEBUG] get_templates_to_generate for {target_date}: Found {len(all_templates)} active templates")
         
         for t in all_templates:
             # Get end_type as string for comparison
             end_type_str = t.end_type.value if hasattr(t.end_type, 'value') else str(t.end_type)
-            print(f"[DEBUG] Template {t.id}: day_of_month={t.day_of_month}, start_date={t.start_date}, target_day={target_date.day}, day_matches={t.day_of_month == target_date.day}, start_ok={t.start_date <= target_date}, end_type={end_type_str}")
         
         # Use Enum values for comparison - SQLAlchemy will handle the conversion
         res = await self.db.execute(
@@ -105,5 +103,4 @@ class RecurringTransactionRepository:
             )
         )
         matching_templates = list(res.scalars().all())
-        print(f"[DEBUG] Templates matching date {target_date}: {len(matching_templates)}")
         return matching_templates

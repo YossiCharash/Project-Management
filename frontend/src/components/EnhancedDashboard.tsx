@@ -48,7 +48,7 @@ const ProjectCard: React.FC<ProjectCardProps> = ({ project, onProjectClick, onPr
             alt={project.name}
             className="w-full h-40 object-cover"
             onError={(e) => {
-              console.error('Failed to load image:', imageUrl, e)
+              // Image failed to load
               e.currentTarget.style.display = 'none'
             }}
           />
@@ -507,7 +507,7 @@ const EnhancedDashboard: React.FC<EnhancedDashboardProps> = ({
       setDashboardData(data)
       setLastRefresh(new Date())
     } catch (err: any) {
-      console.error('Dashboard data loading error:', err)
+      // Dashboard data loading error
       setError(err.message || 'שגיאה בטעינת הנתונים')
       // Set empty state on error to prevent UI crashes
       setDashboardData({

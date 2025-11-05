@@ -41,7 +41,7 @@ export default function AdminRegister() {
         password 
       }))
     } catch (err) {
-      console.error('Registration error:', err)
+      // Registration error
     }
   }
 

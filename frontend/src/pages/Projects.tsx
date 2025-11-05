@@ -99,11 +99,7 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
               alt={project.name}
               className="w-full h-48 object-cover"
               onError={(e) => {
-                console.error('Failed to load image:', imageUrl, e)
                 e.currentTarget.style.display = 'none'
-              }}
-              onLoad={() => {
-                console.log('Image loaded successfully:', imageUrl)
               }}
             />
           </div>
@@ -296,20 +292,6 @@ export default function Projects() {
       // Load dashboard snapshot for active projects
       const data = await DashboardAPI.getDashboardSnapshot()
       
-      // Debug: Log the raw data to see what we're getting
-      console.log('Raw dashboard snapshot data:', data)
-      if (data.projects && data.projects.length > 0) {
-        console.log('Sample project data:', data.projects[0])
-        console.log('Financial fields check:', {
-          income_month_to_date: data.projects[0].income_month_to_date,
-          expense_month_to_date: data.projects[0].expense_month_to_date,
-          profit_percent: data.projects[0].profit_percent,
-          status_color: data.projects[0].status_color,
-          has_income_field: 'income_month_to_date' in data.projects[0],
-          has_expense_field: 'expense_month_to_date' in data.projects[0]
-        })
-      }
-      
       // Ensure all projects have financial data properly formatted
       if (data.projects) {
         data.projects = data.projects.map((p: any) => {
@@ -319,7 +301,7 @@ export default function Projects() {
           const profitValue = p.profit_percent ?? p.profit_percentage ?? 0
           const statusValue = p.status_color ?? p.status ?? 'yellow'
           
-          const formatted = {
+          return {
             ...p,
             income_month_to_date: Number(incomeValue),
             expense_month_to_date: Number(expenseValue),
@@ -327,15 +309,6 @@ export default function Projects() {
             status_color: statusValue,
             total_value: Number(p.total_value ?? p.budget_monthly ?? p.budget_annual ?? 0)
           }
-          console.log(`Project ${p.id} (${p.name}) financial data:`, {
-            raw_income: p.income_month_to_date,
-            raw_expense: p.expense_month_to_date,
-            raw_profit: p.profit_percent,
-            formatted_income: formatted.income_month_to_date,
-            formatted_expense: formatted.expense_month_to_date,
-            formatted_profit: formatted.profit_percent
-          })
-          return formatted
         })
       }
       
@@ -359,7 +332,6 @@ export default function Projects() {
           // Merge active and archived projects
           data.projects = [...data.projects, ...archivedWithFinance]
         } catch (archivedErr) {
-          console.warn('Failed to load archived projects:', archivedErr)
           // Continue with only active projects if archived loading fails
         }
       }
@@ -367,7 +339,6 @@ export default function Projects() {
       setDashboardData(data)
       await loadProjectCharts(data.projects)
     } catch (err: any) {
-      console.error('Projects data loading error:', err)
       setError(err.message || 'שגיאה בטעינת הנתונים')
     } finally {
       setLoading(false)
@@ -421,7 +392,6 @@ export default function Projects() {
         await ProjectAPI.archiveProject(project.id)
         await loadProjectsData(archiveFilter !== 'active')
       } catch (err: any) {
-        console.error('Failed to archive project:', err)
         alert(err.response?.data?.detail || 'שגיאה בארכוב הפרויקט')
       } finally {
         setArchivingProject(null)
@@ -436,7 +406,6 @@ export default function Projects() {
         await ProjectAPI.restoreProject(project.id)
         await loadProjectsData(archiveFilter !== 'active')
       } catch (err: any) {
-        console.error('Failed to restore project:', err)
         alert(err.response?.data?.detail || 'שגיאה בשחזור הפרויקט')
       } finally {
         setArchivingProject(null)

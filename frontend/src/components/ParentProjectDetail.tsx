@@ -394,7 +394,7 @@ const SubprojectCardsList: React.FC<{
             images[subproject.id] = null
           }
         } catch (err) {
-          console.error(`Error loading image for subproject ${subproject.id}:`, err)
+          // Error loading image
           images[subproject.id] = null
         }
       }
@@ -850,7 +850,7 @@ export default function ParentProjectDetail() {
       await loadChartsData()
       
     } catch (err: any) {
-      console.error('Parent project data loading error:', err)
+      // Parent project data loading error
       setError(err.message || 'שגיאה בטעינת נתוני הפרויקט')
     } finally {
       setLoading(false)
@@ -882,11 +882,11 @@ export default function ParentProjectDetail() {
       if (startDate) params.append('start_date', startDate)
       if (endDate) params.append('end_date', endDate)
       
-      console.log('Loading financial summary with params:', { startDate, endDate, parentId })
+      // Loading financial summary
       
       const { data: financialSummary } = await api.get(`/projects/${parentId}/financial-summary?${params.toString()}`)
       
-      console.log('Financial summary response:', financialSummary)
+      // Financial summary loaded
       
       // Update state with advanced data
       if (financialSummary.financial_summary) {
@@ -915,13 +915,11 @@ export default function ParentProjectDetail() {
       }
       
     } catch (err: any) {
-      console.error('Error loading advanced financial summary:', err)
-      // Fallback to basic loading if advanced API fails
-      console.log('Falling back to basic loading...')
+      // Error loading advanced financial summary, fallback to basic loading
       try {
         await loadSubprojectsData(parentId)
       } catch (fallbackErr) {
-        console.error('Fallback loading also failed:', fallbackErr)
+        // Fallback loading also failed
       }
     }
   }
@@ -961,7 +959,7 @@ export default function ParentProjectDetail() {
       setExpenseCategories(categories)
       
     } catch (err: any) {
-      console.error('Error loading charts data:', err)
+      // Error loading charts data
     } finally {
       setChartsLoading(false)
     }
@@ -1017,7 +1015,7 @@ export default function ParentProjectDetail() {
         totalExpense += parentExpense
         
       } catch (err) {
-        console.error('Error loading parent project financial data:', err)
+        // Error loading parent project financial data
       }
       
       // Calculate financial data for each subproject
@@ -1061,7 +1059,7 @@ export default function ParentProjectDetail() {
           totalExpense += expense
           
         } catch (err) {
-          console.error(`Error loading financial data for subproject ${subproject.id}:`, err)
+          // Error loading financial data
         }
       }
       
@@ -1081,11 +1079,11 @@ export default function ParentProjectDetail() {
       
       // Show message if no financial data found
       if (subprojectFinancials.length === 0) {
-        console.log('No financial data found for this project and its subprojects')
+        // No financial data found
       }
       
     } catch (err: any) {
-      console.error('Error loading subprojects financial data:', err)
+      // Error loading subprojects financial data
       setError('שגיאה בטעינת נתונים פיננסיים של תת-פרויקטים')
     }
   }
@@ -1116,7 +1114,7 @@ export default function ParentProjectDetail() {
           })
         })
       } catch (err) {
-        console.error('Error loading parent project transactions:', err)
+        // Error loading parent project transactions
       }
       
       // Load subprojects transactions
@@ -1142,11 +1140,11 @@ export default function ParentProjectDetail() {
               })
             })
           } catch (err) {
-            console.error(`Error loading transactions for subproject ${subproject.id}:`, err)
+            // Error loading transactions
           }
         }
       } catch (err) {
-        console.error('Error loading subprojects:', err)
+        // Error loading subprojects
       }
       
       // Sort transactions by date (newest first)
@@ -1156,10 +1154,10 @@ export default function ParentProjectDetail() {
       
       // Show message if no transactions found
       if (allTransactions.length === 0) {
-        console.log('No transactions found for this project and its subprojects')
+        // No transactions found
       }
     } catch (err: any) {
-      console.error('Error loading transactions:', err)
+      // Error loading transactions
       setError('שגיאה בטעינת הטרנזקציות')
     } finally {
       setTransactionsLoading(false)

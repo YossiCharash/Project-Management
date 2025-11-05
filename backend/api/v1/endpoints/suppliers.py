@@ -238,7 +238,7 @@ async def list_supplier_documents(supplier_id: int, db: DBSessionDep, user = Dep
         # Verify the final path would be accessible
         final_full_path = os.path.join(uploads_dir, rel_path.replace('/', os.sep))
         if not os.path.isfile(final_full_path):
-            print(f"[WARNING] Document {doc.id}: Final path does not exist: {final_full_path}, skipping.")
+            # Skip document if path doesn't exist
             continue
         
         result.append({
@@ -249,9 +249,9 @@ async def list_supplier_documents(supplier_id: int, db: DBSessionDep, user = Dep
             "description": doc.description,
             "uploaded_at": doc.uploaded_at.isoformat() if doc.uploaded_at else None
         })
-        print(f"[INFO] Document {doc.id} added to result list: {rel_path}")
+        # Document added to result
     
-    print(f"[INFO] Returning {len(result)} documents (filtered from {len(docs)} total)")
+    # Returning documents
     return result
 
 

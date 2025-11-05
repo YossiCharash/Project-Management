@@ -39,7 +39,7 @@ export default function SupplierDocuments() {
         // Clear error if we got a response (even if empty)
         setError(null)
       } catch (err: any) {
-        console.error('Error loading documents:', err)
+        // Error loading documents
         // Only set error for actual errors (4xx/5xx), not for successful empty responses
         const status = err.response?.status
         if (status && status >= 400 && status !== 404) {
@@ -110,7 +110,7 @@ export default function SupplierDocuments() {
     // Remove any double slashes except at the start
     normalizedPath = normalizedPath.replace(/([^:]\/)\/+/g, '$1')
     const fullUrl = `${baseUrl}${normalizedPath}`
-    console.log('[DEBUG] File URL:', { filePath, normalizedPath, fullUrl })
+    // File URL
     return fullUrl
   }
 
@@ -220,7 +220,7 @@ export default function SupplierDocuments() {
                         onError={(e) => {
                           const target = e.target as HTMLImageElement
                           const imgUrl = getFileUrl(doc.file_path)
-                          console.error('[ERROR] Failed to load image:', imgUrl, doc)
+                          // Failed to load image
                           target.style.display = 'none'
                           const parent = target.parentElement
                           if (parent) {
@@ -346,7 +346,7 @@ export default function SupplierDocuments() {
                     onError={(e) => {
                       const target = e.target as HTMLImageElement
                       const imgUrl = getFileUrl(selectedDocument.file_path)
-                      console.error('[ERROR] Failed to load image in modal:', imgUrl, selectedDocument)
+                      // Failed to load image in modal
                       target.style.display = 'none'
                       const parent = target.parentElement
                       if (parent) {
@@ -373,7 +373,7 @@ export default function SupplierDocuments() {
                         className="w-full h-full border-0"
                         title={selectedDocument.description || getFileName(selectedDocument.file_path)}
                         onError={() => {
-                          console.error('Error loading PDF in iframe')
+                          // Error loading PDF
                         }}
                       />
                       {/* Fallback overlay with download link */}
@@ -405,7 +405,7 @@ export default function SupplierDocuments() {
                       type="application/pdf"
                       className="hidden"
                       onError={() => {
-                        console.error('Error loading PDF with embed')
+                        // Error loading PDF
                       }}
                     />
                   </div>

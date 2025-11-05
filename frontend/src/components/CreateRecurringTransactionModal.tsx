@@ -170,12 +170,12 @@ const CreateRecurringTransactionModal: React.FC<CreateRecurringTransactionModalP
               generatedTransactionId = matchingTransaction.id
             }
           } catch (findErr) {
-            console.warn('Could not find generated transaction:', findErr)
+            // Ignore
           }
         }
       } catch (genErr) {
         // Ignore generation errors, transactions will be generated later
-        console.warn('Could not generate transactions immediately:', genErr)
+        // Ignore
       }
 
       // If files were selected and we found the generated transaction, upload them
@@ -206,7 +206,7 @@ const CreateRecurringTransactionModal: React.FC<CreateRecurringTransactionModalP
                 })
               }
             } catch (err: any) {
-              console.error(`Error uploading file ${file.name}:`, err)
+              // Ignore upload error
               errorCount++
             }
           }
@@ -222,13 +222,13 @@ const CreateRecurringTransactionModal: React.FC<CreateRecurringTransactionModalP
           if (errorCount > 0) {
             if (successCount > 0) {
               // Modal will show, but we can still show error count
-              console.warn(`Some files failed to upload: ${errorCount} failed`)
+              // Some files failed
             } else {
               alert(`העסקה המחזורית נוצרה בהצלחה, אך הייתה שגיאה בהעלאת המסמכים`)
             }
           }
         } catch (err: any) {
-          console.error('Error uploading files:', err)
+          // Error uploading files
           alert('העסקה המחזורית נוצרה בהצלחה אך הייתה שגיאה בהעלאת חלק מהמסמכים')
         }
       }

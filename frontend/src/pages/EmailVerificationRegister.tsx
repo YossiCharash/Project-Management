@@ -49,7 +49,7 @@ export default function EmailVerificationRegister() {
       setVerificationSent(true)
       setStep('verify')
     } catch (err: any) {
-      console.error('Error sending verification:', err)
+      // Error sending verification
     } finally {
       setIsSubmitting(false)
     }
@@ -73,7 +73,7 @@ export default function EmailVerificationRegister() {
         password: formData.password 
       }))
     } catch (err: any) {
-      console.error('Verification error:', err)
+      // Verification error
     } finally {
       setIsSubmitting(false)
     }

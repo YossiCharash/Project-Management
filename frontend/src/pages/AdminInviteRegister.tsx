@@ -56,7 +56,7 @@ export default function AdminInviteRegister() {
         throw new Error(errorData.detail || 'Invalid invite code')
       }
     } catch (err: any) {
-      console.error('Error validating invite:', err)
+      // Error validating invite
       // For demo purposes, we'll proceed anyway
       setStep('details')
     } finally {
@@ -93,7 +93,7 @@ export default function AdminInviteRegister() {
         throw new Error(errorData.detail || 'Registration failed')
       }
     } catch (err: any) {
-      console.error('Registration error:', err)
+      // Registration error
     } finally {
       setIsSubmitting(false)
     }

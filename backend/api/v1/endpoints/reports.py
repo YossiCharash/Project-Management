@@ -48,9 +48,8 @@ async def get_project_transactions(project_id: int, db: DBSessionDep, user = Dep
             result = await db.execute(query, {"project_id": project_id})
             rows = result.fetchall()
             has_recurring_fields = True
-        except Exception as col_error:
+        except Exception:
             # If columns don't exist, query without them
-            print(f"[INFO] Recurring columns not found, using fallback query: {str(col_error)}")
             query = text("""
                 SELECT 
                     id, project_id, tx_date, type, amount, description, category, notes,
@@ -98,8 +97,7 @@ async def get_project_transactions(project_id: int, db: DBSessionDep, user = Dep
                     "created_at": row_dict.get('created_at') or datetime.utcnow()
                 }
                 transactions.append(tx_dict)
-            except Exception as row_error:
-                print(f"[WARNING] Error processing row: {str(row_error)}")
+            except Exception:
                 continue
         
         # Convert to TransactionOut schemas
@@ -110,7 +108,6 @@ async def get_project_transactions(project_id: int, db: DBSessionDep, user = Dep
         import traceback
         # If raw SQL fails (e.g., columns don't exist), try fallback method
         try:
-            print(f"[WARNING] Raw SQL query failed: {str(e)}, trying fallback method")
             from backend.repositories.transaction_repository import TransactionRepository
             from backend.schemas.transaction import TransactionOut
             
@@ -134,11 +131,8 @@ async def get_project_transactions(project_id: int, db: DBSessionDep, user = Dep
                         "created_at": getattr(tx, 'created_at', None) or datetime.utcnow()
                     }
                     result.append(TransactionOut.model_validate(tx_dict))
-                except Exception as tx_error:
-                    print(f"[WARNING] Error processing transaction {tx.id}: {str(tx_error)}")
+                except Exception:
                     continue
             return result
-        except Exception as fallback_error:
-            print(f"[ERROR] Both methods failed: {str(fallback_error)}")
-            print(f"[ERROR] Traceback: {traceback.format_exc()}")
+        except Exception:
             return []

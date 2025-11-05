@@ -179,7 +179,6 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
                 })
               }
             } catch (err: any) {
-              console.error(`Error uploading file ${file.name}:`, err)
               errorCount++
             }
           }
@@ -198,7 +197,6 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
             }
           }
         } catch (err: any) {
-          console.error('Error uploading files:', err)
           alert('העסקה נוצרה בהצלחה אך הייתה שגיאה בהעלאת חלק מהמסמכים')
         }
       }
@@ -209,7 +207,6 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
         resetForms()
       }
     } catch (e: any) {
-      console.error('Transaction creation error:', e)
       setError(e.response?.data?.detail ?? 'שמירה נכשלה')
     } finally {
       setLoading(false)
@@ -287,11 +284,11 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
               generatedTransactionId = matchingTransaction.id
             }
           } catch (findErr) {
-            console.warn('Could not find generated transaction:', findErr)
+            // Ignore
           }
         }
       } catch (genErr) {
-        console.warn('Could not generate transactions immediately:', genErr)
+        // Ignore
       }
 
       // If files were selected and we found the generated transaction, upload them
@@ -319,7 +316,6 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
                 })
               }
             } catch (err: any) {
-              console.error(`Error uploading file ${file.name}:`, err)
               errorCount++
             }
           }
@@ -331,14 +327,11 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
           }
           
           if (errorCount > 0) {
-            if (successCount > 0) {
-              console.warn(`Some files failed to upload: ${errorCount} failed`)
-            } else {
+            if (successCount === 0) {
               alert(`העסקה המחזורית נוצרה בהצלחה, אך הייתה שגיאה בהעלאת המסמכים`)
             }
           }
         } catch (err: any) {
-          console.error('Error uploading files:', err)
           alert('העסקה המחזורית נוצרה בהצלחה אך הייתה שגיאה בהעלאת חלק מהמסמכים')
         }
       }
@@ -945,7 +938,7 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
                             headers: { 'Content-Type': 'multipart/form-data' }
                           })
                         } catch (err: any) {
-                          console.error(`Error updating description for doc ${doc.id}:`, err)
+                          // Ignore
                         }
                       }
                     }
@@ -956,7 +949,6 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
                     onClose()
                     resetForms()
                   } catch (err: any) {
-                    console.error('Error saving descriptions:', err)
                     alert('שגיאה בשמירת התיאורים')
                   }
                 }}

@@ -118,7 +118,7 @@ export class DashboardAPI {
       const { data } = await api.get<DashboardSnapshot>('/reports/dashboard-snapshot')
       return data
     } catch (error: any) {
-      console.error('Failed to fetch dashboard snapshot:', error)
+      throw error
       
       // If authentication error, let the interceptor handle it
       if (error.response?.status === 401) {

@@ -49,7 +49,7 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       const projects = await ProjectAPI.getProjects()
       setAvailableProjects(projects.filter(p => p.is_active))
     } catch (err) {
-      console.error('Failed to load projects:', err)
+      // Failed to load projects
     }
   }
 
