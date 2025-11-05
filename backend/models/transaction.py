@@ -28,7 +28,7 @@ class Transaction(Base):
     project: Mapped["Project"] = relationship(back_populates="transactions")
 
     supplier_id: Mapped[int | None] = mapped_column(ForeignKey("suppliers.id"), nullable=True, index=True)
-    supplier: Mapped["Supplier | None"] = relationship("Supplier", lazy="selectin")
+    supplier: Mapped["Supplier | None"] = relationship("Supplier", back_populates="transactions", lazy="selectin")
 
     recurring_template_id: Mapped[int | None] = mapped_column(ForeignKey("recurring_transaction_templates.id"), index=True, nullable=True)
     recurring_template: Mapped["RecurringTransactionTemplate | None"] = relationship()
@@ -46,3 +46,6 @@ class Transaction(Base):
     file_path: Mapped[str | None] = mapped_column(String(500), default=None)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow) # לדוגמה, חישוב מתוך שדות קיימים
+
+    # Relationship to supplier documents linked to this transaction
+    documents: Mapped[list["SupplierDocument"]] = relationship("SupplierDocument", back_populates="transaction", lazy="selectin")

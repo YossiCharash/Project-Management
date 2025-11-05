@@ -18,3 +18,4 @@ class Supplier(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     documents: Mapped[list["SupplierDocument"]] = relationship(back_populates="supplier", cascade="all, delete-orphan")
+    transactions: Mapped[list["Transaction"]] = relationship("Transaction", back_populates="supplier", lazy="selectin")
