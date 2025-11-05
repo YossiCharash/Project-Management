@@ -77,6 +77,11 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
       return
     }
 
+    if (!formData.supplier_id || formData.supplier_id === 0) {
+      setError('יש לבחור ספק (חובה)')
+      return
+    }
+
     setLoading(true)
     setError(null)
 
@@ -89,7 +94,7 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
         category: formData.category || undefined,
         notes: formData.notes || undefined,
         is_exceptional: formData.is_exceptional,
-        supplier_id: formData.supplier_id || undefined
+        supplier_id: formData.supplier_id!
       }
 
       await TransactionAPI.updateTransaction(transaction.id, updateData)
@@ -207,14 +212,15 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
 
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                ספק
+                ספק * <span className="text-red-500">(חובה)</span>
               </label>
               <select
+                required
                 value={formData.supplier_id || ''}
                 onChange={(e) => setFormData({ ...formData, supplier_id: e.target.value === '' ? undefined : Number(e.target.value) })}
                 className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
               >
-                <option value="">ללא ספק</option>
+                <option value="">בחר ספק</option>
                 {suppliers.filter(s => s.is_active).map(s => (
                   <option key={s.id} value={s.id}>{s.name}</option>
                 ))}

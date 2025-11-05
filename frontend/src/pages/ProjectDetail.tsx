@@ -512,9 +512,15 @@ export default function ProjectDetail() {
                     <td className="p-3 text-gray-700 dark:text-gray-300">
                       {(() => {
                         const supplierId = t.supplier_id
-                        if (!supplierId) return '-'
+                        if (!supplierId) {
+                          console.log('Transaction', t.id, 'has no supplier_id')
+                          return '-'
+                        }
                         const supplier = suppliers.find(s => s.id === supplierId)
-                        return supplier?.name ?? '-'
+                        if (!supplier) {
+                          console.log('Supplier not found for id:', supplierId, 'Available suppliers:', suppliers.map(s => s.id))
+                        }
+                        return supplier?.name ?? `[ספק ${supplierId}]`
                       })()}
                     </td>
                     <td className="p-3 text-gray-700 dark:text-gray-300">{t.description ?? '-'}</td>
