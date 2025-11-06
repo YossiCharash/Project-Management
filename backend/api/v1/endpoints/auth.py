@@ -2,12 +2,15 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 
 from backend.core.deps import DBSessionDep, require_admin, get_current_user
+from backend.core.security import create_access_token
 from backend.schemas.auth import (
     Token, LoginInput, RefreshTokenInput, PasswordResetRequest, 
-    PasswordReset, ChangePassword, UserProfile
+    PasswordReset, ChangePassword, ResetPasswordWithToken, UserProfile
 )
-from backend.schemas.user import UserOut, AdminRegister, MemberRegister
+from backend.schemas.user import UserOut, AdminRegister, MemberRegister, AdminCreateUser
 from backend.services.auth_service import AuthService
+from backend.services.email_service import EmailService
+from backend.core.config import settings
 
 router = APIRouter()
 
@@ -20,8 +23,39 @@ def health() -> dict[str, str]:
 @router.post("/login", response_model=Token)
 async def login(db: DBSessionDep, login_data: LoginInput):
     """Login endpoint - accepts email and password"""
-    token = await AuthService(db).authenticate(email=login_data.email, password=login_data.password)
-    return {"access_token": token, "token_type": "bearer", "expires_in": 1440, "refresh_token": None}
+    try:
+        auth_service = AuthService(db)
+        user = await auth_service.authenticate_user(email=login_data.email, password=login_data.password)
+        
+        if not user:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+        
+        token = create_access_token(user.id)
+        
+        # Check if user needs to change password - handle case where column might not exist yet
+        try:
+            requires_change = user.requires_password_change if hasattr(user, 'requires_password_change') else False
+        except (AttributeError, KeyError):
+            requires_change = False
+        
+        response_data = {
+            "access_token": token, 
+            "token_type": "bearer", 
+            "expires_in": 1440, 
+            "refresh_token": None,
+            "requires_password_change": requires_change
+        }
+        
+        return response_data
+    except HTTPException:
+        raise
+    except Exception as e:
+        import logging
+        logging.error(f"Login error: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Internal server error: {str(e)}"
+        )
 
 
 @router.post("/token", response_model=Token)
@@ -73,6 +107,64 @@ async def register_member(db: DBSessionDep, member_data: MemberRegister, current
         password=member_data.password,
         group_id=member_data.group_id
     )
+    return user
+
+
+@router.post("/admin/create-user", response_model=UserOut)
+async def admin_create_user(db: DBSessionDep, user_data: AdminCreateUser, current_admin = Depends(require_admin())):
+    """Create a new user by admin - temporary password will be generated and sent via email"""
+    from backend.core.security import generate_temporary_password
+    
+    auth_service = AuthService(db)
+    
+    # Generate temporary password
+    temp_password = generate_temporary_password()
+    
+    # Create the user with temporary password
+    user = await auth_service.register(
+        email=user_data.email,
+        full_name=user_data.full_name,
+        password=temp_password,  # Use generated temporary password
+        role=user_data.role,
+        group_id=None,  # Remove group_id requirement
+        email_verified=True  # Admin-created users are considered verified
+    )
+    
+    # Mark user as needing password change
+    try:
+        user.requires_password_change = True
+        await auth_service.users.update(user)
+    except Exception as e:
+        # If column doesn't exist yet, log warning but continue
+        import logging
+        logging.warning(f"Could not set requires_password_change flag: {e}")
+        # The column will be added on next database migration
+    
+    # Create password reset token for initial password setup
+    from backend.core.security import create_initial_password_reset_token
+    reset_token = create_initial_password_reset_token(user.id, expires_days=7)
+    
+    # Send credentials via email with reset link
+    email_service = EmailService()
+    print(f"📧 Preparing to send credentials email to {user_data.email}")
+    email_sent = await email_service.send_user_credentials_email(
+        email=user_data.email,
+        full_name=user_data.full_name,
+        password=temp_password,  # Send temporary password
+        role=user_data.role,
+        reset_token=reset_token  # Include reset token for password change link
+    )
+    
+    if not email_sent:
+        # Log warning but don't fail the request - user is created
+        # In production, you might want to handle this differently
+        import logging
+        logging.warning(f"Failed to send email to {user_data.email}, but user was created")
+        print(f"⚠️  Failed to send credentials email to {user_data.email}")
+        print(f"   User was created but email was not sent. Please check SMTP configuration.")
+    else:
+        print(f"✅ Credentials email sent successfully to {user_data.email}")
+    
     return user
 
 
@@ -148,6 +240,50 @@ async def reset_password(db: DBSessionDep, reset_data: PasswordReset):
     return {"message": "Password updated successfully"}
 
 
+@router.post("/reset-password-with-token")
+async def reset_password_with_token(
+    db: DBSessionDep,
+    reset_data: ResetPasswordWithToken
+):
+    """Reset password using token and temporary password verification"""
+    from backend.core.security import verify_initial_password_reset_token, verify_password
+    
+    auth_service = AuthService(db)
+    
+    # Verify token
+    user_id = verify_initial_password_reset_token(reset_data.token)
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired token"
+        )
+    
+    # Get user
+    user = await auth_service.users.get_by_id(user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    # Verify temporary password
+    if not verify_password(reset_data.temp_password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Temporary password is incorrect"
+        )
+    
+    # Update password
+    await auth_service.update_password(user.id, reset_data.new_password)
+    
+    # Clear requires_password_change flag
+    if hasattr(user, 'requires_password_change'):
+        user.requires_password_change = False
+        await auth_service.users.update(user)
+    
+    return {"message": "Password updated successfully"}
+
+
 @router.post("/change-password")
 async def change_password(
     db: DBSessionDep, 
@@ -157,14 +293,39 @@ async def change_password(
     """Change password for authenticated user"""
     auth_service = AuthService(db)
     
-    # Verify current password
-    if not auth_service.verify_password(password_data.current_password, current_user.password_hash):
+    # Get user from database to check requires_password_change flag
+    user = await auth_service.users.get_by_id(current_user.id)
+    if not user:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Current password is incorrect"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
         )
     
-    await auth_service.update_password(current_user.id, password_data.new_password)
+    # If user requires password change, skip current password verification
+    requires_change = getattr(user, 'requires_password_change', False)
+    
+    if not requires_change:
+        # Verify current password only if not required to change
+        if not auth_service.verify_password(password_data.current_password, current_user.password_hash):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Current password is incorrect"
+            )
+    else:
+        # For required password change, verify the temporary password
+        if not auth_service.verify_password(password_data.current_password, current_user.password_hash):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Temporary password is incorrect"
+            )
+    
+    await auth_service.update_password(user.id, password_data.new_password)
+    
+    # Clear requires_password_change flag after successful password change
+    if requires_change:
+        user.requires_password_change = False
+        await auth_service.users.update(user)
+    
     return {"message": "Password updated successfully"}
 
 

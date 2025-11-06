@@ -22,6 +22,12 @@ interface Transaction {
   subproject_id?: number | null
   is_exceptional?: boolean
   supplier_id?: number | null
+  created_by_user_id?: number | null
+  created_by_user?: {
+    id: number
+    full_name: string
+    email: string
+  } | null
 }
 
 interface Subproject {
@@ -41,6 +47,7 @@ export default function ProjectDetail() {
   const [loading, setLoading] = useState(false)
   const [chartsLoading, setChartsLoading] = useState(false)
   const [projectImageUrl, setProjectImageUrl] = useState<string | null>(null)
+  const [projectBudget, setProjectBudget] = useState<{ budget_monthly: number; budget_annual: number }>({ budget_monthly: 0, budget_annual: 0 })
 
 
   const [subprojects, setSubprojects] = useState<Subproject[]>([])
@@ -112,6 +119,10 @@ export default function ProjectDetail() {
     try {
       const { data } = await api.get(`/projects/${id}`)
       setProjectName(data.name || `פרויקט ${id}`)
+      setProjectBudget({
+        budget_monthly: data.budget_monthly || 0,
+        budget_annual: data.budget_annual || 0
+      })
       if (data.image_url) {
         const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
         const baseUrl = apiUrl.replace('/api/v1', '')
@@ -119,12 +130,14 @@ export default function ProjectDetail() {
       }
     } catch (err: any) {
       setProjectName(`פרויקט ${id}`)
+      setProjectBudget({ budget_monthly: 0, budget_annual: 0 })
     }
   }
 
   useEffect(() => {
     if (id) {
       loadProjectInfo()
+      load() // Load transactions list
       loadChartsData()
     }
   }, [id])
@@ -200,15 +213,24 @@ export default function ProjectDetail() {
     
     try {
       await api.delete(`/transactions/${transactionId}`)
+      await load() // Reload transactions list
       await loadChartsData()
     } catch (err: any) {
       alert(err.response?.data?.detail ?? 'שגיאה במחיקת העסקה')
     }
   }
 
-  const income = filtered
+  // Calculate income from transactions plus budget
+  const transactionIncome = filtered
     .filter(t => t.type === 'Income')
     .reduce((s, t) => s + Number(t.amount || 0), 0)
+  
+  // Add budget to income (use annual if set, otherwise monthly * 12)
+  const budgetIncome = (projectBudget.budget_annual || 0) > 0 
+    ? projectBudget.budget_annual 
+    : (projectBudget.budget_monthly || 0) * 12
+  
+  const income = transactionIncome + budgetIncome
 
   const expense = filtered
     .filter(t => t.type === 'Expense')
@@ -466,7 +488,9 @@ export default function ProjectDetail() {
                   <th className="p-3 font-medium text-gray-700 dark:text-gray-300">תאריך</th>
                   <th className="p-3 font-medium text-gray-700 dark:text-gray-300">סכום</th>
                   <th className="p-3 font-medium text-gray-700 dark:text-gray-300">קטגוריה</th>
+                  <th className="p-3 font-medium text-gray-700 dark:text-gray-300">אמצעי תשלום</th>
                   <th className="p-3 font-medium text-gray-700 dark:text-gray-300">ספק</th>
+                  <th className="p-3 font-medium text-gray-700 dark:text-gray-300">נוצר על ידי</th>
                   <th className="p-3 font-medium text-gray-700 dark:text-gray-300">תיאור</th>
                   <th className="p-3 font-medium text-gray-700 dark:text-gray-300">הערות</th>
                   <th className="p-3 font-medium text-gray-700 dark:text-gray-300">פעולות</th>
@@ -499,6 +523,7 @@ export default function ProjectDetail() {
                       {Number(t.amount || 0).toFixed(2)} ₪
                     </td>
                     <td className="p-3 text-gray-700 dark:text-gray-300">{t.category ?? '-'}</td>
+                    <td className="p-3 text-gray-700 dark:text-gray-300">{t.payment_method ?? '-'}</td>
                     <td className="p-3 text-gray-700 dark:text-gray-300">
                       {(() => {
                         const supplierId = t.supplier_id
@@ -508,6 +533,18 @@ export default function ProjectDetail() {
                         const supplier = suppliers.find(s => s.id === supplierId)
                         return supplier?.name ?? `[ספק ${supplierId}]`
                       })()}
+                    </td>
+                    <td className="p-3 text-gray-700 dark:text-gray-300">
+                      {t.created_by_user ? (
+                        <div className="flex flex-col">
+                          <span className="font-medium">{t.created_by_user.full_name}</span>
+                          <span className="text-xs text-gray-500 dark:text-gray-400">{t.created_by_user.email}</span>
+                        </div>
+                      ) : transaction.is_generated ? (
+                        <span className="text-gray-400 dark:text-gray-500">מערכת (מחזורי)</span>
+                      ) : (
+                        <span className="text-gray-400 dark:text-gray-500">מערכת</span>
+                      )}
                     </td>
                     <td className="p-3 text-gray-700 dark:text-gray-300">{t.description ?? '-'}</td>
                     <td className="p-3 text-gray-700 dark:text-gray-300">{t.notes ?? '-'}</td>
@@ -679,6 +716,7 @@ export default function ProjectDetail() {
         onClose={() => setShowCreateTransactionModal(false)}
         onSuccess={async () => {
           setShowCreateTransactionModal(false)
+          await load() // Reload transactions list to get updated data with created_by_user
           await loadChartsData()
         }}
         projectId={parseInt(id || '0')}
@@ -693,6 +731,7 @@ export default function ProjectDetail() {
         onSuccess={async () => {
           setEditTransactionModalOpen(false)
           setSelectedTransactionForEdit(null)
+          await load() // Reload transactions list to get updated data
           await loadChartsData()
         }}
         transaction={selectedTransactionForEdit}

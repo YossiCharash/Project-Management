@@ -42,3 +42,10 @@ class MemberRegister(BaseModel):
     full_name: str = Field(min_length=1, max_length=255)
     password: str = Field(min_length=8, max_length=128)
     group_id: int
+
+
+class AdminCreateUser(BaseModel):
+    """Schema for admin creating a new user - temporary password will be generated and sent via email"""
+    email: EmailStr
+    full_name: str = Field(min_length=1, max_length=255)
+    role: Literal["Admin", "Member"] = "Member"

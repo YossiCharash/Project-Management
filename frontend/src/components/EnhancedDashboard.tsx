@@ -144,6 +144,9 @@ const AlertsStrip: React.FC<AlertsStripProps> = ({ alerts, projects }) => {
   const budgetOverrunProjects = projects.filter(p => 
     alerts.budget_overrun.includes(p.id) && !dismissedProjects.has(p.id)
   )
+  const budgetWarningProjects = projects.filter(p => 
+    (alerts.budget_warning || []).includes(p.id) && !dismissedProjects.has(p.id)
+  )
   const missingProofProjects = projects.filter(p => 
     alerts.missing_proof.includes(p.id) && !dismissedProjects.has(p.id)
   )
@@ -169,6 +172,7 @@ const AlertsStrip: React.FC<AlertsStripProps> = ({ alerts, projects }) => {
   }, {} as Record<number, typeof categoryBudgetAlerts>)
 
   const totalAlerts = budgetOverrunProjects.length + 
+                     budgetWarningProjects.length +
                      missingProofProjects.length + 
                      unpaidRecurringProjects.length + 
                      categoryBudgetAlerts.length +
@@ -203,7 +207,7 @@ const AlertsStrip: React.FC<AlertsStripProps> = ({ alerts, projects }) => {
       {isExpanded && (
         <div className="mt-3 space-y-3 border-t border-gray-200 dark:border-gray-700 pt-3">
           {/* Section 1: Project-Level Alerts */}
-          {(budgetOverrunProjects.length > 0 || missingProofProjects.length > 0 || unpaidRecurringProjects.length > 0) && (
+          {(budgetOverrunProjects.length > 0 || budgetWarningProjects.length > 0 || missingProofProjects.length > 0 || unpaidRecurringProjects.length > 0) && (
             <div className="bg-blue-50 dark:bg-blue-900/20 border-l-4 border-blue-500 rounded p-3">
               <div className="flex items-center gap-2 mb-2">
                 <span className="text-lg">🏢</span>
@@ -223,7 +227,7 @@ const AlertsStrip: React.FC<AlertsStripProps> = ({ alerts, projects }) => {
                           <div className="flex-1 min-w-0">
                             <div className="font-medium text-sm text-blue-900 dark:text-blue-100 truncate">{project.name}</div>
                             <div className="text-xs text-blue-700 dark:text-blue-300 mt-0.5">
-                              הוצא: {project.expense_month_to_date.toFixed(0)} ₪ | תקציב: {((project.budget_annual || 0) + ((project.budget_monthly || 0) * 12)).toFixed(0)} ₪
+                              הוצא: {project.expense_month_to_date.toFixed(0)} ₪ | תקציב: {((project.budget_annual || 0) > 0 ? (project.budget_annual || 0) : ((project.budget_monthly || 0) * 12)).toFixed(0)} ₪
                             </div>
                           </div>
                           <button
@@ -235,6 +239,39 @@ const AlertsStrip: React.FC<AlertsStripProps> = ({ alerts, projects }) => {
                           </button>
                         </div>
                       ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Budget Warning - Approaching Budget */}
+                {budgetWarningProjects.length > 0 && (
+                  <div className="bg-white dark:bg-gray-800 rounded p-2 border border-yellow-200 dark:border-yellow-800">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-sm">⚠️</span>
+                      <span className="font-medium text-xs text-yellow-900 dark:text-yellow-200">מתקרב לתקציב:</span>
+                    </div>
+                    <div className="space-y-1.5">
+                      {budgetWarningProjects.map(project => {
+                        const yearlyBudget = (project.budget_annual || 0) > 0 ? (project.budget_annual || 0) : ((project.budget_monthly || 0) * 12)
+                        const budgetPercent = yearlyBudget > 0 ? (project.expense_month_to_date / yearlyBudget) * 100 : 0
+                        return (
+                          <div key={project.id} className="bg-yellow-50 dark:bg-yellow-900/30 rounded p-2 flex items-center justify-between group">
+                            <div className="flex-1 min-w-0">
+                              <div className="font-medium text-sm text-yellow-900 dark:text-yellow-100 truncate">{project.name}</div>
+                              <div className="text-xs text-yellow-700 dark:text-yellow-300 mt-0.5">
+                                הוצא: {project.expense_month_to_date.toFixed(0)} ₪ | תקציב: {yearlyBudget.toFixed(0)} ₪ ({budgetPercent.toFixed(1)}%)
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => handleDismissProject(project.id)}
+                              className="ml-2 text-yellow-600 dark:text-yellow-400 hover:text-yellow-800 dark:hover:text-yellow-200 opacity-0 group-hover:opacity-100 transition-opacity text-xs px-2 py-1 rounded hover:bg-yellow-100 dark:hover:bg-yellow-900/50"
+                              title="החריג פרויקט"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        )
+                      })}
                     </div>
                   </div>
                 )}

@@ -65,6 +65,29 @@ def create_password_reset_token(email: str, expires_minutes: int = 30) -> str:
     return jwt.encode(to_encode, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
 
 
+def create_initial_password_reset_token(user_id: int, expires_days: int = 7) -> str:
+    """Create a token for initial password reset (for new users with temporary password)"""
+    expire = datetime.now(timezone.utc) + timedelta(days=expires_days)
+    to_encode = {
+        "sub": str(user_id),
+        "exp": expire,
+        "type": "initial_password_reset",
+        "iat": datetime.now(timezone.utc)
+    }
+    return jwt.encode(to_encode, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+
+
+def verify_initial_password_reset_token(token: str) -> Optional[int]:
+    """Verify initial password reset token and return user_id if valid"""
+    try:
+        payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+        if payload.get("type") == "initial_password_reset":
+            return int(payload.get("sub"))
+    except (JWTError, ValueError):
+        pass
+    return None
+
+
 def verify_password_reset_token(token: str) -> Optional[str]:
     """Verify password reset token and return email if valid"""
     try:
@@ -90,3 +113,9 @@ def create_token_pair(user_id: int, remember_me: bool = False) -> Dict[str, Any]
         "expires_in": access_expires * 60,  # in seconds
         "token_type": "bearer"
     }
+
+
+def generate_temporary_password(length: int = 12) -> str:
+    """Generate a secure temporary password"""
+    alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
+    return ''.join(secrets.choice(alphabet) for _ in range(length))

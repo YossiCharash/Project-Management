@@ -5,7 +5,7 @@ from datetime import date, datetime, timedelta
 from dateutil.relativedelta import relativedelta
 
 from backend.models.recurring_transaction import RecurringTransactionTemplate
-from backend.models.transaction import Transaction, TransactionType
+from backend.models.transaction import Transaction, TransactionType, ExpenseCategory
 from backend.repositories.recurring_transaction_repository import RecurringTransactionRepository
 from backend.repositories.transaction_repository import TransactionRepository
 from backend.schemas.recurring_transaction import (
@@ -21,8 +21,47 @@ class RecurringTransactionService:
         self.recurring_repo = RecurringTransactionRepository(db)
         self.transaction_repo = TransactionRepository(db)
 
+    def _normalize_category(self, category: str | None) -> str | None:
+        """
+        Convert category from Enum member name (e.g., 'CLEANING') to Enum value (e.g., 'ניקיון')
+        This handles cases where the frontend or API sends the Enum member name instead of the value
+        """
+        if not category:
+            return None
+        
+        # If it's already a valid Enum value (Hebrew), return it
+        valid_values = {e.value for e in ExpenseCategory}
+        if category in valid_values:
+            return category
+        
+        # Try to convert from Enum member name to value
+        category_mapping = {
+            'CLEANING': ExpenseCategory.CLEANING.value,
+            'ELECTRICITY': ExpenseCategory.ELECTRICITY.value,
+            'INSURANCE': ExpenseCategory.INSURANCE.value,
+            'GARDENING': ExpenseCategory.GARDENING.value,
+            'OTHER': ExpenseCategory.OTHER.value,
+        }
+        
+        # Convert to uppercase for case-insensitive matching
+        category_upper = category.upper()
+        if category_upper in category_mapping:
+            return category_mapping[category_upper]
+        
+        # If no match, return original (will fail validation if invalid)
+        return category
+
     async def create_template(self, data: RecurringTransactionTemplateCreate) -> RecurringTransactionTemplate:
         """Create a new recurring transaction template"""
+        # Normalize category if provided
+        template_data = data.model_dump() if hasattr(data, 'model_dump') else dict(data)
+        if 'category' in template_data and template_data['category']:
+            template_data['category'] = self._normalize_category(template_data['category'])
+            # Update the data object
+            if hasattr(data, 'model_copy'):
+                data = data.model_copy(update={'category': template_data['category']})
+            elif hasattr(data, '__dict__'):
+                data.__dict__['category'] = template_data['category']
         return await self.recurring_repo.create(data)
 
     async def get_template(self, template_id: int) -> Optional[RecurringTransactionTemplate]:
@@ -38,6 +77,16 @@ class RecurringTransactionService:
         template = await self.recurring_repo.get_by_id(template_id)
         if not template:
             return None
+        
+        # Normalize category if provided in update
+        update_data = data.model_dump(exclude_unset=True) if hasattr(data, 'model_dump') else dict(data)
+        if 'category' in update_data and update_data['category']:
+            update_data['category'] = self._normalize_category(update_data['category'])
+            # Update the data object
+            if hasattr(data, 'model_copy'):
+                data = data.model_copy(update={'category': update_data['category']})
+            elif hasattr(data, '__dict__'):
+                data.__dict__['category'] = update_data['category']
         
         return await self.recurring_repo.update(template, data)
 
@@ -107,6 +156,9 @@ class RecurringTransactionService:
                 category_value = template.category
                 if category_value and hasattr(category_value, 'value'):
                     category_value = category_value.value
+                
+                # Normalize category (convert from Enum member name to value if needed)
+                category_value = self._normalize_category(category_value)
                 
                 transaction_data = {
                     "project_id": template.project_id,
@@ -219,6 +271,9 @@ class RecurringTransactionService:
                         if category_value and hasattr(category_value, 'value'):
                             category_value = category_value.value
                         
+                        # Normalize category (convert from Enum member name to value if needed)
+                        category_value = self._normalize_category(category_value)
+                        
                         transaction_data = {
                             "project_id": template.project_id,
                             "recurring_template_id": template.id,
@@ -303,6 +358,10 @@ class RecurringTransactionService:
                 return None
         
         update_data = data.model_dump(exclude_unset=True)
+        # Normalize category if provided
+        if 'category' in update_data and update_data['category']:
+            update_data['category'] = self._normalize_category(update_data['category'])
+        
         for field, value in update_data.items():
             setattr(transaction, field, value)
         

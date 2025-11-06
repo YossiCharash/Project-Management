@@ -16,9 +16,17 @@ interface AuthState {
   error: string | null
   registered: boolean
   me: CurrentUser | null
+  requiresPasswordChange: boolean
 }
 
-const initialState: AuthState = { token: localStorage.getItem('token'), loading: false, error: null, registered: false, me: null }
+const initialState: AuthState = { 
+  token: localStorage.getItem('token'), 
+  loading: false, 
+  error: null, 
+  registered: false, 
+  me: null,
+  requiresPasswordChange: false
+}
 
 export const login = createAsyncThunk(
   'auth/login',
@@ -28,7 +36,10 @@ export const login = createAsyncThunk(
         email: payload.email,
         password: payload.password
       })
-      return data.access_token as string
+      return {
+        token: data.access_token as string,
+        requires_password_change: data.requires_password_change || false
+      }
     } catch (e: any) {
       return rejectWithValue(e.response?.data?.detail ?? 'Login failed')
     }
@@ -114,7 +125,11 @@ const slice = createSlice({
     logout(state) {
       state.token = null
       state.me = null
+      state.requiresPasswordChange = false
       localStorage.removeItem('token')
+    },
+    clearPasswordChangeRequirement(state) {
+      state.requiresPasswordChange = false
     },
     clearAuthState(state){
       state.error = null
@@ -129,8 +144,15 @@ const slice = createSlice({
       })
       .addCase(login.fulfilled, (state, action) => {
         state.loading = false
-        state.token = action.payload
-        localStorage.setItem('token', action.payload)
+        if (typeof action.payload === 'string') {
+          // Backward compatibility
+          state.token = action.payload
+          localStorage.setItem('token', action.payload)
+        } else {
+          state.token = action.payload.token
+          state.requiresPasswordChange = action.payload.requires_password_change || false
+          localStorage.setItem('token', action.payload.token)
+        }
       })
       .addCase(login.rejected, (state, action) => {
         state.loading = false
@@ -194,5 +216,5 @@ const slice = createSlice({
   },
 })
 
-export const { logout, clearAuthState } = slice.actions
+export const { logout, clearAuthState, clearPasswordChangeRequirement } = slice.actions
 export default slice.reducer

@@ -10,7 +10,6 @@ from backend.schemas.email_verification import (
     EmailVerificationStatus
 )
 from backend.repositories.email_verification_repository import EmailVerificationRepository
-from backend.repositories.group_code_repository import GroupCodeRepository
 from backend.services.email_service import EmailService
 from backend.services.auth_service import AuthService
 from backend.models.email_verification import EmailVerification
@@ -50,24 +49,8 @@ async def send_verification_email(
             detail="Verification already sent. Please wait before requesting another."
         )
     
-    # Validate group code for member registration
+    # Group code validation removed - members are now created by admin only
     group_id = None
-    if request.verification_type == 'member_register':
-        if not request.group_code:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Group code is required for member registration"
-            )
-        
-        # Validate group code
-        group_code_repo = GroupCodeRepository(db)
-        group_code = await group_code_repo.get_by_code(request.group_code)
-        if not group_code or not group_code.is_active:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid or inactive group code"
-            )
-        group_id = group_code.id
 
     # Create verification with both code and token (support both methods)
     verification_code = EmailVerification.generate_verification_code()

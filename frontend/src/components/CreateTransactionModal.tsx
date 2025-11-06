@@ -34,6 +34,7 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
   const [amount, setAmount] = useState<number | ''>('')
   const [desc, setDesc] = useState('')
   const [category, setCategory] = useState('')
+  const [paymentMethod, setPaymentMethod] = useState('')
   const [notes, setNotes] = useState('')
   const [subprojectId, setSubprojectId] = useState<number | ''>('')
   const [supplierId, setSupplierId] = useState<number | ''>('')
@@ -88,6 +89,7 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
     setAmount('')
     setDesc('')
     setCategory('')
+    setPaymentMethod('')
     setNotes('')
     setSubprojectId('')
     setSupplierId('')
@@ -146,6 +148,7 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
         amount: Number(amount),
         description: desc || undefined,
         category: category || undefined,
+        payment_method: paymentMethod || undefined,
         notes: notes || undefined,
         supplier_id: Number(supplierId),
         is_exceptional: isExceptional,
@@ -465,6 +468,22 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
                       <option value="ביטוח">ביטוח</option>
                       <option value="גינון">גינון</option>
                       <option value="אחר">אחר</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">אמצעי תשלום</label>
+                    <select
+                      className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      value={paymentMethod}
+                      onChange={e => setPaymentMethod(e.target.value)}
+                    >
+                      <option value="">בחר אמצעי תשלום</option>
+                      <option value="הוראת קבע">הוראת קבע</option>
+                      <option value="אשראי">אשראי</option>
+                      <option value="שיק">שיק</option>
+                      <option value="מזומן">מזומן</option>
+                      <option value="העברה בנקאית">העברה בנקאית</option>
                     </select>
                   </div>
 

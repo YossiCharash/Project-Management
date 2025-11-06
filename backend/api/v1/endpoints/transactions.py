@@ -12,6 +12,7 @@ from backend.repositories.supplier_document_repository import SupplierDocumentRe
 from backend.models.supplier_document import SupplierDocument
 from backend.schemas.transaction import TransactionCreate, TransactionOut, TransactionUpdate
 from backend.services.transaction_service import TransactionService
+from backend.services.audit_service import AuditService
 from backend.models.user import UserRole
 
 router = APIRouter()
@@ -46,7 +47,69 @@ def get_uploads_dir() -> str:
 @router.get("/project/{project_id}", response_model=list[TransactionOut])
 async def list_transactions(project_id: int, db: DBSessionDep, user = Depends(get_current_user)):
     """List transactions for a project - accessible to all authenticated users"""
-    return await TransactionRepository(db).list_by_project(project_id)
+    # Get project name for audit log
+    project = await ProjectRepository(db).get_by_id(project_id)
+    project_name = project.name if project else f"Project {project_id}"
+    
+    # Log view action
+    await AuditService(db).log_transaction_action(
+        user_id=user.id,
+        action='view_list',
+        transaction_id=project_id,
+        details={'project_id': project_id, 'project_name': project_name}
+    )
+    
+    # Get transactions with user info
+    transactions = await TransactionRepository(db).list_by_project(project_id)
+    
+    # Load user info for each transaction
+    from backend.repositories.user_repository import UserRepository
+    user_repo = UserRepository(db)
+    
+    result = []
+    for tx in transactions:
+        # Debug: Check if created_by_user_id exists
+        if not hasattr(tx, 'created_by_user_id'):
+            print(f"DEBUG: Transaction {tx.id} does not have created_by_user_id attribute")
+        
+        tx_dict = {
+            'id': tx.id,
+            'project_id': tx.project_id,
+            'tx_date': tx.tx_date,
+            'type': tx.type,
+            'amount': float(tx.amount),
+            'description': tx.description,
+            'category': tx.category,
+            'payment_method': tx.payment_method,
+            'notes': tx.notes,
+            'is_exceptional': tx.is_exceptional,
+            'is_generated': tx.is_generated,
+            'file_path': tx.file_path,
+            'supplier_id': tx.supplier_id,
+            'created_by_user_id': getattr(tx, 'created_by_user_id', None),
+            'created_at': tx.created_at,
+            'created_by_user': None
+        }
+        
+        # Debug: Print transaction info
+        print(f"DEBUG: Transaction {tx.id} - created_by_user_id={tx_dict['created_by_user_id']}, is_generated={tx.is_generated}")
+        
+        # Load user info if exists
+        if tx_dict['created_by_user_id']:
+            creator = await user_repo.get_by_id(tx_dict['created_by_user_id'])
+            if creator:
+                tx_dict['created_by_user'] = {
+                    'id': creator.id,
+                    'full_name': creator.full_name,
+                    'email': creator.email
+                }
+                print(f"DEBUG: Loaded user for transaction {tx.id}: {creator.full_name}")
+            else:
+                print(f"DEBUG: User {tx_dict['created_by_user_id']} not found for transaction {tx.id}")
+        
+        result.append(tx_dict)
+    
+    return result
 
 
 @router.post("/", response_model=TransactionOut)
@@ -64,7 +127,77 @@ async def create_transaction(db: DBSessionDep, data: TransactionCreate, user = D
         if not supplier.is_active:
             raise HTTPException(status_code=400, detail="Cannot create transaction with inactive supplier")
     
-    return await TransactionService(db).create(**data.model_dump())
+    # Add user_id to transaction data
+    transaction_data = data.model_dump()
+    transaction_data['created_by_user_id'] = user.id
+    
+    # Debug: Print to verify user_id is being set
+    print(f"DEBUG: Creating transaction with created_by_user_id={user.id}, user={user.full_name}")
+    
+    transaction = await TransactionService(db).create(**transaction_data)
+    
+    # Debug: Verify transaction was created with user_id
+    print(f"DEBUG: Transaction created with id={transaction.id}, created_by_user_id={transaction.created_by_user_id}")
+    
+    # Get project name for audit log
+    project_name = project.name if project else f"Project {transaction.project_id}"
+    
+    # Log create action with full details
+    await AuditService(db).log_transaction_action(
+        user_id=user.id,
+        action='create',
+        transaction_id=transaction.id,
+        details={
+            'project_id': transaction.project_id,
+            'project_name': project_name,
+            'type': transaction.type,
+            'amount': str(transaction.amount),
+            'category': transaction.category,
+            'description': transaction.description,
+            'tx_date': str(transaction.tx_date),
+            'supplier_id': transaction.supplier_id,
+            'payment_method': transaction.payment_method,
+            'notes': transaction.notes,
+            'is_exceptional': transaction.is_exceptional,
+            'is_generated': transaction.is_generated,
+            'file_path': transaction.file_path
+        }
+    )
+    
+    # Convert to dict with user info
+    from backend.repositories.user_repository import UserRepository
+    user_repo = UserRepository(db)
+    
+    result = {
+        'id': transaction.id,
+        'project_id': transaction.project_id,
+        'tx_date': transaction.tx_date,
+        'type': transaction.type,
+        'amount': float(transaction.amount),
+        'description': transaction.description,
+        'category': transaction.category,
+        'payment_method': transaction.payment_method,
+        'notes': transaction.notes,
+        'is_exceptional': transaction.is_exceptional,
+        'is_generated': transaction.is_generated,
+        'file_path': transaction.file_path,
+        'supplier_id': transaction.supplier_id,
+        'created_by_user_id': transaction.created_by_user_id,
+        'created_at': transaction.created_at,
+        'created_by_user': None
+    }
+    
+    # Load user info if exists
+    if transaction.created_by_user_id:
+        creator = await user_repo.get_by_id(transaction.created_by_user_id)
+        if creator:
+            result['created_by_user'] = {
+                'id': creator.id,
+                'full_name': creator.full_name,
+                'email': creator.email
+            }
+    
+    return result
 
 
 @router.post("/{tx_id}/upload", response_model=TransactionOut)
@@ -73,7 +206,51 @@ async def upload_receipt(tx_id: int, db: DBSessionDep, file: UploadFile = File(.
     tx = await TransactionRepository(db).get_by_id(tx_id)
     if not tx:
         raise HTTPException(status_code=404, detail="Transaction not found")
-    return await TransactionService(db).attach_file(tx, file)
+    
+    result = await TransactionService(db).attach_file(tx, file)
+    
+    # Log upload action
+    await AuditService(db).log_transaction_action(
+        user_id=user.id,
+        action='upload_receipt',
+        transaction_id=tx_id,
+        details={'filename': file.filename}
+    )
+    
+    # Convert to dict with user info
+    from backend.repositories.user_repository import UserRepository
+    user_repo = UserRepository(db)
+    
+    transaction_dict = {
+        'id': result.id,
+        'project_id': result.project_id,
+        'tx_date': result.tx_date,
+        'type': result.type,
+        'amount': float(result.amount),
+        'description': result.description,
+        'category': result.category,
+        'payment_method': result.payment_method,
+        'notes': result.notes,
+        'is_exceptional': result.is_exceptional,
+        'is_generated': result.is_generated,
+        'file_path': result.file_path,
+        'supplier_id': result.supplier_id,
+        'created_by_user_id': result.created_by_user_id,
+        'created_at': result.created_at,
+        'created_by_user': None
+    }
+    
+    # Load user info if exists
+    if result.created_by_user_id:
+        creator = await user_repo.get_by_id(result.created_by_user_id)
+        if creator:
+            transaction_dict['created_by_user'] = {
+                'id': creator.id,
+                'full_name': creator.full_name,
+                'email': creator.email
+            }
+    
+    return transaction_dict
 
 
 @router.get("/{tx_id}/documents", response_model=list[dict])
@@ -217,6 +394,25 @@ async def update_transaction(tx_id: int, db: DBSessionDep, data: TransactionUpda
     if not tx:
         raise HTTPException(status_code=404, detail="Transaction not found")
     
+    # Get project name for audit log
+    project = await ProjectRepository(db).get_by_id(tx.project_id)
+    project_name = project.name if project else f"Project {tx.project_id}"
+    
+    # Store old values for audit log
+    old_values = {
+        'amount': str(tx.amount),
+        'type': tx.type,
+        'category': tx.category or '',
+        'description': tx.description or '',
+        'tx_date': str(tx.tx_date),
+        'supplier_id': tx.supplier_id,
+        'payment_method': tx.payment_method or '',
+        'notes': tx.notes or '',
+        'is_exceptional': tx.is_exceptional,
+        'is_generated': tx.is_generated,
+        'file_path': tx.file_path or ''
+    }
+    
     # Validate supplier if provided
     if data.supplier_id is not None:
         supplier = await SupplierRepository(db).get(data.supplier_id)
@@ -225,9 +421,65 @@ async def update_transaction(tx_id: int, db: DBSessionDep, data: TransactionUpda
         if not supplier.is_active:
             raise HTTPException(status_code=400, detail="Cannot update transaction with inactive supplier")
     
-    for k, v in data.model_dump(exclude_unset=True).items():
+    update_data = data.model_dump(exclude_unset=True)
+    # Normalize category if provided
+    if 'category' in update_data:
+        service = TransactionService(db)
+        update_data['category'] = service._normalize_category(update_data['category'])
+    
+    for k, v in update_data.items():
         setattr(tx, k, v)
-    return await repo.update(tx)
+    
+    updated_tx = await repo.update(tx)
+    
+    # Log update action with full details
+    new_values = {k: str(v) for k, v in update_data.items()}
+    await AuditService(db).log_transaction_action(
+        user_id=user.id,
+        action='update',
+        transaction_id=tx_id,
+        details={
+            'project_id': tx.project_id,
+            'project_name': project_name,
+            'old_values': old_values,
+            'new_values': new_values
+        }
+    )
+    
+    # Convert to dict with user info
+    from backend.repositories.user_repository import UserRepository
+    user_repo = UserRepository(db)
+    
+    result = {
+        'id': updated_tx.id,
+        'project_id': updated_tx.project_id,
+        'tx_date': updated_tx.tx_date,
+        'type': updated_tx.type,
+        'amount': float(updated_tx.amount),
+        'description': updated_tx.description,
+        'category': updated_tx.category,
+        'payment_method': updated_tx.payment_method,
+        'notes': updated_tx.notes,
+        'is_exceptional': updated_tx.is_exceptional,
+        'is_generated': updated_tx.is_generated,
+        'file_path': updated_tx.file_path,
+        'supplier_id': updated_tx.supplier_id,
+        'created_by_user_id': updated_tx.created_by_user_id,
+        'created_at': updated_tx.created_at,
+        'created_by_user': None
+    }
+    
+    # Load user info if exists
+    if updated_tx.created_by_user_id:
+        creator = await user_repo.get_by_id(updated_tx.created_by_user_id)
+        if creator:
+            result['created_by_user'] = {
+                'id': creator.id,
+                'full_name': creator.full_name,
+                'email': creator.email
+            }
+    
+    return result
 
 
 @router.delete("/{tx_id}")
@@ -237,5 +489,36 @@ async def delete_transaction(tx_id: int, db: DBSessionDep, user = Depends(requir
     tx = await repo.get_by_id(tx_id)
     if not tx:
         raise HTTPException(status_code=404, detail="Transaction not found")
+    
+    # Get project name for audit log
+    project = await ProjectRepository(db).get_by_id(tx.project_id)
+    project_name = project.name if project else f"Project {tx.project_id}"
+    
+    # Store transaction details for audit log
+    tx_details = {
+        'project_id': tx.project_id,
+        'project_name': project_name,
+        'type': tx.type,
+        'amount': str(tx.amount),
+        'category': tx.category,
+        'description': tx.description,
+        'tx_date': str(tx.tx_date),
+        'supplier_id': tx.supplier_id,
+        'payment_method': tx.payment_method,
+        'notes': tx.notes,
+        'is_exceptional': tx.is_exceptional,
+        'is_generated': tx.is_generated,
+        'file_path': tx.file_path
+    }
+    
     await repo.delete(tx)
+    
+    # Log delete action
+    await AuditService(db).log_transaction_action(
+        user_id=user.id,
+        action='delete',
+        transaction_id=tx_id,
+        details=tx_details
+    )
+    
     return {"ok": True}

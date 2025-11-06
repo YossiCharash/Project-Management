@@ -14,8 +14,8 @@ import {
   Home,
   FileText,
   Building2,
-  Plus,
-  UserCog
+  UserCog,
+  Activity
 } from 'lucide-react'
 import { useTheme } from '../../contexts/ThemeContext'
 import { cn } from '../../lib/utils'
@@ -25,7 +25,6 @@ import type { RootState } from '../../store'
 interface SidebarProps {
   isCollapsed: boolean
   onToggle: () => void
-  onAddTransaction?: () => void
 }
 
 const getNavigationItems = (userRole?: string) => {
@@ -59,16 +58,16 @@ const getNavigationItems = (userRole?: string) => {
   // Add admin-only items
   if (userRole === 'Admin') {
     baseItems.push({
+      name: 'יומן פעילות',
+      href: '/audit-logs',
+      icon: Activity,
+      description: 'מעקב אחר כל הפעולות במערכת'
+    })
+    baseItems.push({
       name: 'ניהול מנהלים',
       href: '/admin-management',
       icon: UserCog,
       description: 'ניהול מנהלי מערכת נוספים'
-    })
-    baseItems.push({
-      name: 'קודי קבוצה',
-      href: '/group-codes',
-      icon: UserCog,
-      description: 'יצירה וניהול קודי קבוצה למשתמשים'
     })
     baseItems.push({
       name: 'ניהול משתמשים',
@@ -88,7 +87,7 @@ const getNavigationItems = (userRole?: string) => {
   return baseItems
 }
 
-export function Sidebar({ isCollapsed, onToggle, onAddTransaction }: SidebarProps) {
+export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   const location = useLocation()
   const { theme, toggleTheme } = useTheme()
   const me = useSelector((state: RootState) => state.auth.me)
@@ -180,31 +179,6 @@ export function Sidebar({ isCollapsed, onToggle, onAddTransaction }: SidebarProp
         })}
       </nav>
 
-      {/* Add Transaction Button */}
-      {onAddTransaction && (
-        <div className="px-4 pb-4">
-          <button
-            onClick={onAddTransaction}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors"
-          >
-            <Plus className="w-5 h-5 flex-shrink-0" />
-            <AnimatePresence>
-              {!isCollapsed && (
-                <motion.span
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -10 }}
-                  transition={{ duration: 0.2 }}
-                  className="font-medium"
-                >
-                  הוסף עסקה
-                </motion.span>
-              )}
-            </AnimatePresence>
-          </button>
-        </div>
-      )}
-
       {/* Footer */}
       <div className="p-4 border-t border-gray-200 dark:border-gray-700">
         <AnimatePresence>
@@ -247,10 +221,9 @@ export function Sidebar({ isCollapsed, onToggle, onAddTransaction }: SidebarProp
 interface MobileSidebarProps {
   isOpen: boolean
   onClose: () => void
-  onAddTransaction?: () => void
 }
 
-export function MobileSidebar({ isOpen, onClose, onAddTransaction }: MobileSidebarProps) {
+export function MobileSidebar({ isOpen, onClose }: MobileSidebarProps) {
   const location = useLocation()
   const { theme, toggleTheme } = useTheme()
   const me = useSelector((state: RootState) => state.auth.me)
@@ -328,22 +301,6 @@ export function MobileSidebar({ isOpen, onClose, onAddTransaction }: MobileSideb
                 )
               })}
             </nav>
-
-            {/* Add Transaction Button */}
-            {onAddTransaction && (
-              <div className="px-4 pb-4">
-                <button
-                  onClick={() => {
-                    onAddTransaction()
-                    onClose()
-                  }}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors"
-                >
-                  <Plus className="w-5 h-5 flex-shrink-0" />
-                  <span className="font-medium">הוסף עסקה</span>
-                </button>
-              </div>
-            )}
 
             <div className="p-4 border-t border-gray-200 dark:border-gray-700">
               <button

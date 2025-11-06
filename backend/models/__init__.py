@@ -11,7 +11,6 @@ from backend.models.supplier import Supplier
 from backend.models.supplier_document import SupplierDocument
 from backend.models.admin_invite import AdminInvite
 from backend.models.email_verification import EmailVerification
-from backend.models.group_code import GroupCode
 from backend.models.member_invite import MemberInvite
 from backend.models.budget import Budget
 
@@ -28,7 +27,6 @@ __all__ = [
     "SupplierDocument",
     "AdminInvite",
     "EmailVerification",
-    "GroupCode",
     "RecurringTransactionTemplate",
     "MemberInvite",
     "Budget"

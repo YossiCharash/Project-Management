@@ -4,7 +4,26 @@ import os
 from dotenv import load_dotenv
 
 # Load environment variables from a .env file if present
-load_dotenv()
+# Try to load from backend directory first, then root directory
+import pathlib
+backend_dir = pathlib.Path(__file__).parent.parent
+env_path = backend_dir / ".env"
+if not env_path.exists():
+    # Try root directory
+    root_dir = backend_dir.parent
+    env_path = root_dir / ".env"
+
+if env_path.exists():
+    load_dotenv(dotenv_path=env_path)
+    print(f"✅ Loaded .env file from: {env_path}")
+    # Debug: Check if SMTP variables are loaded
+    smtp_user = os.getenv("SMTP_USERNAME")
+    smtp_pass = os.getenv("SMTP_PASSWORD")
+    print(f"   SMTP_USERNAME: {'SET' if smtp_user else 'NOT SET'}")
+    print(f"   SMTP_PASSWORD: {'SET' if smtp_pass else 'NOT SET'}")
+else:
+    load_dotenv()  # Try default location
+    print("⚠️  .env file not found, using default load_dotenv()")
 
 
 class Settings(BaseModel):
@@ -38,7 +57,8 @@ class Settings(BaseModel):
     SMTP_PORT: int = Field(default=int(os.getenv("SMTP_PORT", "587")))
     SMTP_USERNAME: str = Field(default=os.getenv("SMTP_USERNAME", ""))
     SMTP_PASSWORD: str = Field(default=os.getenv("SMTP_PASSWORD", ""))
-    FROM_EMAIL: str = Field(default=os.getenv("FROM_EMAIL", "noreply@example.com"))
+    # FROM_EMAIL defaults to SMTP_USERNAME if not set (handled in EmailService)
+    FROM_EMAIL: str = Field(default=os.getenv("FROM_EMAIL", ""))
     FRONTEND_URL: str = Field(default=os.getenv("FRONTEND_URL", "http://localhost:5173"))
     
     # Google OAuth Configuration

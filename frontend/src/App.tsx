@@ -4,15 +4,15 @@ import { useSelector, useDispatch } from 'react-redux'
 import type { RootState } from './store'
 import { motion, AnimatePresence } from 'framer-motion'
 import Login from './pages/Login'
-import Register from './pages/Register'
 import AdminRegister from './pages/AdminRegister'
 import AdminInviteRegister from './pages/AdminInviteRegister'
 import AdminInviteManagement from './pages/AdminInviteManagement'
 import EmailVerificationRegister from './pages/EmailVerificationRegister'
 import OAuthCallback from './pages/OAuthCallback'
+import ResetPassword from './pages/ResetPassword'
 import AdminManagement from './pages/AdminManagement'
-import GroupCodeManagement from './pages/GroupCodeManagement'
 import UserManagement from './pages/UserManagement'
+import AuditLogs from './pages/AuditLogs'
 import Dashboard from './pages/Dashboard'
 import Projects from './pages/Projects'
 import ProjectDetail from './pages/ProjectDetail'
@@ -25,7 +25,6 @@ import { logout, fetchMe } from './store/slices/authSlice'
 import { Sidebar, MobileSidebar } from './components/ui/Sidebar'
 import { ThemeProvider } from './contexts/ThemeContext'
 import { LoadingOverlay } from './components/ui/Loading'
-import AddTransactionModal from './components/AddTransactionModal'
 import { Menu, LogOut, User } from 'lucide-react'
 import { cn } from './lib/utils'
 
@@ -34,6 +33,7 @@ function RequireAuth({ children }: { children: JSX.Element }) {
   const token = useSelector((s: RootState) => s.auth.token)
   const me = useSelector((s: RootState) => s.auth.me)
   const loading = useSelector((s: RootState) => s.auth.loading)
+  const requiresPasswordChange = useSelector((s: RootState) => s.auth.requiresPasswordChange)
 
   useEffect(() => {
     if (token && !me && !loading) {
@@ -43,6 +43,11 @@ function RequireAuth({ children }: { children: JSX.Element }) {
 
   // If no token, redirect to login
   if (!token) return <Navigate to="/login" replace />
+  
+  // If user requires password change, redirect to login to show password change modal
+  if (requiresPasswordChange) {
+    return <Navigate to="/login" replace />
+  }
   
   // If loading user data, show loading
   if (loading) {
@@ -59,7 +64,6 @@ function AppContent() {
   const me = useSelector((s: RootState) => s.auth.me)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
-  const [showAddTransactionModal, setShowAddTransactionModal] = useState(false)
 
   const onLogout = () => {
     dispatch(logout())
@@ -73,11 +77,11 @@ function AppContent() {
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
         <Routes>
           <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
           <Route path="/admin-register" element={<AdminRegister />} />
           <Route path="/admin-invite" element={<AdminInviteRegister />} />
           <Route path="/email-register" element={<EmailVerificationRegister />} />
           <Route path="/auth/callback" element={<OAuthCallback />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
       </div>
@@ -91,7 +95,6 @@ function AppContent() {
         <Sidebar 
           isCollapsed={sidebarCollapsed} 
           onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
-          onAddTransaction={() => setShowAddTransactionModal(true)}
         />
       </div>
 
@@ -99,7 +102,6 @@ function AppContent() {
       <MobileSidebar 
         isOpen={mobileSidebarOpen} 
         onClose={() => setMobileSidebarOpen(false)}
-        onAddTransaction={() => setShowAddTransactionModal(true)}
       />
 
       {/* Main Content */}
@@ -156,24 +158,14 @@ function AppContent() {
               <Route path="/suppliers" element={<RequireAuth><Suppliers /></RequireAuth>} />
               <Route path="/suppliers/:supplierId/documents" element={<RequireAuth><SupplierDocuments /></RequireAuth>} />
               <Route path="/users" element={<RequireAuth><UserManagement /></RequireAuth>} />
+              <Route path="/audit-logs" element={<RequireAuth><AuditLogs /></RequireAuth>} />
               <Route path="/admin-invites" element={<RequireAuth><AdminInviteManagement /></RequireAuth>} />
               <Route path="/admin-management" element={<RequireAuth><AdminManagement /></RequireAuth>} />
-              <Route path="/group-codes" element={<RequireAuth><GroupCodeManagement /></RequireAuth>} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </motion.div>
         </main>
       </div>
-
-      {/* Add Transaction Modal */}
-      <AddTransactionModal
-        isOpen={showAddTransactionModal}
-        onClose={() => setShowAddTransactionModal(false)}
-        onSuccess={() => {
-          setShowAddTransactionModal(false)
-          // Optionally refresh data or show success message
-        }}
-      />
     </div>
   )
 }

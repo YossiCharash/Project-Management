@@ -6,6 +6,7 @@ from backend.models.supplier_document import SupplierDocument
 from backend.repositories.supplier_repository import SupplierRepository
 from backend.repositories.supplier_document_repository import SupplierDocumentRepository
 from backend.schemas.supplier import SupplierCreate, SupplierOut, SupplierUpdate
+from backend.services.audit_service import AuditService
 from backend.core.config import settings
 import os
 import re
@@ -62,7 +63,17 @@ async def get_supplier(supplier_id: int, db: DBSessionDep, user = Depends(get_cu
 async def create_supplier(db: DBSessionDep, data: SupplierCreate, user = Depends(get_current_user)):
     """Create supplier - accessible to all authenticated users"""
     supplier = Supplier(**data.model_dump())
-    return await SupplierRepository(db).create(supplier)
+    created_supplier = await SupplierRepository(db).create(supplier)
+    
+    # Log create action
+    await AuditService(db).log_supplier_action(
+        user_id=user.id,
+        action='create',
+        supplier_id=created_supplier.id,
+        details={'name': created_supplier.name}
+    )
+    
+    return created_supplier
 
 
 @router.put("/{supplier_id}", response_model=SupplierOut)
@@ -72,9 +83,25 @@ async def update_supplier(supplier_id: int, db: DBSessionDep, data: SupplierUpda
     supplier = await repo.get(supplier_id)
     if not supplier:
         raise HTTPException(status_code=404, detail="Supplier not found")
+    
+    # Store old values for audit log
+    old_values = {'name': supplier.name, 'is_active': str(supplier.is_active)}
+    
     for k, v in data.model_dump(exclude_unset=True).items():
         setattr(supplier, k, v)
-    return await repo.update(supplier)
+    
+    updated_supplier = await repo.update(supplier)
+    
+    # Log update action
+    new_values = {k: str(v) for k, v in data.model_dump(exclude_unset=True).items()}
+    await AuditService(db).log_supplier_action(
+        user_id=user.id,
+        action='update',
+        supplier_id=supplier_id,
+        details={'old_values': old_values, 'new_values': new_values}
+    )
+    
+    return updated_supplier
 
 
 @router.delete("/{supplier_id}")
@@ -84,7 +111,20 @@ async def delete_supplier(supplier_id: int, db: DBSessionDep, user = Depends(req
     supplier = await repo.get(supplier_id)
     if not supplier:
         raise HTTPException(status_code=404, detail="Supplier not found")
+    
+    # Store supplier details for audit log
+    supplier_details = {'name': supplier.name}
+    
     await repo.delete(supplier)
+    
+    # Log delete action
+    await AuditService(db).log_supplier_action(
+        user_id=user.id,
+        action='delete',
+        supplier_id=supplier_id,
+        details=supplier_details
+    )
+    
     return {"ok": True}
 
 

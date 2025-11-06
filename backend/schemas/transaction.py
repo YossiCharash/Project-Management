@@ -10,6 +10,7 @@ class TransactionBase(BaseModel):
     amount: float
     description: str | None = None
     category: str | None = None
+    payment_method: str | None = None
     notes: str | None = None
     is_exceptional: bool = False
     supplier_id: int | None = None
@@ -25,6 +26,7 @@ class TransactionUpdate(BaseModel):
     amount: float | None = None
     description: str | None = None
     category: str | None = None
+    payment_method: str | None = None
     notes: str | None = None
     is_exceptional: bool | None = None
     supplier_id: int | None = None
@@ -38,12 +40,15 @@ class TransactionOut(BaseModel):
     amount: float  # No validation constraint for response
     description: str | None = None
     category: str | None = None
+    payment_method: str | None = None
     notes: str | None = None
     is_exceptional: bool = False
     is_generated: bool = False
     file_path: str | None
     supplier_id: int | None = None
+    created_by_user_id: int | None = None
     created_at: datetime
+    created_by_user: dict | None = None  # Will contain user info if loaded
 
     class Config:
         from_attributes = True

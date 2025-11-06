@@ -25,6 +25,7 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     amount: 0,
     description: '',
     category: '',
+    payment_method: '',
     notes: '',
     is_exceptional: false,
     supplier_id: undefined
@@ -47,6 +48,7 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
         amount: transaction.amount,
         description: transaction.description || '',
         category: transaction.category || '',
+        payment_method: transaction.payment_method || '',
         notes: transaction.notes || '',
         is_exceptional: transaction.is_exceptional || false,
         supplier_id: (transaction as any).supplier_id || undefined
@@ -61,6 +63,7 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
       amount: 0,
       description: '',
       category: '',
+      payment_method: '',
       notes: '',
       is_exceptional: false,
       supplier_id: undefined
@@ -92,6 +95,7 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
         amount: formData.amount!,
         description: formData.description || undefined,
         category: formData.category || undefined,
+        payment_method: formData.payment_method || undefined,
         notes: formData.notes || undefined,
         is_exceptional: formData.is_exceptional,
         supplier_id: formData.supplier_id!
@@ -207,6 +211,24 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                 <option value="ביטוח">ביטוח</option>
                 <option value="גינון">גינון</option>
                 <option value="אחר">אחר</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                אמצעי תשלום
+              </label>
+              <select
+                value={formData.payment_method || ''}
+                onChange={(e) => setFormData({ ...formData, payment_method: e.target.value || '' })}
+                className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              >
+                <option value="">בחר אמצעי תשלום</option>
+                <option value="הוראת קבע">הוראת קבע</option>
+                <option value="אשראי">אשראי</option>
+                <option value="שיק">שיק</option>
+                <option value="מזומן">מזומן</option>
+                <option value="העברה בנקאית">העברה בנקאית</option>
               </select>
             </div>
 

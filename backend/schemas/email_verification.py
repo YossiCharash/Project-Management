@@ -7,7 +7,6 @@ class EmailVerificationRequest(BaseModel):
     email: EmailStr
     full_name: str = Field(min_length=1, max_length=255)
     verification_type: str = Field(pattern="^(admin_register|member_register)$")
-    group_code: Optional[str] = None  # Only for member_register
 
 
 class EmailVerificationConfirm(BaseModel):

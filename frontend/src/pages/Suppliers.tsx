@@ -137,10 +137,10 @@ export default function Suppliers() {
             <tbody>
               {items.map(s => (
                 <tr key={s.id} className="border-t border-gray-200 dark:border-gray-700">
-                  <td className="p-2 text-gray-900 dark:text-white">{editId===s.id ? <input className="border p-1 bg-white dark:bg-gray-700 text-gray-900 dark:text-white" value={name} onChange={e=>setName(e.target.value)} /> : s.name}</td>
-                  <td className="p-2 text-gray-900 dark:text-white">{editId===s.id ? <input className="border p-1 bg-white dark:bg-gray-700 text-gray-900 dark:text-white" value={email} onChange={e=>setEmail(e.target.value)} /> : (s.contact_email ?? '')}</td>
-                  <td className="p-2 text-gray-900 dark:text-white">{editId===s.id ? <input className="border p-1 bg-white dark:bg-gray-700 text-gray-900 dark:text-white" value={phone} onChange={e=>setPhone(e.target.value)} /> : (s.phone ?? '')}</td>
-                  <td className="p-2 text-gray-900 dark:text-white">{editId===s.id ? <input className="border p-1 bg-white dark:bg-gray-700 text-gray-900 dark:text-white" type="number" value={annualBudget} onChange={e=>setAnnualBudget(e.target.value === '' ? '' : Number(e.target.value))} /> : (s.annual_budget ?? '')}</td>
+                  <td className="p-2 text-gray-900 dark:text-white">{editId===s.id ? <input className="border border-gray-300 dark:border-gray-600 p-1 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded" value={name} onChange={e=>setName(e.target.value)} /> : s.name}</td>
+                  <td className="p-2 text-gray-900 dark:text-white">{editId===s.id ? <input className="border border-gray-300 dark:border-gray-600 p-1 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded" value={email} onChange={e=>setEmail(e.target.value)} /> : (s.contact_email ?? '')}</td>
+                  <td className="p-2 text-gray-900 dark:text-white">{editId===s.id ? <input className="border border-gray-300 dark:border-gray-600 p-1 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded" value={phone} onChange={e=>setPhone(e.target.value)} /> : (s.phone ?? '')}</td>
+                  <td className="p-2 text-gray-900 dark:text-white">{editId===s.id ? <input className="border border-gray-300 dark:border-gray-600 p-1 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded" type="number" value={annualBudget} onChange={e=>setAnnualBudget(e.target.value === '' ? '' : Number(e.target.value))} /> : (s.annual_budget ?? '')}</td>
                   <td className="p-2">
                     <button
                       onClick={() => navigate(`/suppliers/${s.id}/documents`)}
@@ -153,13 +153,13 @@ export default function Suppliers() {
                   <td className="p-2 text-right">
                     {editId===s.id ? (
                       <>
-                        <button className="px-2 py-1 bg-green-600 text-white rounded" onClick={()=>onUpdate(s.id)}>שמור</button>
-                        <button className="ml-2 px-2 py-1 bg-gray-200 rounded" onClick={()=>setEditId(null)}>בטל</button>
+                        <button className="px-2 py-1 bg-green-600 hover:bg-green-700 text-white rounded transition-colors" onClick={()=>onUpdate(s.id)}>שמור</button>
+                        <button className="ml-2 px-2 py-1 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600 rounded transition-colors" onClick={()=>setEditId(null)}>בטל</button>
                       </>
                     ) : (
                       <>
-                        <button className="px-2 py-1 bg-yellow-500 text-white rounded" onClick={()=>startEdit(s.id)}>ערוך</button>
-                        <button className="ml-2 px-2 py-1 bg-red-600 text-white rounded" onClick={()=>onDelete(s.id)}>מחק</button>
+                        <button className="px-2 py-1 bg-yellow-500 hover:bg-yellow-600 text-white rounded transition-colors" onClick={()=>startEdit(s.id)}>ערוך</button>
+                        <button className="ml-2 px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded transition-colors" onClick={()=>onDelete(s.id)}>מחק</button>
                       </>
                     )}
                   </td>
@@ -168,7 +168,7 @@ export default function Suppliers() {
             </tbody>
           </table>
         )}
-        {error && <div className="text-red-600 text-sm mt-2">{error}</div>}
+        {error && <div className="text-red-600 dark:text-red-400 text-sm mt-2">{error}</div>}
       </div>
 
     </div>

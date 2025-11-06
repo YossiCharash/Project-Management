@@ -8,6 +8,7 @@ class Token(BaseModel):
     token_type: str = "bearer"
     expires_in: int
     refresh_token: Optional[str] = None
+    requires_password_change: Optional[bool] = False
 
 
 class LoginInput(BaseModel):
@@ -31,6 +32,12 @@ class PasswordReset(BaseModel):
 
 class ChangePassword(BaseModel):
     current_password: str
+    new_password: str = Field(min_length=8, max_length=128)
+
+
+class ResetPasswordWithToken(BaseModel):
+    token: str
+    temp_password: str
     new_password: str = Field(min_length=8, max_length=128)
 
 

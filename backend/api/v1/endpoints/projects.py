@@ -14,6 +14,7 @@ from backend.services.project_service import ProjectService
 from backend.services.recurring_transaction_service import RecurringTransactionService
 from backend.services.financial_aggregation_service import FinancialAggregationService
 from backend.services.budget_service import BudgetService
+from backend.services.audit_service import AuditService
 from backend.models.user import UserRole
 
 router = APIRouter()
@@ -225,6 +226,23 @@ async def create_project(db: DBSessionDep, data: ProjectCreate, user = Depends(g
                 # Log error but don't fail the entire project creation
                 pass
     
+    # Log create action with full details
+    await AuditService(db).log_project_action(
+        user_id=user.id,
+        action='create',
+        project_id=project.id,
+        details={
+            'name': project.name,
+            'description': project.description,
+            'budget_monthly': str(project.budget_monthly) if project.budget_monthly else None,
+            'budget_annual': str(project.budget_annual) if project.budget_annual else None,
+            'address': project.address,
+            'city': project.city,
+            'start_date': str(project.start_date) if project.start_date else None,
+            'end_date': str(project.end_date) if project.end_date else None
+        }
+    )
+    
     return project
 
 
@@ -235,7 +253,34 @@ async def update_project(project_id: int, db: DBSessionDep, data: ProjectUpdate,
     project = await repo.get_by_id(project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    return await ProjectService(db).update(project, **data.model_dump(exclude_unset=True))
+    
+    # Store old values for audit log
+    old_values = {
+        'name': project.name,
+        'description': project.description or '',
+        'budget_monthly': str(project.budget_monthly) if project.budget_monthly else None,
+        'budget_annual': str(project.budget_annual) if project.budget_annual else None,
+        'address': project.address or '',
+        'city': project.city or ''
+    }
+    
+    updated_project = await ProjectService(db).update(project, **data.model_dump(exclude_unset=True))
+    
+    # Log update action with full details
+    update_data = data.model_dump(exclude_unset=True)
+    new_values = {k: str(v) for k, v in update_data.items()}
+    await AuditService(db).log_project_action(
+        user_id=user.id,
+        action='update',
+        project_id=project_id,
+        details={
+            'project_name': project.name,
+            'old_values': old_values,
+            'new_values': new_values
+        }
+    )
+    
+    return updated_project
 
 
 @router.post("/{project_id}/upload-image", response_model=ProjectOut)
@@ -281,7 +326,18 @@ async def archive_project(project_id: int, db: DBSessionDep, user = Depends(requ
     project = await repo.get_by_id(project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    return await repo.archive(project)
+    
+    archived = await repo.archive(project)
+    
+    # Log archive action
+    await AuditService(db).log_project_action(
+        user_id=user.id,
+        action='archive',
+        project_id=project_id,
+        details={'name': project.name}
+    )
+    
+    return archived
 
 
 @router.post("/{project_id}/restore", response_model=ProjectOut)
@@ -291,7 +347,18 @@ async def restore_project(project_id: int, db: DBSessionDep, user = Depends(requ
     project = await repo.get_by_id(project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    return await repo.restore(project)
+    
+    restored = await repo.restore(project)
+    
+    # Log restore action
+    await AuditService(db).log_project_action(
+        user_id=user.id,
+        action='restore',
+        project_id=project_id,
+        details={'name': project.name}
+    )
+    
+    return restored
 
 
 @router.delete("/{project_id}")
@@ -301,9 +368,22 @@ async def hard_delete_project(project_id: int, db: DBSessionDep, user = Depends(
     project = await proj_repo.get_by_id(project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
+    
+    # Store project details for audit log
+    project_details = {'name': project.name}
+    
     # delete child transactions first
     await TransactionRepository(db).delete_by_project(project_id)
     await proj_repo.delete(project)
+    
+    # Log delete action
+    await AuditService(db).log_project_action(
+        user_id=user.id,
+        action='delete',
+        project_id=project_id,
+        details=project_details
+    )
+    
     return {"ok": True}
 
 

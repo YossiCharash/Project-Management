@@ -144,7 +144,8 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
       const validBudgets = categoryBudgets
         .filter(b => b.amount > 0 && b.category && b.start_date)
         .map(b => {
-          const { project_id, ...budgetWithoutProjectId } = b
+          const budgetWithoutProjectId: any = { ...b }
+          delete budgetWithoutProjectId.project_id
           return {
             ...budgetWithoutProjectId,
             period_type: b.period_type || 'Annual',
@@ -259,14 +260,14 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+      <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-semibold">
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
             {editingProject ? 'עריכת פרויקט' : (parentProjectId ? 'יצירת תת-פרויקט חדש' : 'יצירת פרויקט חדש')}
           </h2>
           <button
             onClick={handleClose}
-            className="text-gray-500 hover:text-gray-700"
+            className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
           >
             ✕
           </button>
@@ -275,7 +276,7 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 שם הפרויקט *
               </label>
               <input
@@ -283,12 +284,12 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                 required
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 פרויקט אב
               </label>
               <select
@@ -297,7 +298,7 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                   ...formData, 
                   relation_project: e.target.value ? parseInt(e.target.value) : undefined 
                 })}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">ללא פרויקט אב</option>
                 {availableProjects.map((project) => (
@@ -310,19 +311,19 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               תיאור
             </label>
             <textarea
               value={formData.description || ''}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               rows={3}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               תמונת הפרויקט
             </label>
             <div className="space-y-2">
@@ -330,14 +331,14 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                 type="file"
                 accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
                 onChange={handleImageChange}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-blue-900/20 dark:file:text-blue-300"
               />
               {imagePreview && (
                 <div className="mt-2">
                   <img
                     src={imagePreview}
                     alt="תצוגה מקדימה"
-                    className="max-w-full h-48 object-cover rounded-md border border-gray-300"
+                    className="max-w-full h-48 object-cover rounded-md border border-gray-300 dark:border-gray-600"
                   />
                   {selectedImage && (
                     <button
@@ -346,7 +347,7 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                         setSelectedImage(null)
                         setImagePreview(editingProject?.image_url ? getImageUrl(editingProject.image_url) : null)
                       }}
-                      className="mt-2 text-sm text-red-600 hover:text-red-700"
+                      className="mt-2 text-sm text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300"
                     >
                       הסר תמונה
                     </button>
@@ -358,33 +359,33 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 כתובת
               </label>
               <input
                 type="text"
                 value={formData.address || ''}
                 onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 עיר
               </label>
               <input
                 type="text"
                 value={formData.city || ''}
                 onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </div>
 
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 סוג הקלט לתקציב
               </label>
               <div className="flex gap-4">
@@ -394,9 +395,9 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                     value="monthly"
                     checked={budgetInputType === 'monthly'}
                     onChange={(e) => setBudgetInputType(e.target.value as 'monthly' | 'yearly')}
-                    className="ml-2"
+                    className="ml-2 text-blue-600 dark:text-blue-400"
                   />
-                  <span className="text-sm text-gray-700">חודשי</span>
+                  <span className="text-sm text-gray-700 dark:text-gray-300">חודשי</span>
                 </label>
                 <label className="flex items-center">
                   <input
@@ -404,16 +405,16 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                     value="yearly"
                     checked={budgetInputType === 'yearly'}
                     onChange={(e) => setBudgetInputType(e.target.value as 'monthly' | 'yearly')}
-                    className="ml-2"
+                    className="ml-2 text-blue-600 dark:text-blue-400"
                   />
-                  <span className="text-sm text-gray-700">שנתי</span>
+                  <span className="text-sm text-gray-700 dark:text-gray-300">שנתי</span>
                 </label>
               </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   תקציב חודשי
                 </label>
                 <input
@@ -427,18 +428,18 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                     setFormData({
                       ...formData,
                       budget_monthly: monthlyValue,
-                      budget_annual: monthlyValue * 12
+                      budget_annual: Math.round(monthlyValue * 12 * 100) / 100
                     })
                   }}
                   disabled={budgetInputType === 'yearly'}
-                  className={`w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    budgetInputType === 'yearly' ? 'bg-gray-100 cursor-not-allowed' : ''
+                  className={`w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                    budgetInputType === 'yearly' ? 'bg-gray-100 dark:bg-gray-800 cursor-not-allowed opacity-50' : ''
                   }`}
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   תקציב שנתי
                 </label>
                 <input
@@ -452,12 +453,12 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                     setFormData({
                       ...formData,
                       budget_annual: yearlyValue,
-                      budget_monthly: yearlyValue / 12
+                      budget_monthly: Math.round(yearlyValue / 12 * 100) / 100
                     })
                   }}
                   disabled={budgetInputType === 'monthly'}
-                  className={`w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    budgetInputType === 'monthly' ? 'bg-gray-100 cursor-not-allowed' : ''
+                  className={`w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                    budgetInputType === 'monthly' ? 'bg-gray-100 dark:bg-gray-800 cursor-not-allowed opacity-50' : ''
                   }`}
                 />
               </div>
@@ -466,34 +467,34 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 תאריך התחלה
               </label>
               <input
                 type="date"
                 value={formData.start_date || ''}
                 onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 תאריך סיום
               </label>
               <input
                 type="date"
                 value={formData.end_date || ''}
                 onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </div>
 
           {/* Category Budgets Section */}
-          <div className="space-y-4 border-t pt-4">
+          <div className="space-y-4 border-t border-gray-200 dark:border-gray-700 pt-4">
             <div className="flex justify-between items-center">
-              <label className="block text-sm font-medium text-gray-700">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                 תקציבים לקטגוריות
               </label>
               <button
@@ -506,20 +507,20 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
             </div>
             
             {categoryBudgets.length === 0 && (
-              <p className="text-sm text-gray-500 text-center py-4">
+              <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
                 אין תקציבים לקטגוריות. לחץ על "הוסף תקציב לקטגוריה" כדי להוסיף תקציב לקטגוריה ספציפית (למשל: חשמל, ניקיון).
               </p>
             )}
 
             <div className="space-y-3">
               {categoryBudgets.map((budget, index) => (
-                <div key={index} className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                <div key={index} className="bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg p-4">
                   <div className="flex justify-between items-start mb-3">
-                    <h4 className="text-sm font-semibold text-gray-700">תקציב #{index + 1}</h4>
+                    <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300">תקציב #{index + 1}</h4>
                     <button
                       type="button"
                       onClick={() => removeCategoryBudget(index)}
-                      className="text-red-600 hover:text-red-700 text-sm"
+                      className="text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 text-sm"
                     >
                       מחק
                     </button>
@@ -527,13 +528,13 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                   
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
                         קטגוריה *
                       </label>
                       <select
                         value={budget.category}
                         onChange={(e) => updateCategoryBudget(index, 'category', e.target.value)}
-                        className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                         required
                       >
                         {expenseCategories.map((cat) => (
@@ -545,7 +546,7 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                     </div>
 
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
                         סכום (₪) *
                       </label>
                       <input
@@ -554,13 +555,13 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                         step="0.01"
                         value={budget.amount}
                         onChange={(e) => updateCategoryBudget(index, 'amount', parseFloat(e.target.value) || 0)}
-                        className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                         required
                       />
                     </div>
 
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
                         סוג תקופה *
                       </label>
                       <select
@@ -578,7 +579,7 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                             updateCategoryBudget(index, 'end_date', null)
                           }
                         }}
-                        className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                         required
                       >
                         <option value="Annual">שנתי</option>
@@ -587,28 +588,28 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                     </div>
 
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
                         תאריך התחלה *
                       </label>
                       <input
                         type="date"
                         value={budget.start_date}
                         onChange={(e) => updateCategoryBudget(index, 'start_date', e.target.value)}
-                        className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                         required
                       />
                     </div>
 
                     {budget.period_type === 'Annual' && budget.end_date && (
                       <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1">
+                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
                           תאריך סיום
                         </label>
                         <input
                           type="date"
                           value={budget.end_date}
                           onChange={(e) => updateCategoryBudget(index, 'end_date', e.target.value)}
-                          className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
+                          className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 text-sm bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                           readOnly
                         />
                       </div>
@@ -620,8 +621,8 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
           </div>
 
           {error && (
-            <div className="bg-red-50 border border-red-200 rounded-md p-3">
-              <p className="text-red-600 text-sm">{error}</p>
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md p-3">
+              <p className="text-red-600 dark:text-red-400 text-sm">{error}</p>
             </div>
           )}
 
@@ -629,7 +630,7 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
             <button
               type="button"
               onClick={handleClose}
-              className="px-4 py-2 text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500"
+              className="px-4 py-2 text-gray-700 dark:text-gray-300 bg-gray-200 dark:bg-gray-700 rounded-md hover:bg-gray-300 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500"
             >
               ביטול
             </button>

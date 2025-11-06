@@ -23,6 +23,7 @@ class User(Base):
     role: Mapped[str] = mapped_column(String(50), default=UserRole.MEMBER.value, index=True)                                                                    
     group_id: Mapped[int | None] = mapped_column(nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    requires_password_change: Mapped[bool] = mapped_column(Boolean, default=False)
     
     # OAuth fields
     oauth_provider: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)  # 'google', 'facebook', etc.

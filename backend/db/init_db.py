@@ -1,117 +1,80 @@
 """
 Database initialization - creates all tables, enums, and indexes
+All database schema is defined in the SQLAlchemy models in backend/models/
+This file simply ensures all models are imported and creates the database schema.
 """
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 from backend.db.base import Base
 
 # Import all models to ensure they are registered with Base.metadata
-from backend.models import Budget  # noqa: F401
-
-
-async def create_enums(engine: AsyncEngine):
-    """Create PostgreSQL enums if they don't exist"""
-    async with engine.begin() as conn:
-        # Create expense_category enum
-        await conn.execute(text("""
-            DO $$ BEGIN
-                CREATE TYPE expense_category AS ENUM ('ניקיון', 'חשמל', 'ביטוח', 'גינון', 'אחר');
-            EXCEPTION
-                WHEN duplicate_object THEN null;
-            END $$;
-        """))
-        
-        # Create recurring_frequency enum
-        await conn.execute(text("""
-            DO $$ BEGIN
-                CREATE TYPE recurring_frequency AS ENUM ('Monthly');
-            EXCEPTION
-                WHEN duplicate_object THEN null;
-            END $$;
-        """))
-        
-        # Create recurring_end_type enum
-        await conn.execute(text("""
-            DO $$ BEGIN
-                CREATE TYPE recurring_end_type AS ENUM ('No End', 'After Occurrences', 'On Date');
-            EXCEPTION
-                WHEN duplicate_object THEN null;
-            END $$;
-        """))
-
-
-async def ensure_oauth_columns(engine: AsyncEngine):
-    """
-    Ensure OAuth and email verification columns exist in users table
-    This is a migration function to add missing columns to existing tables
-    """
-    async with engine.begin() as conn:
-        # Check if users table exists by trying to query it
-        try:
-            result = await conn.execute(text("""
-                SELECT column_name 
-                FROM information_schema.columns 
-                WHERE table_name = 'users' AND column_name = 'oauth_provider'
-            """))
-            oauth_provider_exists = result.fetchone() is not None
-        except Exception:
-            # Table doesn't exist yet, skip migration
-            return
-
-        if not oauth_provider_exists:
-            # Add oauth_provider column
-            await conn.execute(text("""
-                ALTER TABLE users 
-                ADD COLUMN IF NOT EXISTS oauth_provider VARCHAR(50);
-            """))
-            
-            # Add oauth_id column
-            await conn.execute(text("""
-                ALTER TABLE users 
-                ADD COLUMN IF NOT EXISTS oauth_id VARCHAR(255);
-            """))
-            
-            # Add email_verified column
-            await conn.execute(text("""
-                ALTER TABLE users 
-                ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT FALSE;
-            """))
-            
-            # Add avatar_url column
-            await conn.execute(text("""
-                ALTER TABLE users 
-                ADD COLUMN IF NOT EXISTS avatar_url VARCHAR(500);
-            """))
-            
-            # Set default value for existing users
-            await conn.execute(text("""
-                UPDATE users 
-                SET email_verified = FALSE 
-                WHERE email_verified IS NULL;
-            """))
-            
-            # Create indexes
-            await conn.execute(text("""
-                CREATE INDEX IF NOT EXISTS ix_users_oauth_provider ON users(oauth_provider);
-            """))
-            
-            await conn.execute(text("""
-                CREATE INDEX IF NOT EXISTS ix_users_oauth_id ON users(oauth_id);
-            """))
+# This ensures all tables, enums, indexes, and relationships are defined
+from backend.models import (  # noqa: F401
+    User,
+    Project,
+    Subproject,
+    Transaction,
+    AuditLog,
+    Supplier,
+    SupplierDocument,
+    AdminInvite,
+    EmailVerification,
+    RecurringTransactionTemplate,
+    MemberInvite,
+    Budget
+)
 
 
 async def init_database(engine: AsyncEngine):
     """
     Initialize database - create all tables, enums, and indexes
+    All schema definitions come from SQLAlchemy models in backend/models/
+    
+    SQLAlchemy will automatically:
+    - Create enums defined with SAEnum(native_enum=True) in models
+    - Create tables with all columns as defined in models
+    - Create indexes defined with mapped_column(index=True)
+    - Create foreign keys defined with ForeignKey()
+    - Create relationships as defined in models
+    
     This should be called on application startup
     """
-    # First, create enums
-    await create_enums(engine)
-    
-    # Then, create all tables (this will also create indexes and foreign keys)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    
-    # Ensure OAuth columns exist (for existing databases)
-    await ensure_oauth_columns(engine)
-
+    try:
+        # Create all tables, enums, indexes, and foreign keys from models
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        
+        print("Database initialization completed successfully")
+        print("All tables, enums, indexes, and relationships created from SQLAlchemy models")
+    except OSError as e:
+        # Connection errors - PostgreSQL is not running or not accessible
+        error_msg = str(e)
+        if "10061" in error_msg or "Connect call failed" in error_msg:
+            print("\n" + "="*70)
+            print("ERROR: Cannot connect to PostgreSQL database")
+            print("="*70)
+            print("\nPossible causes:")
+            print("1. PostgreSQL is not running")
+            print("   - On Windows: Check Services or run 'net start postgresql-x64-XX'")
+            print("   - On Linux/Mac: Run 'sudo systemctl start postgresql' or 'brew services start postgresql'")
+            print("2. PostgreSQL is running on a different port")
+            print("   - Check your DATABASE_URL environment variable")
+            print("   - Default is: postgresql+asyncpg://postgres:postgres@localhost:5432/bms")
+            print("3. Database credentials are incorrect")
+            print("   - Verify username, password, and database name in DATABASE_URL")
+            print("\nTo fix:")
+            print("- Start PostgreSQL service")
+            print("- Verify DATABASE_URL in your .env file or environment variables")
+            print("- Ensure the database 'bms' exists (or create it)")
+            print("="*70 + "\n")
+        else:
+            print(f"Connection error: {e}")
+        # Don't raise - allow the app to start even if migration fails
+        # The migration will be retried on next startup
+        import traceback
+        traceback.print_exc()
+    except Exception as e:
+        print(f"Error during database initialization: {e}")
+        # Don't raise - allow the app to start even if migration fails
+        # The migration will be retried on next startup
+        import traceback
+        traceback.print_exc()

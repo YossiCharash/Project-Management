@@ -16,7 +16,6 @@ export default function EmailVerificationRegister() {
     full_name: '',
     password: '',
     confirmPassword: '',
-    group_id: '',
     userType: 'member' as 'admin' | 'member'
   })
   const [verificationCode, setVerificationCode] = useState('')
@@ -42,8 +41,7 @@ export default function EmailVerificationRegister() {
       await api.post('/email-verification/send', {
         email: formData.email,
         full_name: formData.full_name,
-        verification_type: formData.userType === 'admin' ? 'admin_register' : 'member_register',
-        group_code: formData.userType === 'member' ? formData.group_id : null
+        verification_type: formData.userType === 'admin' ? 'admin_register' : 'member_register'
       })
       
       setVerificationSent(true)
@@ -214,25 +212,6 @@ export default function EmailVerificationRegister() {
                   <p className="text-red-500 text-xs mt-1">הסיסמאות אינן תואמות</p>
                 )}
               </div>
-
-              {/* Group Code - Only for members */}
-              {formData.userType === 'member' && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">קוד קבוצה</label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.group_id}
-                    onChange={(e) => setFormData({...formData, group_id: e.target.value.toUpperCase()})}
-                    className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 text-center font-mono tracking-wider"
-                    placeholder="הזינו קוד קבוצה (8 תווים)"
-                    maxLength={8}
-                  />
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 text-center">
-                    קבלו את קוד הקבוצה מהמנהל שלכם
-                  </p>
-                </div>
-              )}
 
               {error && (
                 <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4">

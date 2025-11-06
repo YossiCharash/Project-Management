@@ -35,3 +35,12 @@ class UserRepository:
         from backend.models.user import UserRole
         res = await self.db.execute(select(User).where(User.role == UserRole.ADMIN.value))
         return res.scalar_one_or_none() is not None
+
+    async def delete(self, user: User) -> None:
+        """Delete a user"""
+        try:
+            await self.db.delete(user)
+            await self.db.commit()
+        except Exception as e:
+            await self.db.rollback()
+            raise e

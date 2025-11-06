@@ -116,6 +116,7 @@ async def sync_database_schema():
             # 1. Create enums if needed
             print("\n[1/6] Checking enums...")
             await check_and_create_enum(session, "expense_category", ["ניקיון", "חשמל", "ביטוח", "גינון", "אחר"])
+            await check_and_create_enum(session, "payment_method", ["הוראת קבע", "אשראי", "שיק", "מזומן", "העברה בנקאית"])
             await check_and_create_enum(session, "recurring_frequency", ["Monthly"])
             await check_and_create_enum(session, "recurring_end_type", ["No End", "After Occurrences", "On Date"])
             
@@ -124,6 +125,7 @@ async def sync_database_schema():
             changes_made |= await check_and_add_column(session, "users", "group_id", "INTEGER", nullable=True)
             if changes_made:
                 await check_and_create_index(session, "ix_users_group_id", "users", "group_id")
+            changes_made |= await check_and_add_column(session, "users", "requires_password_change", "BOOLEAN", nullable=False, default="FALSE")
             
             # 3. Sync projects table
             print("\n[3/6] Syncing projects table...")

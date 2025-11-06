@@ -12,7 +12,7 @@ from backend.core.config import settings
 from backend.models import (  # noqa: F401
     Project, Subproject, Transaction, AuditLog, 
     Supplier, SupplierDocument, AdminInvite, EmailVerification, 
-    GroupCode, RecurringTransactionTemplate
+    RecurringTransactionTemplate
 )
 
 

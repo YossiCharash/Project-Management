@@ -39,16 +39,25 @@ class ReportService:
 
     async def get_dashboard_snapshot(self) -> Dict[str, Any]:
         """Get comprehensive dashboard snapshot with real-time financial data"""
+        print("🚀 get_dashboard_snapshot called")
+        # Rollback any failed transaction before starting
+        try:
+            await self.db.rollback()
+        except Exception:
+            pass  # Ignore if there's no transaction to rollback
+        
         # Get all active projects
         projects_query = select(Project).where(Project.is_active == True)
         projects_result = await self.db.execute(projects_query)
         projects = list(projects_result.scalars().all())
+        print(f"📋 Found {len(projects)} active projects")
 
         if not projects:
             return {
                 "projects": [],
                 "alerts": {
                     "budget_overrun": [],
+                    "budget_warning": [],
                     "missing_proof": [],
                     "unpaid_recurring": [],
                     "category_budget_alerts": []
@@ -73,35 +82,77 @@ class ReportService:
         total_income = 0
         total_expense = 0
         budget_overrun_projects = []
+        budget_warning_projects = []  # Projects approaching budget limit (70%+)
         missing_proof_projects = []
         unpaid_recurring_projects = []
         category_budget_alerts = []  # Store category budget alerts
 
         for project in projects:
-            # Get current year's transactions
-            yearly_income_query = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
-                and_(
-                    Transaction.project_id == project.id,
-                    Transaction.type == "Income",
-                    Transaction.tx_date >= current_year_start
+            print(f"🔄 Processing project {project.id}: {project.name}")
+            # Initialize default values
+            yearly_income = 0.0
+            yearly_expense = 0.0
+            
+            # Wrap each project's processing in error handling
+            # If a query fails for this project, skip it and continue with others
+            try:
+                # Get current year's transactions
+                yearly_income_query = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
+                    and_(
+                        Transaction.project_id == project.id,
+                        Transaction.type == "Income",
+                        Transaction.tx_date >= current_year_start
+                    )
                 )
-            )
-            yearly_expense_query = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
-                and_(
-                    Transaction.project_id == project.id,
-                    Transaction.type == "Expense",
-                    Transaction.tx_date >= current_year_start
+                yearly_expense_query = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
+                    and_(
+                        Transaction.project_id == project.id,
+                        Transaction.type == "Expense",
+                        Transaction.tx_date >= current_year_start
+                    )
                 )
-            )
 
-            yearly_income = float((await self.db.execute(yearly_income_query)).scalar_one())
-            yearly_expense = float((await self.db.execute(yearly_expense_query)).scalar_one())
+                # Execute queries with error handling to prevent transaction failures
+                try:
+                    yearly_income = float((await self.db.execute(yearly_income_query)).scalar_one())
+                except Exception:
+                    # If query fails, rollback and use default value
+                    try:
+                        await self.db.rollback()
+                    except Exception:
+                        pass
+                    yearly_income = 0.0
+                
+                try:
+                    yearly_expense = float((await self.db.execute(yearly_expense_query)).scalar_one())
+                except Exception:
+                    # If query fails, rollback and use default value
+                    try:
+                        await self.db.rollback()
+                    except Exception:
+                        pass
+                    yearly_expense = 0.0
+            except Exception:
+                # If project processing fails completely, rollback and skip this project
+                try:
+                    await self.db.rollback()
+                except Exception:
+                    pass
+                continue  # Skip this project and continue with the next one
 
             # Calculate profit including budgets
-            # Add annual budget to income
-            project_total_income = yearly_income + float(project.budget_annual or 0)
-            # Add monthly budget multiplied by 12 to yearly income
-            project_total_income += float(project.budget_monthly or 0) * 12
+            # Use annual budget if set, otherwise use monthly budget * 12
+            # Don't add both to avoid double counting
+            budget_annual = float(project.budget_annual or 0)
+            budget_monthly = float(project.budget_monthly or 0)
+            if budget_annual > 0:
+                # If annual budget is set, use it directly
+                yearly_budget_amount = budget_annual
+            else:
+                # If no annual budget, calculate from monthly
+                yearly_budget_amount = budget_monthly * 12
+            
+            project_total_income = yearly_income + yearly_budget_amount
             
             profit = project_total_income - yearly_expense
             
@@ -119,10 +170,35 @@ class ReportService:
             else:
                 status_color = "yellow"
 
-            # Check for budget overrun (compare yearly expense to yearly budget)
-            yearly_budget = float(project.budget_annual or 0) + (float(project.budget_monthly or 0) * 12)
-            if yearly_expense > yearly_budget:
-                budget_overrun_projects.append(project.id)
+            # Check for budget overrun and warnings (compare yearly expense to yearly budget)
+            # Use the same logic as above to avoid double counting
+            if budget_annual > 0:
+                yearly_budget = budget_annual
+            else:
+                yearly_budget = budget_monthly * 12
+            print(f"🔍 Project {project.id} ({project.name}):")
+            print(f"  - budget_annual: {project.budget_annual}")
+            print(f"  - budget_monthly: {project.budget_monthly}")
+            print(f"  - yearly_budget: {yearly_budget}")
+            print(f"  - yearly_expense: {yearly_expense}")
+            
+            if yearly_budget > 0:  # Only check if there's a budget
+                budget_percentage = (yearly_expense / yearly_budget) * 100
+                print(f"  - budget_percentage: {budget_percentage:.2f}%")
+                print(f"  - Comparison: yearly_expense ({yearly_expense}) > yearly_budget ({yearly_budget})? {yearly_expense > yearly_budget}")
+                if yearly_expense > yearly_budget:
+                    print(f"  ✅ Adding to budget_overrun: {project.id}")
+                    budget_overrun_projects.append(project.id)
+                elif budget_percentage >= 70:  # Approaching budget (70% or more)
+                    print(f"  ⚠️ Adding to budget_warning: {project.id} (budget_percentage={budget_percentage:.2f}%)")
+                    budget_warning_projects.append(project.id)
+                else:
+                    print(f"  ℹ️ Not adding to alerts (budget_percentage={budget_percentage:.2f}% < 70%)")
+            else:
+                print(f"  ℹ️ No budget set (yearly_budget={yearly_budget})")
+                # Check if there's expense even without budget
+                if yearly_expense > 0:
+                    print(f"  ⚠️ Project has expenses ({yearly_expense}) but no budget set!")
 
             # Check for missing proof (transactions without file_path)
             missing_proof_query = select(func.count(Transaction.id)).where(
@@ -132,9 +208,16 @@ class ReportService:
                     Transaction.tx_date >= current_year_start
                 )
             )
-            missing_proof_count = (await self.db.execute(missing_proof_query)).scalar_one()
-            if missing_proof_count > 0:
-                missing_proof_projects.append(project.id)
+            try:
+                missing_proof_count = (await self.db.execute(missing_proof_query)).scalar_one()
+                if missing_proof_count > 0:
+                    missing_proof_projects.append(project.id)
+            except Exception:
+                # If query fails, rollback and continue
+                try:
+                    await self.db.rollback()
+                except Exception:
+                    pass
 
             # Check for unpaid recurring expenses (simplified - could be enhanced)
             unpaid_recurring_query = select(func.count(Transaction.id)).where(
@@ -146,9 +229,16 @@ class ReportService:
                     Transaction.file_path.is_(None)
                 )
             )
-            unpaid_recurring_count = (await self.db.execute(unpaid_recurring_query)).scalar_one()
-            if unpaid_recurring_count > 0:
-                unpaid_recurring_projects.append(project.id)
+            try:
+                unpaid_recurring_count = (await self.db.execute(unpaid_recurring_query)).scalar_one()
+                if unpaid_recurring_count > 0:
+                    unpaid_recurring_projects.append(project.id)
+            except Exception:
+                # If query fails, rollback and continue
+                try:
+                    await self.db.rollback()
+                except Exception:
+                    pass
             
             # Check for category budget alerts
             try:
@@ -158,8 +248,13 @@ class ReportService:
                 )
                 category_budget_alerts.extend(project_budget_alerts)
             except Exception:
-                # If budget checking fails, continue without it
-                pass
+                # If budget checking fails, rollback and continue without it
+                # This prevents the transaction from being in a failed state
+                try:
+                    await self.db.rollback()
+                except Exception:
+                    pass
+                # Continue without budget alerts for this project
 
             # Build project data
             project_data = {
@@ -217,21 +312,35 @@ class ReportService:
             )
         ).group_by(Transaction.category)
         
-        expense_categories_result = await self.db.execute(expense_categories_query)
         expense_categories = []
-        
-        for row in expense_categories_result:
-            if row.total_amount > 0:  # Only include categories with expenses
-                expense_categories.append({
-                    "category": row.category or "אחר",
-                    "amount": float(row.total_amount),
-                    "color": self._get_category_color(row.category)
-                })
+        try:
+            expense_categories_result = await self.db.execute(expense_categories_query)
+            for row in expense_categories_result:
+                if row.total_amount > 0:  # Only include categories with expenses
+                    expense_categories.append({
+                        "category": row.category or "אחר",
+                        "amount": float(row.total_amount),
+                        "color": self._get_category_color(row.category)
+                    })
+        except Exception:
+            # If query fails, rollback and continue with empty categories
+            try:
+                await self.db.rollback()
+            except Exception:
+                pass
 
+        print(f"📊 Final alerts summary:")
+        print(f"  budget_overrun: {budget_overrun_projects}")
+        print(f"  budget_warning: {budget_warning_projects}")
+        print(f"  missing_proof: {missing_proof_projects}")
+        print(f"  unpaid_recurring: {unpaid_recurring_projects}")
+        print(f"  category_budget_alerts: {len(category_budget_alerts)} alerts")
+        
         return {
             "projects": projects_with_finance,  # Return all projects, not just root ones
             "alerts": {
                 "budget_overrun": budget_overrun_projects,
+                "budget_warning": budget_warning_projects,
                 "missing_proof": missing_proof_projects,
                 "unpaid_recurring": unpaid_recurring_projects,
                 "category_budget_alerts": category_budget_alerts

@@ -35,6 +35,7 @@ export interface Transaction {
   amount: number
   description?: string | null
   category?: string | null
+  payment_method?: string | null
   notes?: string | null
   is_exceptional: boolean
   is_generated?: boolean
@@ -76,6 +77,7 @@ export interface TransactionCreate {
   amount: number
   description?: string | null
   category?: string | null
+  payment_method?: string | null
   notes?: string | null
   is_exceptional?: boolean
   supplier_id?: number | null
@@ -132,6 +134,7 @@ export interface DashboardSnapshot {
   projects: ProjectWithFinance[]
   alerts: {
     budget_overrun: number[]
+    budget_warning: number[]
     missing_proof: number[]
     unpaid_recurring: number[]
     category_budget_alerts: CategoryBudgetAlert[]

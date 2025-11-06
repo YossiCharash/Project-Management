@@ -31,14 +31,54 @@ const AlertsStrip: React.FC<AlertsStripProps> = ({ alerts, projects }) => {
     return stored ? new Set(JSON.parse(stored)) : new Set()
   })
 
+  // Helper to flatten projects with children
+  const getAllProjectsFlat = (projects: ProjectWithFinance[]): ProjectWithFinance[] => {
+    const result: ProjectWithFinance[] = []
+    const flatten = (projs: ProjectWithFinance[]) => {
+      projs.forEach(project => {
+        result.push(project)
+        if (project.children && project.children.length > 0) {
+          flatten(project.children)
+        }
+      })
+    }
+    flatten(projects)
+    return result
+  }
+
+  const allProjectsFlat = getAllProjectsFlat(projects)
+
+  // Debug: Log what we have
+  console.log('🔍 AlertsStrip - Input data:', {
+    projectsCount: projects.length,
+    allProjectsFlatCount: allProjectsFlat.length,
+    alerts: alerts,
+    dismissedProjects: Array.from(dismissedProjects),
+    allProjectIds: allProjectsFlat.map(p => p.id),
+    budgetWarningIds: alerts.budget_warning || []
+  })
+
   // Filter out dismissed projects
-  const budgetOverrunProjects = projects.filter(p => 
-    alerts.budget_overrun.includes(p.id) && !dismissedProjects.has(p.id)
-  )
-  const missingProofProjects = projects.filter(p => 
+  const budgetOverrunProjects = allProjectsFlat.filter(p => {
+    const isInOverrun = alerts.budget_overrun.includes(p.id)
+    const isDismissed = dismissedProjects.has(p.id)
+    if (isInOverrun) {
+      console.log(`🔴 Budget overrun project found: ${p.id} (${p.name}), dismissed: ${isDismissed}`)
+    }
+    return isInOverrun && !isDismissed
+  })
+  const budgetWarningProjects = allProjectsFlat.filter(p => {
+    const isInWarning = (alerts.budget_warning || []).includes(p.id)
+    const isDismissed = dismissedProjects.has(p.id)
+    if (isInWarning && !isDismissed) {
+      console.log(`✅ Found budget warning project: ${p.id} (${p.name})`)
+    }
+    return isInWarning && !isDismissed
+  })
+  const missingProofProjects = allProjectsFlat.filter(p => 
     alerts.missing_proof.includes(p.id) && !dismissedProjects.has(p.id)
   )
-  const unpaidRecurringProjects = projects.filter(p => 
+  const unpaidRecurringProjects = allProjectsFlat.filter(p => 
     alerts.unpaid_recurring.includes(p.id) && !dismissedProjects.has(p.id)
   )
   const categoryBudgetAlerts = (alerts.category_budget_alerts || []).filter(alert => 
@@ -46,9 +86,21 @@ const AlertsStrip: React.FC<AlertsStripProps> = ({ alerts, projects }) => {
   )
 
   // Filter unprofitable projects (red status, negative profit)
-  const unprofitableProjects = projects.filter(p => 
+  const unprofitableProjects = allProjectsFlat.filter(p => 
     p.status_color === 'red' && p.profit_percent < 0 && !dismissedProjects.has(p.id)
   )
+
+  // Debug: Log filtered results
+  console.log('🔍 AlertsStrip - Filtered results:', {
+    budgetOverrunProjects: budgetOverrunProjects.length,
+    budgetWarningProjects: budgetWarningProjects.length,
+    missingProofProjects: missingProofProjects.length,
+    unpaidRecurringProjects: unpaidRecurringProjects.length,
+    categoryBudgetAlerts: categoryBudgetAlerts.length,
+    unprofitableProjects: unprofitableProjects.length,
+    budgetWarningProjectsList: budgetWarningProjects.map(p => ({ id: p.id, name: p.name })),
+    budgetOverrunProjectsList: budgetOverrunProjects.map(p => ({ id: p.id, name: p.name }))
+  })
 
   // Group category budget alerts by project
   const categoryAlertsByProject = categoryBudgetAlerts.reduce((acc, alert) => {
@@ -60,6 +112,7 @@ const AlertsStrip: React.FC<AlertsStripProps> = ({ alerts, projects }) => {
   }, {} as Record<number, typeof categoryBudgetAlerts>)
 
   const totalAlerts = budgetOverrunProjects.length + 
+                     budgetWarningProjects.length +
                      missingProofProjects.length + 
                      unpaidRecurringProjects.length + 
                      categoryBudgetAlerts.length +
@@ -72,24 +125,31 @@ const AlertsStrip: React.FC<AlertsStripProps> = ({ alerts, projects }) => {
     localStorage.setItem('dismissed_alert_projects', JSON.stringify(Array.from(newDismissed)))
   }
 
-  // Helper to flatten projects with children
-  const getAllProjectsFlat = (projects: ProjectWithFinance[]): ProjectWithFinance[] => {
-    const result: ProjectWithFinance[] = []
-    const flatten = (projs: ProjectWithFinance[]) => {
-      projs.forEach(project => {
-        result.push(project)
-        if (project.children) {
-          flatten(project.children)
-        }
-      })
+  const handleClearDismissed = () => {
+    if (window.confirm('האם אתה בטוח שברצונך להציג מחדש את כל ההתראות שהוסתרו?')) {
+      setDismissedProjects(new Set())
+      localStorage.removeItem('dismissed_alert_projects')
     }
-    flatten(projects)
-    return result
   }
 
-  const allProjectsFlat = getAllProjectsFlat(projects)
+  // Check if there are dismissed projects that should show alerts
+  const allBudgetOverrunIds = alerts.budget_overrun || []
+  const allBudgetWarningIds = alerts.budget_warning || []
+  const allMissingProofIds = alerts.missing_proof || []
+  const allUnpaidRecurringIds = alerts.unpaid_recurring || []
+  const allCategoryBudgetAlertIds = (alerts.category_budget_alerts || []).map(a => a.project_id)
+  const allUnprofitableIds = allProjectsFlat.filter(p => p.status_color === 'red' && p.profit_percent < 0).map(p => p.id)
+  
+  const totalDismissed = new Set([
+    ...allBudgetOverrunIds.filter(id => dismissedProjects.has(id)),
+    ...allBudgetWarningIds.filter(id => dismissedProjects.has(id)),
+    ...allMissingProofIds.filter(id => dismissedProjects.has(id)),
+    ...allUnpaidRecurringIds.filter(id => dismissedProjects.has(id)),
+    ...allCategoryBudgetAlertIds.filter(id => dismissedProjects.has(id)),
+    ...allUnprofitableIds.filter(id => dismissedProjects.has(id))
+  ]).size
 
-  if (totalAlerts === 0) {
+  if (totalAlerts === 0 && totalDismissed === 0) {
     return null
   }
 
@@ -101,19 +161,35 @@ const AlertsStrip: React.FC<AlertsStripProps> = ({ alerts, projects }) => {
           <span className="font-semibold text-base text-gray-900 dark:text-white">
             התראות ({totalAlerts})
           </span>
+          {totalDismissed > 0 && (
+            <span className="text-xs text-gray-500 dark:text-gray-400">
+              ({totalDismissed} הוסתרו)
+            </span>
+          )}
         </div>
-        <button
-          onClick={() => setIsExpanded(!isExpanded)}
-          className="text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-2 py-1 rounded text-sm transition-colors"
-        >
-          {isExpanded ? '▼ סגור' : '▶ פתח'}
-        </button>
+        <div className="flex items-center gap-2">
+          {totalDismissed > 0 && (
+            <button
+              onClick={handleClearDismissed}
+              className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200 hover:bg-blue-50 dark:hover:bg-blue-900/20 px-2 py-1 rounded text-xs transition-colors"
+              title="הצג מחדש התראות שהוסתרו"
+            >
+              🔄 הצג מחדש
+            </button>
+          )}
+          <button
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-2 py-1 rounded text-sm transition-colors"
+          >
+            {isExpanded ? '▼ סגור' : '▶ פתח'}
+          </button>
+        </div>
       </div>
 
       {isExpanded && (
         <div className="mt-3 space-y-3 border-t border-gray-200 dark:border-gray-700 pt-3">
           {/* Section 1: Project-Level Alerts */}
-          {(budgetOverrunProjects.length > 0 || missingProofProjects.length > 0 || unpaidRecurringProjects.length > 0) && (
+          {(budgetOverrunProjects.length > 0 || budgetWarningProjects.length > 0 || missingProofProjects.length > 0 || unpaidRecurringProjects.length > 0) && (
             <div className="bg-blue-50 dark:bg-blue-900/20 border-l-4 border-blue-500 rounded p-3">
               <div className="flex items-center gap-2 mb-3">
                 <span className="text-lg">🏢</span>
@@ -142,10 +218,47 @@ const AlertsStrip: React.FC<AlertsStripProps> = ({ alerts, projects }) => {
                           </div>
                           <div className="text-xs text-blue-700 dark:text-blue-300 space-y-0.5">
                             <div>הוצא: <span className="font-semibold">{project.expense_month_to_date.toFixed(0)} ₪</span></div>
-                            <div>תקציב: <span className="font-semibold">{((project.budget_annual || 0) + ((project.budget_monthly || 0) * 12)).toFixed(0)} ₪</span></div>
+                            <div>תקציב: <span className="font-semibold">{((project.budget_annual || 0) > 0 ? (project.budget_annual || 0) : ((project.budget_monthly || 0) * 12)).toFixed(0)} ₪</span></div>
                           </div>
                         </div>
                       ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Budget Warning - Approaching Budget */}
+                {budgetWarningProjects.length > 0 && (
+                  <div className="bg-white dark:bg-gray-800 rounded-lg p-3 border border-yellow-200 dark:border-yellow-800 shadow-sm">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-sm">⚠️</span>
+                      <span className="font-medium text-xs text-yellow-900 dark:text-yellow-200">מתקרב לתקציב</span>
+                    </div>
+                    <div className="space-y-2">
+                      {budgetWarningProjects.map(project => {
+                        const yearlyBudget = (project.budget_annual || 0) > 0 ? (project.budget_annual || 0) : ((project.budget_monthly || 0) * 12)
+                        const budgetPercent = yearlyBudget > 0 ? (project.expense_month_to_date / yearlyBudget) * 100 : 0
+                        return (
+                          <div key={project.id} className="bg-yellow-50 dark:bg-yellow-900/30 rounded p-2 border border-yellow-200 dark:border-yellow-800 relative group">
+                            <div className="flex items-center justify-between mb-1">
+                              <div className="font-medium text-sm text-yellow-900 dark:text-yellow-100">{project.name}</div>
+                              <button
+                                onClick={() => handleDismissProject(project.id)}
+                                className="text-yellow-600 dark:text-yellow-400 hover:text-yellow-800 dark:hover:text-yellow-200 text-xs px-1.5 py-0.5 rounded hover:bg-yellow-100 dark:hover:bg-yellow-900/50 opacity-0 group-hover:opacity-100 transition-opacity"
+                                title="החריג פרויקט"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                            <div className="text-xs text-yellow-700 dark:text-yellow-300 space-y-0.5">
+                              <div>הוצא: <span className="font-semibold">{project.expense_month_to_date.toFixed(0)} ₪</span></div>
+                              <div>תקציב: <span className="font-semibold">{yearlyBudget.toFixed(0)} ₪</span></div>
+                              <div className="font-semibold text-yellow-800 dark:text-yellow-200 mt-1">
+                                {budgetPercent.toFixed(1)}% מהתקציב
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
                     </div>
                   </div>
                 )}
@@ -470,8 +583,12 @@ export default function ModernDashboard({ onProjectClick, onProjectEdit }: Moder
     setError(null)
     try {
       const data = await DashboardAPI.getDashboardSnapshot()
+      console.log('📊 Dashboard Data:', data)
+      console.log('📊 Alerts:', data.alerts)
+      console.log('📊 Budget Warning Projects:', data.alerts.budget_warning)
       setDashboardData(data)
     } catch (err: any) {
+      console.error('❌ Error loading dashboard:', err)
       setError(err.message || 'שגיאה בטעינת הנתונים')
     } finally {
       setLoading(false)

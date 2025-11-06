@@ -11,7 +11,7 @@ import os
 from backend.models import (  # noqa: F401
     User, Project, Subproject, Transaction, AuditLog,
     Supplier, SupplierDocument, AdminInvite, EmailVerification,
-    GroupCode, RecurringTransactionTemplate, MemberInvite
+    RecurringTransactionTemplate, MemberInvite
 )
 # Also import base_models to ensure all models are loaded
 from backend.db import base_models  # noqa: F401

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { useAppDispatch } from '../utils/hooks'
-import { fetchMe, login } from '../store/slices/authSlice'
+import { fetchMe, login, clearPasswordChangeRequirement } from '../store/slices/authSlice'
 import { useSelector } from 'react-redux'
 import type { RootState } from '../store'
 import { Link, useNavigate } from 'react-router-dom'
@@ -9,20 +9,22 @@ import { Eye, EyeOff, Building2, Mail, Lock, ArrowRight } from 'lucide-react'
 import { LoadingSpinner } from '../components/ui/Loading'
 import { cn } from '../lib/utils'
 import api from '../lib/api'
+import ChangePasswordModal from '../components/ChangePasswordModal'
 
 export default function Login() {
   const dispatch = useAppDispatch()
   const navigate = useNavigate()
-  const { loading, error, token, me } = useSelector((s: RootState) => s.auth)
+  const { loading, error, token, me, requiresPasswordChange } = useSelector((s: RootState) => s.auth)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false)
 
   // Handle successful login
   useEffect(() => {
-    if (token && !loading) {
-      // Navigate immediately after getting token
+    if (token && !loading && !requiresPasswordChange) {
+      // Navigate immediately after getting token (unless password change is required)
       const redirectPath = localStorage.getItem('redirectAfterLogin')
       if (redirectPath) {
         localStorage.removeItem('redirectAfterLogin')
@@ -32,8 +34,12 @@ export default function Login() {
       }
       // Fetch user data in background
       if (!me) dispatch(fetchMe())
+    } else if (token && requiresPasswordChange) {
+      // Show password change modal if required - DO NOT navigate until password is changed
+      setShowChangePasswordModal(true)
+      // Prevent navigation - user must change password first
     }
-  }, [token, loading, dispatch, navigate])
+  }, [token, loading, requiresPasswordChange, dispatch, navigate, me])
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -260,6 +266,32 @@ export default function Login() {
           </p>
         </motion.div>
       </motion.div>
+
+      {/* Change Password Modal */}
+      <ChangePasswordModal
+        isOpen={showChangePasswordModal}
+        onClose={() => {
+          // Only allow closing if password change is not required
+          if (!requiresPasswordChange) {
+            setShowChangePasswordModal(false)
+            dispatch(clearPasswordChangeRequirement())
+          }
+          // If required, do nothing - user cannot close without changing password
+        }}
+        onSuccess={() => {
+          setShowChangePasswordModal(false)
+          dispatch(clearPasswordChangeRequirement())
+          dispatch(fetchMe())
+          const redirectPath = localStorage.getItem('redirectAfterLogin')
+          if (redirectPath) {
+            localStorage.removeItem('redirectAfterLogin')
+            navigate(redirectPath)
+          } else {
+            navigate('/')
+          }
+        }}
+        isRequired={requiresPasswordChange}
+      />
     </div>
   )
 }

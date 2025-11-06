@@ -9,6 +9,5 @@ from backend.models.supplier import Supplier  # noqa: F401
 from backend.models.supplier_document import SupplierDocument  # noqa: F401
 from backend.models.admin_invite import AdminInvite  # noqa: F401
 from backend.models.email_verification import EmailVerification  # noqa: F401
-from backend.models.group_code import GroupCode  # noqa: F401
 from backend.models.recurring_transaction import RecurringTransactionTemplate  # noqa: F401
 from backend.models.member_invite import MemberInvite  # noqa: F401
