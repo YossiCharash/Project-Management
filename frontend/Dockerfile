@@ -1,63 +1,45 @@
-# Frontend Dockerfile for Project Management System
-# Multi-stage build for React + Vite application
-
-# Stage 1: Build the React application
-FROM node:18-alpine AS builder
-
-# Set working directory
+# ================================
+# שלב 1: בניית אפליקציית Vite
+# ================================
+FROM node:20-alpine AS build
+# הוסף ARG
+ARG VITE_API_URL
+ENV VITE_API_URL=$VITE_API_URL
 WORKDIR /app
 
-# Copy package files
-COPY frontend/package*.json ./
+# התקנת תלויות
+COPY package*.json ./
+RUN npm install
 
-# Install dependencies
-RUN npm ci
+# העתקת כל הקבצים (כולל index.html, src, public וכו')
+COPY . .
 
-# Copy source code
-COPY frontend/ .
-
-# Build argument for API URL
-ARG VITE_API_URL=http://localhost:8000/api/v1
-
-# Set environment variable for build
-ENV VITE_API_URL=$VITE_API_URL
-
-# Build the application
+# הרצת הבנייה
 RUN npm run build
 
-# Stage 2: Production server with nginx
-FROM nginx:alpine
 
-# Copy built application from builder stage
-COPY --from=builder /app/dist /usr/share/nginx/html
+# ================================
+# שלב 2: הגשת הקבצים עם NGINX
+# ================================
+FROM nginx:stable-alpine
 
-# Copy nginx configuration (optional - you can customize this later)
-# For SPA routing, we need to configure nginx to redirect all routes to index.html
-RUN echo 'server { \
-    listen 80; \
-    server_name _; \
-    root /usr/share/nginx/html; \
-    index index.html; \
-    \
-    # SPA routing - redirect all routes to index.html \
-    location / { \
-        try_files $uri $uri/ /index.html; \
-    } \
-    \
-    # Cache static assets \
-    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ { \
-        expires 1y; \
-        add_header Cache-Control "public, immutable"; \
-    } \
-}' > /etc/nginx/conf.d/default.conf
+ARG NGINX_GID=0
 
-# Expose port
-EXPOSE 80
+# תיקון הרשאות ל־OpenShift
+RUN chown -R $NGINX_GID:0 /var/cache/nginx && \
+    chmod -R g+rwX /var/cache/nginx && \
+    chown -R $NGINX_GID:0 /var/run && \
+    chmod -R g+rwX /var/run
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:80/ || exit 1
+# החלפת הקובץ הראשי של nginx
+COPY nginx.conf /etc/nginx/nginx.conf
 
-# Start nginx
+# העתקת תוצאות הבנייה
+COPY --from=build /app/dist /usr/share/nginx/html
+
+# הרשאות
+RUN chown -R $NGINX_GID:0 /usr/share/nginx/html && \
+    chmod -R g+rX /usr/share/nginx/html
+
+EXPOSE 8000
 CMD ["nginx", "-g", "daemon off;"]
-

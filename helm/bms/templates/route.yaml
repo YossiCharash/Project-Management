@@ -1,48 +1,44 @@
-{{- if .Values.route.enabled }}
+---
 apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
-  name: {{ include "bms.fullname" . }}-frontend
+  name: project-manager-bms-frontend
   labels:
-    {{- include "bms.frontend.labels" . | nindent 4 }}
+    app: project-manager-bms
+    component: frontend
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    meta.helm.sh/release-name: project-manager-bms
+    meta.helm.sh/release-namespace: at-yossi-dev
 spec:
-  {{- if .Values.route.frontend.host }}
-  host: {{ .Values.route.frontend.host }}
-  {{- end }}
   to:
     kind: Service
-    name: {{ include "bms.fullname" . }}-frontend
+    name: project-manager-bms-frontend
     weight: 100
   port:
     targetPort: http
-  {{- if .Values.route.frontend.tls.enabled }}
   tls:
-    termination: {{ .Values.route.frontend.tls.termination }}
-    insecureEdgeTerminationPolicy: {{ .Values.route.frontend.tls.insecureEdgeTerminationPolicy }}
-  {{- end }}
-
-{{- if .Values.route.backend.enabled }}
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+---
 apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
-  name: {{ include "bms.fullname" . }}-backend
+  name: project-manager-bms-backend
   labels:
-    {{- include "bms.backend.labels" . | nindent 4 }}
+    app: project-manager-bms
+    component: backend
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    meta.helm.sh/release-name: project-manager-bms
+    meta.helm.sh/release-namespace: at-yossi-dev
 spec:
-  {{- if .Values.route.backend.host }}
-  host: {{ .Values.route.backend.host }}
-  {{- end }}
   to:
     kind: Service
-    name: {{ include "bms.fullname" . }}-backend
+    name: project-manager-bms-backend
     weight: 100
   port:
     targetPort: http
-  {{- if .Values.route.backend.tls.enabled }}
   tls:
-    termination: {{ .Values.route.backend.tls.termination }}
-    insecureEdgeTerminationPolicy: {{ .Values.route.backend.tls.insecureEdgeTerminationPolicy }}
-  {{- end }}
-{{- end }}
-{{- end }}
-
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

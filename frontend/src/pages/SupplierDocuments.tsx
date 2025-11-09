@@ -103,7 +103,7 @@ export default function SupplierDocuments() {
     if (filePath.startsWith('http')) {
       return filePath
     }
-    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
+    const apiUrl = import.meta.env.VITE_API_URL
     const baseUrl = apiUrl.replace('/api/v1', '')
     // Ensure filePath starts with /
     let normalizedPath = filePath.startsWith('/') ? filePath : `/${filePath}`

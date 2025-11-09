@@ -387,7 +387,7 @@ const SubprojectCardsList: React.FC<{
         try {
           const { data } = await api.get(`/projects/${subproject.id}`)
           if (data.image_url) {
-            const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
+            const apiUrl = import.meta.env.VITE_API_URL
             const baseUrl = apiUrl.replace('/api/v1', '')
             images[subproject.id] = `${baseUrl}/uploads/${data.image_url}`
           } else {
@@ -1273,7 +1273,7 @@ export default function ParentProjectDetail() {
         {parentProject.image_url && (
           <div className="mb-6 rounded-lg overflow-hidden">
             {(() => {
-              const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
+              const apiUrl = import.meta.env.VITE_API_URL
               const baseUrl = apiUrl.replace('/api/v1', '')
               const imageUrl = `${baseUrl}/uploads/${parentProject.image_url}`
               return (

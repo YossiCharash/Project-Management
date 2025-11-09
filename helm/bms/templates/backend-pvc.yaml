@@ -1,19 +1,18 @@
-{{- if and .Values.backend.enabled .Values.backend.persistence.enabled }}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: {{ include "bms.fullname" . }}-backend-uploads
+  name: project-manager-bms-backend-uploads
   labels:
     {{- include "bms.backend.labels" . | nindent 4 }}
+  annotations:
+    meta.helm.sh/release-name: {{ .Release.Name }}
+    meta.helm.sh/release-namespace: {{ .Release.Namespace }}
 spec:
   accessModes:
-    - {{ .Values.backend.persistence.accessMode }}
+    - ReadWriteOnce
   resources:
     requests:
-      storage: {{ .Values.backend.persistence.size }}
+      storage: {{ .Values.backend.persistence.size | default "1Gi" }}
   {{- if .Values.backend.persistence.storageClass }}
   storageClassName: {{ .Values.backend.persistence.storageClass }}
   {{- end }}
-{{- end }}
-
-

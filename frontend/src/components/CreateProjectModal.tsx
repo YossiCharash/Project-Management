@@ -101,7 +101,7 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
   }
 
   const getImageUrl = (imageUrl: string): string => {
-    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
+    const apiUrl = import.meta.env.VITE_API_URL
     const baseUrl = apiUrl.replace('/api/v1', '')
     return `${baseUrl}/uploads/${imageUrl}`
   }
