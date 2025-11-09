@@ -29,7 +29,8 @@ const ProjectCard: React.FC<ProjectCardProps> = ({ project, onProjectClick, onPr
 
   const getImageUrl = (imageUrl: string | null | undefined): string | null => {
     if (!imageUrl) return null
-    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
+    const apiUrl = import.meta.env.VITE_API_URL
+    // @ts-ignore
     const baseUrl = apiUrl.replace('/api/v1', '')
     return `${baseUrl}/uploads/${imageUrl}`
   }

@@ -1,0 +1,48 @@
+{{- if .Values.route.enabled }}
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ include "bms.fullname" . }}-frontend
+  labels:
+    {{- include "bms.frontend.labels" . | nindent 4 }}
+spec:
+  {{- if .Values.route.frontend.host }}
+  host: {{ .Values.route.frontend.host }}
+  {{- end }}
+  to:
+    kind: Service
+    name: {{ include "bms.fullname" . }}-frontend
+    weight: 100
+  port:
+    targetPort: http
+  {{- if .Values.route.frontend.tls.enabled }}
+  tls:
+    termination: {{ .Values.route.frontend.tls.termination }}
+    insecureEdgeTerminationPolicy: {{ .Values.route.frontend.tls.insecureEdgeTerminationPolicy }}
+  {{- end }}
+
+{{- if .Values.route.backend.enabled }}
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ include "bms.fullname" . }}-backend
+  labels:
+    {{- include "bms.backend.labels" . | nindent 4 }}
+spec:
+  {{- if .Values.route.backend.host }}
+  host: {{ .Values.route.backend.host }}
+  {{- end }}
+  to:
+    kind: Service
+    name: {{ include "bms.fullname" . }}-backend
+    weight: 100
+  port:
+    targetPort: http
+  {{- if .Values.route.backend.tls.enabled }}
+  tls:
+    termination: {{ .Values.route.backend.tls.termination }}
+    insecureEdgeTerminationPolicy: {{ .Values.route.backend.tls.insecureEdgeTerminationPolicy }}
+  {{- end }}
+{{- end }}
+{{- end }}
+
