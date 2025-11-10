@@ -44,7 +44,7 @@ export const createProject = createAsyncThunk(
   'projects/create',
   async (payload: Partial<Project>, { rejectWithValue }) => {
     try {
-      const { data } = await api.post<Project>('/projects', payload)
+      const { data } = await api.post<Project>('/projects/', payload)
       return data
     } catch (e: any) {
       return rejectWithValue(e.response?.data?.detail ?? 'Create failed')

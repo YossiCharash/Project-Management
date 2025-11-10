@@ -44,7 +44,7 @@ def create_app() -> FastAPI:
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.CORS_ORIGINS,
+        allow_origins=["https://project-manager-bms-frontend-at-yossi-dev.apps.rm1.0a51.p1.openshiftapps.com"],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -121,4 +121,4 @@ def create_app() -> FastAPI:
 app = create_app()
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8001)

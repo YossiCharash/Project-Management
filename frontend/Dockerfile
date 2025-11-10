@@ -1,63 +1,41 @@
-# Frontend Dockerfile for Project Management System
-# Multi-stage build for React + Vite application
-
-# Stage 1: Build the React application
+# ==================================================================
+# Stage 1: The Builder Stage (node:18-alpine)
+# ==================================================================
 FROM node:18-alpine AS builder
 
-# Set working directory
 WORKDIR /app
 
-# Copy package files
+# 1. העתקת קבצי תלויות בלבד
 COPY frontend/package*.json ./
 
-# Install dependencies
-RUN npm ci
+# 2. התקנת תלויות (משתמשים ב-npm install אם יש בעיה עם npm ci)
+RUN npm install
 
-# Copy source code
+# 3. העתקת שאר קוד המקור, כולל index.html
+# התיקון: מעתיק את כל התוכן *בתוך* frontend/ ישירות ל- /app
 COPY frontend/ .
 
-# Build argument for API URL
-ARG VITE_API_URL=http://localhost:8000/api/v1
+# 4. בניית האפליקציה
 
-# Set environment variable for build
-ENV VITE_API_URL=$VITE_API_URL
-
-# Build the application
 RUN npm run build
 
-# Stage 2: Production server with nginx
+# --- Stage 2: Final (Production) Image (NGINX) ---
+# --- Stage 2: Final (Production) Image (NGINX) ---
 FROM nginx:alpine
 
-# Copy built application from builder stage
+# הוסף את הקונפיגורציה המותאמת אישית
+# (הנחה: הקובץ nginx.conf נמצא באותה תיקיה כמו ה-Dockerfile)
+COPY frontend/nginx.conf /etc/nginx/nginx.conf
+
+# 1. יצירת ספריות מטמון והגדרת הרשאות כתיבה
+# אם אנחנו משתמשים ב-nginx.conf המותאם אישית שמעביר את הכל ל-/tmp,
+# פקודה זו אינה נחוצה, אבל היא מועילה כהגנה נוספת או אם אתה משתמש
+# ב-nginx.conf ברירת המחדל (אם כי מומלץ להשתמש בקונפיגורציה מותאמת אישית).
+# עבור הפתרון הנוכחי עם /tmp, פקודה זו **אינה נחוצה**!
+
+# 2. העתקה מה-Builder
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Copy nginx configuration (optional - you can customize this later)
-# For SPA routing, we need to configure nginx to redirect all routes to index.html
-RUN echo 'server { \
-    listen 80; \
-    server_name _; \
-    root /usr/share/nginx/html; \
-    index index.html; \
-    \
-    # SPA routing - redirect all routes to index.html \
-    location / { \
-        try_files $uri $uri/ /index.html; \
-    } \
-    \
-    # Cache static assets \
-    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ { \
-        expires 1y; \
-        add_header Cache-Control "public, immutable"; \
-    } \
-}' > /etc/nginx/conf.d/default.conf
-
-# Expose port
-EXPOSE 80
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:80/ || exit 1
-
-# Start nginx
+# 3. הגדרות סופיות
+EXPOSE 8000
 CMD ["nginx", "-g", "daemon off;"]
-

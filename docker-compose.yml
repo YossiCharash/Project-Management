@@ -4,18 +4,19 @@ services:
   # PostgreSQL Database
   postgres:
     image: postgres:16-alpine
-    container_name: bms-postgres
+    container_name: ${POSTGRES_CONTAINER_NAME:-bms-postgres}
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-bms}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      PGDATA: /var/lib/postgresql/data/pgdata
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-bms}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -28,7 +29,7 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
-    container_name: bms-backend
+    container_name: ${BACKEND_CONTAINER_NAME:-bms-backend}
     restart: unless-stopped
     depends_on:
       postgres:
@@ -46,18 +47,18 @@ services:
       - SUPER_ADMIN_NAME=${SUPER_ADMIN_NAME:-Super Administrator}
       
       # File Upload
-      - FILE_UPLOAD_DIR=/app/uploads
+      - FILE_UPLOAD_DIR=${FILE_UPLOAD_DIR:-/app/uploads}
       
       # CORS
-      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:5173,http://localhost:3000,http://localhost:80,http://frontend:80}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:5173,http://localhost:3000,http://localhost:80,http://localhost:8080,http://frontend:8080}
       
       # Email Configuration (SMTP)
       - SMTP_SERVER=${SMTP_SERVER:-smtp.gmail.com}
       - SMTP_PORT=${SMTP_PORT:-587}
       - SMTP_USERNAME=${SMTP_USERNAME:-}
       - SMTP_PASSWORD=${SMTP_PASSWORD:-}
-      - FROM_EMAIL=${FROM_EMAIL:-}
-      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:80}
+      - FROM_EMAIL=${FROM_EMAIL:-${SMTP_USERNAME}}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:8080}
       
       # Google OAuth
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
@@ -83,15 +84,15 @@ services:
       context: .
       dockerfile: frontend/Dockerfile
       args:
-        - VITE_API_URL=${VITE_API_URL:-http://localhost:8000/api/v1}
-    container_name: bms-frontend
+        - VITE_API_URL=${VITE_API_URL}
+    container_name: ${FRONTEND_CONTAINER_NAME:-bms-frontend}
     restart: unless-stopped
     depends_on:
       - backend
     ports:
-      - "${FRONTEND_PORT:-80}:80"
+      - "${FRONTEND_PORT:-8080}:8080"
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -110,4 +111,3 @@ volumes:
 networks:
   bms-network:
     driver: bridge
-

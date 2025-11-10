@@ -24,7 +24,7 @@ export const fetchSuppliers = createAsyncThunk('suppliers/fetchAll', async () =>
 })
 
 export const createSupplier = createAsyncThunk('suppliers/create', async (payload: Partial<Supplier>, { rejectWithValue }) => {
-  try { const { data } = await api.post<Supplier>('/suppliers', payload); return data } catch (e: any) { return rejectWithValue(e.response?.data?.detail ?? 'Create failed') }
+  try { const { data } = await api.post<Supplier>('/suppliers/', payload); return data } catch (e: any) { return rejectWithValue(e.response?.data?.detail ?? 'Create failed') }
 })
 
 export const updateSupplier = createAsyncThunk('suppliers/update', async ({ id, changes }: { id: number; changes: Partial<Supplier> }, { rejectWithValue }) => {

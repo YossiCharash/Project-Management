@@ -124,7 +124,8 @@ export default function ProjectDetail() {
         budget_annual: data.budget_annual || 0
       })
       if (data.image_url) {
-        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
+        const apiUrl = import.meta.env.VITE_API_URL
+        // @ts-ignore
         const baseUrl = apiUrl.replace('/api/v1', '')
         setProjectImageUrl(`${baseUrl}/uploads/${data.image_url}`)
       }
@@ -828,7 +829,8 @@ export default function ProjectDetail() {
                     }
                     const getFileUrl = (filePath: string): string => {
                       if (filePath.startsWith('http')) return filePath
-                      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
+                      const apiUrl = import.meta.env.VITE_API_URL
+                      // @ts-ignore
                       const baseUrl = apiUrl.replace('/api/v1', '')
                       let normalizedPath = filePath.startsWith('/') ? filePath : `/${filePath}`
                       normalizedPath = normalizedPath.replace(/([^:]\/)\/+/g, '$1')
@@ -968,7 +970,8 @@ export default function ProjectDetail() {
                 }
                 const getFileUrl = (filePath: string): string => {
                   if (filePath.startsWith('http')) return filePath
-                  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
+                  const apiUrl = import.meta.env.VITE_API_URL
+                  // @ts-ignore
                   const baseUrl = apiUrl.replace('/api/v1', '')
                   let normalizedPath = filePath.startsWith('/') ? filePath : `/${filePath}`
                   normalizedPath = normalizedPath.replace(/([^:]\/)\/+/g, '$1')

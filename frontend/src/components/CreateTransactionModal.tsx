@@ -154,7 +154,7 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
         is_exceptional: isExceptional,
       }
 
-      const response = await api.post('/transactions', payload)
+      const response = await api.post('/transactions/', payload)
       const newTransactionId = response.data?.id
 
       // If files were selected, upload them
