@@ -37,6 +37,11 @@ async def list_projects(db: DBSessionDep, include_archived: bool = Query(False),
     """List projects - accessible to all authenticated users"""
     return await ProjectRepository(db).list(include_archived=include_archived, only_archived=only_archived)
 
+@router.get("", response_model=list[ProjectOut])
+async def list_projects_no_slash(db: DBSessionDep, include_archived: bool = Query(False), only_archived: bool = Query(False), user = Depends(get_current_user)):
+    """Alias without trailing slash to avoid 404 when redirect_slashes=False"""
+    return await ProjectRepository(db).list(include_archived=include_archived, only_archived=only_archived)
+
 @router.get("/profitability-alerts")
 async def get_profitability_alerts(
     db: DBSessionDep,
@@ -201,20 +206,33 @@ async def create_project(db: DBSessionDep, data: ProjectCreate, user = Depends(g
                 from datetime import date as date_type
                 start_date = None
                 end_date = None
-                
+
                 if budget_data.start_date:
                     if isinstance(budget_data.start_date, str):
                         start_date = date_type.fromisoformat(budget_data.start_date)
                     else:
                         start_date = budget_data.start_date
-                
+
                 if budget_data.end_date:
                     if isinstance(budget_data.end_date, str):
                         end_date = date_type.fromisoformat(budget_data.end_date)
                     else:
                         end_date = budget_data.end_date
-                
-                await budget_service.create_budget(
+
+                print(
+                    "📥 [Project Budget] Creating budget",
+                    {
+                        "project_id": project.id,
+                        "index": idx,
+                        "category": budget_data.category,
+                        "amount": budget_data.amount,
+                        "period_type": budget_data.period_type,
+                        "start_date": start_date,
+                        "end_date": end_date,
+                    },
+                )
+
+                created_budget = await budget_service.create_budget(
                     project_id=project.id,
                     category=budget_data.category,
                     amount=budget_data.amount,
@@ -222,7 +240,24 @@ async def create_project(db: DBSessionDep, data: ProjectCreate, user = Depends(g
                     start_date=start_date,
                     end_date=end_date
                 )
+                print(
+                    "✅ [Project Budget] Budget created",
+                    {"budget_id": created_budget.id, "category": budget_data.category},
+                )
             except Exception as e:
+                import traceback
+                print(
+                    "❌ [Project Budget] Failed to create budget",
+                    {
+                        "project_id": project.id,
+                        "index": idx,
+                        "category": budget_data.category,
+                        "amount": budget_data.amount,
+                        "period_type": budget_data.period_type,
+                        "error": str(e),
+                    },
+                )
+                traceback.print_exc()
                 # Log error but don't fail the entire project creation
                 pass
     
@@ -245,6 +280,10 @@ async def create_project(db: DBSessionDep, data: ProjectCreate, user = Depends(g
     
     return project
 
+@router.post("", response_model=ProjectOut)
+async def create_project_no_slash(db: DBSessionDep, data: ProjectCreate, user = Depends(get_current_user)):
+    """Alias without trailing slash to avoid 404 when redirect_slashes=False"""
+    return await create_project(db, data, user)
 
 @router.put("/{project_id}", response_model=ProjectOut)
 async def update_project(project_id: int, db: DBSessionDep, data: ProjectUpdate, user = Depends(get_current_user)):
@@ -253,7 +292,9 @@ async def update_project(project_id: int, db: DBSessionDep, data: ProjectUpdate,
     project = await repo.get_by_id(project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    
+
+    budgets_to_add = data.budgets or []
+
     # Store old values for audit log
     old_values = {
         'name': project.name,
@@ -263,12 +304,73 @@ async def update_project(project_id: int, db: DBSessionDep, data: ProjectUpdate,
         'address': project.address or '',
         'city': project.city or ''
     }
-    
-    updated_project = await ProjectService(db).update(project, **data.model_dump(exclude_unset=True))
-    
+
+    update_payload = data.model_dump(exclude_unset=True, exclude={'budgets'})
+    updated_project = await ProjectService(db).update(project, **update_payload)
+
+    # Handle new category budgets if provided
+    if budgets_to_add:
+        budget_service = BudgetService(db)
+        for idx, budget_data in enumerate(budgets_to_add):
+            try:
+                from datetime import date as date_type
+                start_date = None
+                end_date = None
+
+                if budget_data.start_date:
+                    if isinstance(budget_data.start_date, str):
+                        start_date = date_type.fromisoformat(budget_data.start_date)
+                    else:
+                        start_date = budget_data.start_date
+
+                if budget_data.end_date:
+                    if isinstance(budget_data.end_date, str):
+                        end_date = date_type.fromisoformat(budget_data.end_date)
+                    else:
+                        end_date = budget_data.end_date
+
+                print(
+                    "📥 [Project Budget] Adding budget during update",
+                    {
+                        "project_id": project_id,
+                        "index": idx,
+                        "category": budget_data.category,
+                        "amount": budget_data.amount,
+                        "period_type": budget_data.period_type,
+                        "start_date": start_date,
+                        "end_date": end_date,
+                    },
+                )
+
+                created_budget = await budget_service.create_budget(
+                    project_id=project_id,
+                    category=budget_data.category,
+                    amount=budget_data.amount,
+                    period_type=budget_data.period_type or "Annual",
+                    start_date=start_date,
+                    end_date=end_date
+                )
+                print(
+                    "✅ [Project Budget] Budget added during update",
+                    {"budget_id": created_budget.id, "category": budget_data.category},
+                )
+            except Exception as e:
+                import traceback
+                print(
+                    "❌ [Project Budget] Failed to add budget during update",
+                    {
+                        "project_id": project_id,
+                        "index": idx,
+                        "category": budget_data.category,
+                        "amount": budget_data.amount,
+                        "period_type": budget_data.period_type,
+                        "error": str(e),
+                    },
+                )
+                traceback.print_exc()
+
     # Log update action with full details
-    update_data = data.model_dump(exclude_unset=True)
-    new_values = {k: str(v) for k, v in update_data.items()}
+    update_data = {k: str(v) for k, v in update_payload.items()}
     await AuditService(db).log_project_action(
         user_id=user.id,
         action='update',
@@ -276,10 +378,10 @@ async def update_project(project_id: int, db: DBSessionDep, data: ProjectUpdate,
         details={
             'project_name': project.name,
             'old_values': old_values,
-            'new_values': new_values
+            'new_values': update_data
         }
     )
-    
+
     return updated_project
 
 

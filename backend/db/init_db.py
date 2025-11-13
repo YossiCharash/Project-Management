@@ -4,6 +4,8 @@ All database schema is defined in the SQLAlchemy models in backend/models/
 This file simply ensures all models are imported and creates the database schema.
 """
 from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy import text
+
 from backend.db.base import Base
 
 # Import all models to ensure they are registered with Base.metadata

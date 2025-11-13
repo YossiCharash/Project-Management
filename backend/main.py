@@ -40,11 +40,31 @@ def create_app() -> FastAPI:
         docs_url="/docs",
         redoc_url="/redoc",
         openapi_tags=tags_metadata,
+        redirect_slashes=False,  # Disable automatic 307 redirects between /route and /route/
     )
+
+    @app.middleware("http")
+    async def resolve_trailing_slash(request, call_next):
+        """
+        Ensure routes defined with a trailing slash still work without it,
+        without issuing an HTTP redirect (prevents 307 -> HTTP/port 10000).
+        """
+        path = request.scope.get("path", "")
+        if path and not path.endswith("/"):
+            alt_path = f"{path}/"
+            available_paths = {
+                getattr(route, "path", None)
+                for route in app.router.routes
+                if getattr(route, "path", None)
+            }
+            if alt_path in available_paths:
+                request.scope["path"] = alt_path
+        response = await call_next(request)
+        return response
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["https://project-manager-bms-frontend-at-yossi-dev.apps.rm1.0a51.p1.openshiftapps.com"],
+        allow_origins=settings.CORS_ORIGINS,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -121,4 +141,4 @@ def create_app() -> FastAPI:
 app = create_app()
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+    uvicorn.run(app, host="0.0.0.0", port=8000)

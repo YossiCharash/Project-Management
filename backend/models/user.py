@@ -24,7 +24,6 @@ class User(Base):
     group_id: Mapped[int | None] = mapped_column(nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     requires_password_change: Mapped[bool] = mapped_column(Boolean, default=False)
-    
     # OAuth fields
     oauth_provider: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)  # 'google', 'facebook', etc.
     oauth_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)  # Provider's user ID

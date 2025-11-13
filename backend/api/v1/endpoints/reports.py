@@ -22,117 +22,178 @@ async def get_dashboard_snapshot(db: DBSessionDep, user = Depends(get_current_us
 @router.get("/project/{project_id}/expense-categories")
 async def get_project_expense_categories(project_id: int, db: DBSessionDep, user = Depends(get_current_user)):
     """Get expense categories breakdown for a specific project"""
-    return await ReportService(db).get_project_expense_categories(project_id)
+    try:
+        print(f"📊 [Report API] Getting expense categories for project {project_id}, user: {user.email} (role: {user.role})")
+        result = await ReportService(db).get_project_expense_categories(project_id)
+        print(f"📊 [Report API] Found {len(result)} expense categories for project {project_id}")
+        return result
+    except Exception as e:
+        import traceback
+        print(f"❌ [Report API] Error getting expense categories for project {project_id}: {str(e)}")
+        traceback.print_exc()
+        raise
 
 
 @router.get("/project/{project_id}/transactions")
 async def get_project_transactions(project_id: int, db: DBSessionDep, user = Depends(get_current_user)):
     """Get all transactions for a specific project (including recurring ones)"""
-    # Use raw SQL query to avoid SQLAlchemy model issues when columns are missing
-    from sqlalchemy import text
-    from datetime import datetime
-    
     try:
-        # Try query with all columns first, fallback if columns don't exist
+        print(f"📊 [Report API] Getting transactions for project {project_id}, user: {user.email} (role: {user.role})")
+        # Use raw SQL query to avoid SQLAlchemy model issues when columns are missing
+        from sqlalchemy import text
+        from datetime import datetime
+        import json
+
         try:
-            # Query with all columns including recurring fields
-            query = text("""
-                SELECT 
-                    id, project_id, tx_date, type, amount, description, category, notes,
-                    is_exceptional, file_path, created_at,
-                    recurring_template_id, is_generated
-                FROM transactions 
-                WHERE project_id = :project_id
-                ORDER BY tx_date DESC
-            """)
-            result = await db.execute(query, {"project_id": project_id})
-            rows = result.fetchall()
-            has_recurring_fields = True
-        except Exception:
-            # If columns don't exist, query without them
-            query = text("""
-                SELECT 
-                    id, project_id, tx_date, type, amount, description, category, notes,
-                    is_exceptional, file_path, created_at
-                FROM transactions 
-                WHERE project_id = :project_id
-                ORDER BY tx_date DESC
-            """)
-            result = await db.execute(query, {"project_id": project_id})
-            rows = result.fetchall()
-            has_recurring_fields = False
-        
-        # Convert rows to dict format
-        transactions = []
-        for row in rows:
+            # Try query with all columns including recurring fields
             try:
-                # Convert row to dict - handle both Row and dict-like objects
-                if hasattr(row, '_mapping'):
-                    row_dict = dict(row._mapping)
-                elif hasattr(row, '_asdict'):
-                    row_dict = row._asdict()
-                elif isinstance(row, dict):
-                    row_dict = row
-                else:
-                    # Fallback: try to access attributes directly
-                    row_dict = {}
-                    for attr in ['id', 'project_id', 'tx_date', 'type', 'amount', 'description', 
-                               'category', 'notes', 'is_exceptional', 'file_path', 'created_at',
-                               'recurring_template_id', 'is_generated']:
-                        if hasattr(row, attr):
-                            row_dict[attr] = getattr(row, attr)
-                
-                tx_dict = {
-                    "id": row_dict.get('id'),
-                    "project_id": row_dict.get('project_id'),
-                    "tx_date": row_dict.get('tx_date'),
-                    "type": row_dict.get('type'),
-                    "amount": float(row_dict.get('amount', 0)),
-                    "description": row_dict.get('description'),
-                    "category": row_dict.get('category'),
-                    "notes": row_dict.get('notes'),
-                    "is_exceptional": row_dict.get('is_exceptional', False),
-                    "is_generated": row_dict.get('is_generated', False) if has_recurring_fields else False,
-                    "file_path": row_dict.get('file_path'),
-                    "created_at": row_dict.get('created_at') or datetime.utcnow()
-                }
-                transactions.append(tx_dict)
+                # Query with all columns including recurring fields
+                query = text("""
+                    SELECT 
+                        t.id, t.project_id, t.tx_date, t.type, t.amount, t.description, t.category, t.notes,
+                        t.is_exceptional, t.file_path, t.created_at,
+                        t.recurring_template_id, t.is_generated,
+                        t.payment_method, t.supplier_id, t.created_by_user_id,
+                        CASE WHEN u.id IS NOT NULL THEN json_build_object(
+                            'id', u.id,
+                            'full_name', u.full_name,
+                            'email', u.email
+                        ) ELSE NULL END AS created_by_user
+                    FROM transactions t
+                    LEFT JOIN users u ON u.id = t.created_by_user_id
+                    WHERE t.project_id = :project_id
+                    ORDER BY t.tx_date DESC
+                """)
+                result = await db.execute(query, {"project_id": project_id})
+                rows = result.fetchall()
+                has_recurring_fields = True
             except Exception:
-                continue
-        
-        # Convert to TransactionOut schemas
-        from backend.schemas.transaction import TransactionOut
-        return [TransactionOut.model_validate(tx) for tx in transactions]
-        
-    except Exception as e:
-        import traceback
-        # If raw SQL fails (e.g., columns don't exist), try fallback method
-        try:
-            from backend.repositories.transaction_repository import TransactionRepository
-            from backend.schemas.transaction import TransactionOut
-            
-            transactions = await TransactionRepository(db).list_by_project(project_id)
-            result = []
-            for tx in transactions:
+                # If columns don't exist, query without them
+                query = text("""
+                    SELECT 
+                        t.id, t.project_id, t.tx_date, t.type, t.amount, t.description, t.category, t.notes,
+                        t.is_exceptional, t.file_path, t.created_at,
+                        t.payment_method, t.supplier_id, t.created_by_user_id,
+                        CASE WHEN u.id IS NOT NULL THEN json_build_object(
+                            'id', u.id,
+                            'full_name', u.full_name,
+                            'email', u.email
+                        ) ELSE NULL END AS created_by_user
+                    FROM transactions t
+                    LEFT JOIN users u ON u.id = t.created_by_user_id
+                    WHERE t.project_id = :project_id
+                    ORDER BY t.tx_date DESC
+                """)
+                result = await db.execute(query, {"project_id": project_id})
+                rows = result.fetchall()
+                has_recurring_fields = False
+
+            # Convert rows to dict format
+            transactions = []
+            for row in rows:
                 try:
-                    # Use getattr with safe defaults
+                    # Convert row to dict - handle both Row and dict-like objects
+                    if hasattr(row, '_mapping'):
+                        row_dict = dict(row._mapping)
+                    elif hasattr(row, '_asdict'):
+                        row_dict = row._asdict()
+                    elif isinstance(row, dict):
+                        row_dict = row
+                    else:
+                        # Fallback: try to access attributes directly
+                        row_dict = {}
+                        for attr in ['id', 'project_id', 'tx_date', 'type', 'amount', 'description', 
+                                   'category', 'notes', 'is_exceptional', 'file_path', 'created_at',
+                                   'recurring_template_id', 'is_generated', 'payment_method',
+                                   'supplier_id', 'created_by_user_id', 'created_by_user']:
+                            if hasattr(row, attr):
+                                row_dict[attr] = getattr(row, attr)
+
+                    created_by_user = row_dict.get('created_by_user')
+                    if isinstance(created_by_user, str):
+                        try:
+                            created_by_user = json.loads(created_by_user)
+                        except json.JSONDecodeError:
+                            created_by_user = None
+
                     tx_dict = {
-                        "id": tx.id,
-                        "project_id": tx.project_id,
-                        "tx_date": tx.tx_date,
-                        "type": tx.type,
-                        "amount": float(tx.amount),
-                        "description": tx.description,
-                        "category": tx.category,
-                        "notes": tx.notes,
-                        "is_exceptional": getattr(tx, 'is_exceptional', False),
-                        "is_generated": getattr(tx, 'is_generated', False),
-                        "file_path": getattr(tx, 'file_path', None),
-                        "created_at": getattr(tx, 'created_at', None) or datetime.utcnow()
+                        "id": row_dict.get('id'),
+                        "project_id": row_dict.get('project_id'),
+                        "tx_date": row_dict.get('tx_date'),
+                        "type": row_dict.get('type'),
+                        "amount": float(row_dict.get('amount', 0)),
+                        "description": row_dict.get('description'),
+                        "category": row_dict.get('category'),
+                        "notes": row_dict.get('notes'),
+                        "is_exceptional": row_dict.get('is_exceptional', False),
+                        "is_generated": row_dict.get('is_generated', False) if has_recurring_fields else False,
+                        "file_path": row_dict.get('file_path'),
+                        "created_at": row_dict.get('created_at') or datetime.utcnow(),
+                        "payment_method": row_dict.get('payment_method'),
+                        "supplier_id": row_dict.get('supplier_id'),
+                        "created_by_user_id": row_dict.get('created_by_user_id'),
+                        "created_by_user": created_by_user
                     }
-                    result.append(TransactionOut.model_validate(tx_dict))
+                    transactions.append(tx_dict)
                 except Exception:
                     continue
+
+            # Convert to TransactionOut schemas
+            from backend.schemas.transaction import TransactionOut
+            result = [TransactionOut.model_validate(tx) for tx in transactions]
+            print(f"📊 [Report API] Found {len(result)} transactions for project {project_id}")
             return result
-        except Exception:
-            return []
+        except Exception as e:
+            import traceback
+            print(f"❌ [Report API] Error in raw SQL query, trying fallback: {str(e)}")
+            # If raw SQL fails (e.g., columns don't exist), try fallback method
+            try:
+                from backend.repositories.transaction_repository import TransactionRepository
+                from backend.schemas.transaction import TransactionOut
+
+                transactions = await TransactionRepository(db).list_by_project(project_id)
+                result = []
+                for tx in transactions:
+                    try:
+                        created_by_user_obj = getattr(tx, 'created_by_user', None)
+                        if created_by_user_obj:
+                            created_by_user = {
+                                'id': getattr(created_by_user_obj, 'id', None),
+                                'full_name': getattr(created_by_user_obj, 'full_name', None),
+                                'email': getattr(created_by_user_obj, 'email', None),
+                            }
+                        else:
+                            created_by_user = None
+
+                        tx_dict = {
+                            "id": tx.id,
+                            "project_id": tx.project_id,
+                            "tx_date": tx.tx_date,
+                            "type": tx.type,
+                            "amount": float(tx.amount),
+                            "description": tx.description,
+                            "category": tx.category,
+                            "notes": tx.notes,
+                            "is_exceptional": getattr(tx, 'is_exceptional', False),
+                            "is_generated": getattr(tx, 'is_generated', False),
+                            "file_path": getattr(tx, 'file_path', None),
+                            "created_at": getattr(tx, 'created_at', None) or datetime.utcnow(),
+                            "payment_method": getattr(tx, 'payment_method', None),
+                            "supplier_id": getattr(tx, 'supplier_id', None),
+                            "created_by_user_id": getattr(tx, 'created_by_user_id', None),
+                            "created_by_user": created_by_user
+                        }
+                        result.append(TransactionOut.model_validate(tx_dict))
+                    except Exception:
+                        continue
+                print(f"📊 [Report API] Fallback method found {len(result)} transactions for project {project_id}")
+                return result
+            except Exception as e2:
+                print(f"❌ [Report API] Fallback method also failed: {str(e2)}")
+                traceback.print_exc()
+                return []
+    except Exception as e:
+        import traceback
+        print(f"❌ [Report API] Error getting transactions for project {project_id}: {str(e)}")
+        traceback.print_exc()
+        raise

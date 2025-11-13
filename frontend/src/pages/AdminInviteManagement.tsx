@@ -53,7 +53,7 @@ export default function AdminInviteManagement() {
   const fetchInvites = async () => {
     setLoading(true)
     try {
-      const response = await fetch('/api/v1/admin-invites/', {
+      const response = await fetch('/admin-invites/', {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
@@ -75,7 +75,7 @@ export default function AdminInviteManagement() {
     e.preventDefault()
     setLoading(true)
     try {
-      const response = await fetch('/api/v1/admin-invites/', {
+      const response = await fetch('/admin-invites/', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -110,7 +110,7 @@ export default function AdminInviteManagement() {
     }
 
     try {
-      const response = await fetch(`/api/v1/admin-invites/${inviteId}`, {
+      const response = await fetch(`/admin-invites/${inviteId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`

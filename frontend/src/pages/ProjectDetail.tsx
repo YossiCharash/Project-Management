@@ -6,6 +6,7 @@ import { ReportAPI, BudgetAPI } from '../lib/apiClient'
 import { ExpenseCategory, BudgetWithSpending } from '../types/api'
 import ProjectTrendsChart from '../components/charts/ProjectTrendsChart'
 import BudgetCard from '../components/charts/BudgetCard'
+import BudgetProgressChart from '../components/charts/BudgetProgressChart'
 import EditTransactionModal from '../components/EditTransactionModal'
 import CreateTransactionModal from '../components/CreateTransactionModal'
 import { useAppDispatch, useAppSelector } from '../utils/hooks'
@@ -82,7 +83,7 @@ export default function ProjectDetail() {
       const { data } = await api.get(`/transactions/project/${id}`)
       setTxs(data || [])
     } catch (err: any) {
-      setError('שגיאה בטעינת העסקאות')
+      console.error('Error loading transactions:', err)
       setTxs([])
     } finally {
       setLoading(false)
@@ -98,16 +99,37 @@ export default function ProjectDetail() {
       const [categoriesData, transactionsData, budgetsData] = await Promise.all([
         ReportAPI.getProjectExpenseCategories(parseInt(id)),
         ReportAPI.getProjectTransactions(parseInt(id)),
-        BudgetAPI.getProjectBudgets(parseInt(id)).catch(() => {
+        BudgetAPI.getProjectBudgets(parseInt(id)).catch((err) => {
+          console.error('❌ Error loading budgets:', err)
+          console.error('Budget error details:', {
+            status: err?.response?.status,
+            statusText: err?.response?.statusText,
+            data: err?.response?.data,
+            message: err?.message
+          })
           return []
         }) // Don't fail if no budgets
       ])
       
-      setExpenseCategories(categoriesData)
-      setTxs(transactionsData)
+      console.log('✅ Charts data loaded:', {
+        categoriesCount: categoriesData?.length || 0,
+        transactionsCount: transactionsData?.length || 0,
+        budgetsCount: budgetsData?.length || 0
+      })
+      
+      setExpenseCategories(categoriesData || [])
+      setTxs(transactionsData || [])
       setProjectBudgets(budgetsData || [])
     } catch (err: any) {
-      setError('שגיאה בטעינת נתוני הגרפים')
+      console.error('❌ Error loading charts data:', err)
+      console.error('Charts error details:', {
+        status: err?.response?.status,
+        statusText: err?.response?.statusText,
+        data: err?.response?.data,
+        message: err?.message,
+        url: err?.config?.url,
+        baseURL: err?.config?.baseURL
+      })
     } finally {
       setChartsLoading(false)
     }
@@ -307,32 +329,43 @@ export default function ProjectDetail() {
         </div>
         
         {chartsLoading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="h-96 bg-gray-100 dark:bg-gray-700 rounded-xl animate-pulse" />
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="h-96 bg-gray-100 dark:bg-gray-700 rounded-xl animate-pulse" />
+              ))}
+            </div>
+            <div className="mt-6 h-96 bg-gray-100 dark:bg-gray-700 rounded-2xl animate-pulse" />
+          </>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {projectBudgets && projectBudgets.length > 0 && projectBudgets.map((budget) => (
-              <BudgetCard key={budget.id} budget={budget} />
-            ))}
-            <div className={
-              !projectBudgets || projectBudgets.length === 0 ? 'lg:col-span-4' :
-              projectBudgets.length === 1 ? 'lg:col-span-3' :
-              projectBudgets.length === 2 ? 'lg:col-span-2' :
-              projectBudgets.length === 3 ? 'lg:col-span-1' :
-              'lg:col-span-4'
-            }>
-              <ProjectTrendsChart
-                projectId={parseInt(id || '0')}
-                projectName={projectName}
-                transactions={txs}
-                expenseCategories={expenseCategories}
-                compact={true}
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              {projectBudgets && projectBudgets.length > 0 && projectBudgets.map((budget) => (
+                <BudgetCard key={budget.id} budget={budget} />
+              ))}
+              <div className={
+                !projectBudgets || projectBudgets.length === 0 ? 'lg:col-span-4' :
+                projectBudgets.length === 1 ? 'lg:col-span-3' :
+                projectBudgets.length === 2 ? 'lg:col-span-2' :
+                projectBudgets.length === 3 ? 'lg:col-span-1' :
+                'lg:col-span-4'
+              }>
+                <ProjectTrendsChart
+                  projectId={parseInt(id || '0')}
+                  projectName={projectName}
+                  transactions={txs}
+                  expenseCategories={expenseCategories}
+                  compact={true}
+                />
+              </div>
+            </div>
+            <div className="mt-6">
+              <BudgetProgressChart
+                budgets={projectBudgets}
+                projectName={projectName || `פרויקט #${id}`}
               />
             </div>
-          </div>
+          </>
         )}
       </motion.div>
 

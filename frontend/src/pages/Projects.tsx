@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useAppDispatch, useAppSelector } from '../utils/hooks'
 import { fetchMe } from '../store/slices/authSlice'
 import { useNavigate, useLocation } from 'react-router-dom'
@@ -73,7 +73,7 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
 
   const getImageUrl = (imageUrl: string | null | undefined): string | null => {
     if (!imageUrl) return null
-    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8001/api/v1'
+    const apiUrl = '/api/v1'
     const baseUrl = apiUrl.replace('/api/v1', '')
     return `${baseUrl}/uploads/${imageUrl}`
   }
@@ -262,17 +262,30 @@ export default function Projects() {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [editingProject, setEditingProject] = useState<ProjectWithFinance | null>(null)
   const [archivingProject, setArchivingProject] = useState<number | null>(null)
+  const archiveFilterRef = useRef(archiveFilter)
+  const lastLocationKeyRef = useRef(location.key)
+
   useEffect(() => {
-    if (!me) dispatch(fetchMe())
+    archiveFilterRef.current = archiveFilter
+  }, [archiveFilter])
+
+  useEffect(() => {
+    if (!me) {
+      dispatch(fetchMe())
+      return
+    }
     loadProjectsData(archiveFilter !== 'active')
   }, [dispatch, me, archiveFilter])
 
-  // Refresh data when navigating back to this page
+  // Refresh data only when navigating back to this page after it was left
   useEffect(() => {
+    if (lastLocationKeyRef.current === location.key) return
+    lastLocationKeyRef.current = location.key
+
     if (location.pathname === '/projects') {
-      loadProjectsData(archiveFilter !== 'active')
+      loadProjectsData(archiveFilterRef.current !== 'active')
     }
-  }, [location.pathname, archiveFilter])
+  }, [location.key])
 
   // Auto-refresh financial data every 30 seconds
   useEffect(() => {
@@ -453,7 +466,7 @@ export default function Projects() {
 
   const isAdmin = me?.role === 'Admin'
 
-  if (loading) {
+  if (loading && !dashboardData) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-lg">טוען פרויקטים...</div>

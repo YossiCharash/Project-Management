@@ -30,7 +30,7 @@ export default function AdminInviteRegister() {
     
     try {
       // Validate invite code
-      const response = await fetch('/api/v1/admin-invites/use', {
+      const response = await fetch('/admin-invites/use', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -43,7 +43,7 @@ export default function AdminInviteRegister() {
 
       if (response.ok) {
         // Get invite details
-        const inviteResponse = await fetch(`/api/v1/admin-invites/${inviteCode}`)
+        const inviteResponse = await fetch(`/admin-invites/${inviteCode}`)
         if (inviteResponse.ok) {
           const data = await inviteResponse.json()
           setInviteData(data)
@@ -74,7 +74,7 @@ export default function AdminInviteRegister() {
     setIsSubmitting(true)
     
     try {
-      const response = await fetch('/api/v1/admin-invites/use', {
+      const response = await fetch('/admin-invites/use', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -44,6 +44,7 @@ class ProjectUpdate(BaseModel):
     address: str | None = None
     city: str | None = None
     image_url: str | None = None
+    budgets: Optional[list["BudgetCreateWithoutProject"]] = None
 
 
 class ProjectOut(ProjectBase):
@@ -64,3 +65,4 @@ from backend.schemas.budget import BudgetCreateWithoutProject
 
 # Rebuild models to resolve forward references
 ProjectCreate.model_rebuild()
+ProjectUpdate.model_rebuild()

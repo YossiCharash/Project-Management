@@ -181,7 +181,7 @@ export const mockDashboardSnapshot = {
 export const createSubProjectExample = {
   request: {
     method: "POST",
-    url: "/api/v1/projects",
+    url: "/projects",
     body: {
       "name": "מגדל רמת גן - בניין ג'",
       "description": "בניין מגורים נוסף",
@@ -220,7 +220,7 @@ export const createSubProjectExample = {
 export const createExpenseTransactionExample = {
   request: {
     method: "POST",
-    url: "/api/v1/transactions",
+    url: "/transactions",
     body: {
       "project_id": 2,
       "subproject_id": null,
@@ -253,7 +253,7 @@ export const createExpenseTransactionExample = {
 export const createIncomeTransactionExample = {
   request: {
     method: "POST",
-    url: "/api/v1/transactions",
+    url: "/transactions",
     body: {
       "project_id": 2,
       "subproject_id": null,

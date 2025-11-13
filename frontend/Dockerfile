@@ -1,41 +1,38 @@
-# ==================================================================
-# Stage 1: The Builder Stage (node:18-alpine)
-# ==================================================================
+# Build stage
 FROM node:18-alpine AS builder
 
 WORKDIR /app
 
-# 1. העתקת קבצי תלויות בלבד
-COPY frontend/package*.json ./
+# Copy package files
+# הערה קריטית: 'npm ci' דורשת שקובץ package-lock.json יהיה קיים בהקשר הבנייה.
+# ודא שגם package.json וגם package-lock.json נמצאים באותה ספרייה כמו ה-Dockerfile.
+COPY /package*.json ./
 
-# 2. התקנת תלויות (משתמשים ב-npm install אם יש בעיה עם npm ci)
-RUN npm install
+# Install dependencies
+RUN npm ci
 
-# 3. העתקת שאר קוד המקור, כולל index.html
-# התיקון: מעתיק את כל התוכן *בתוך* frontend/ ישירות ל- /app
-COPY frontend/ .
-
-# 4. בניית האפליקציה
-
+# Copy source
+COPY . .
+# Build the app
 RUN npm run build
 
-# --- Stage 2: Final (Production) Image (NGINX) ---
-# --- Stage 2: Final (Production) Image (NGINX) ---
+# --- DIAGNOSTIC STEP (For debugging if the fix doesn't work) ---
+# This command lists the files in /app to confirm the name of the built folder (e.g., build, dist, out).
+RUN ls -al /app
+
+# Production stage
 FROM nginx:alpine
 
-# הוסף את הקונפיגורציה המותאמת אישית
-# (הנחה: הקובץ nginx.conf נמצא באותה תיקיה כמו ה-Dockerfile)
-COPY frontend/nginx.conf /etc/nginx/nginx.conf
-
-# 1. יצירת ספריות מטמון והגדרת הרשאות כתיבה
-# אם אנחנו משתמשים ב-nginx.conf המותאם אישית שמעביר את הכל ל-/tmp,
-# פקודה זו אינה נחוצה, אבל היא מועילה כהגנה נוספת או אם אתה משתמש
-# ב-nginx.conf ברירת המחדל (אם כי מומלץ להשתמש בקונפיגורציה מותאמת אישית).
-# עבור הפתרון הנוכחי עם /tmp, פקודה זו **אינה נחוצה**!
-
-# 2. העתקה מה-Builder
+# Copy built files
+# FIX: Changed the path from '/app/build' to the common default, '/app/dist'.
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# 3. הגדרות סופיות
-EXPOSE 8000
+# Copy nginx config
+COPY ./nginx.conf /etc/nginx/conf.d/default.conf
+
+# Render expects the app to listen on $PORT
+# But Nginx defaults to 80, so we'll handle this in nginx.conf
+EXPOSE 10000
+
+# Start Nginx
 CMD ["nginx", "-g", "daemon off;"]
