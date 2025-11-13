@@ -8,17 +8,13 @@ const api = axios.create({
   withCredentials: false,
 })
 
-// FIX 1: הוסרה שורת console.log השגויה שגרמה ל-ReferenceError
-console.log('API Base URL is set to:', api.defaults.baseURL)
-console.log('VITE_API_URL env:', import.meta.env.VITE_API_URL)
-
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token')
   if (token) {
     config.headers = config.headers ?? {}
     config.headers.Authorization = `Bearer ${token}`
   }
-  
+
   // Log all API requests for debugging
   const fullUrl = `${config.baseURL}${config.url}`
   console.log(`🚀 [API Request] ${config.method?.toUpperCase()} ${fullUrl}`, {
@@ -29,7 +25,7 @@ api.interceptors.request.use((config) => {
       'Content-Type': config.headers?.['Content-Type']
     }
   })
-  
+
   return config
 })
 api.interceptors.response.use(
@@ -77,7 +73,7 @@ api.interceptors.response.use(
       // Redirect to login page
       window.location.href = '/login'
     }
-    
+
     // Log redirect errors specifically
     if (status === 307 || status === 308) {
       console.error(`⚠️ [307/308 Redirect Detected] ${fullUrl}`, {
@@ -86,7 +82,7 @@ api.interceptors.response.use(
         suggestion: 'Check nginx proxy_redirect configuration'
       })
     }
-    
+
     return Promise.reject(error)
   }
 )

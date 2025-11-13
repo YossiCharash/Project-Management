@@ -1,12 +1,9 @@
-{{- if .Values.frontend.enabled }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "bms.fullname" . }}-frontend-config
-  labels:
-    {{- include "bms.frontend.labels" . | nindent 4 }}
+  name: frontend-config
+
 data:
-  VITE_API_URL: {{ .Values.frontend.apiUrl | quote }}
-{{- end }}
+  VITE_API_URL:
 
 
