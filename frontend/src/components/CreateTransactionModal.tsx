@@ -165,9 +165,18 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
       return
     }
 
-    if (supplierId === '' || !supplierId) {
+    // Supplier is required only if not from fund
+    if (!fromFund && type === 'Expense' && (supplierId === '' || !supplierId)) {
       setError('יש לבחור ספק (חובה)')
       return
+    }
+
+    // If from fund, validate fund balance
+    if (fromFund && type === 'Expense' && fundBalance !== null) {
+      if (Number(amount) > fundBalance) {
+        setError(`יתרה לא מספיקה בקופה. יתרה נוכחית: ${fundBalance.toLocaleString('he-IL')} ₪`)
+        return
+      }
     }
 
     setLoading(true)
@@ -180,10 +189,10 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
         type,
         amount: Number(amount),
         description: desc || undefined,
-        category: category || undefined,
+        category: fromFund ? undefined : (category || undefined), // Don't set category if from fund
         payment_method: paymentMethod || undefined,
         notes: notes || undefined,
-        supplier_id: Number(supplierId),
+        supplier_id: supplierId ? Number(supplierId) : undefined,
         is_exceptional: isExceptional,
         from_fund: fromFund && type === 'Expense' ? true : false,
       }
@@ -493,16 +502,41 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">קטגוריה</label>
                     <select
                       className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      value={category}
-                      onChange={e => setCategory(e.target.value)}
+                      value={fromFund ? '__FUND__' : category}
+                      onChange={e => {
+                        if (e.target.value === '__FUND__') {
+                          setFromFund(true)
+                          setCategory('')
+                        } else {
+                          setFromFund(false)
+                          setCategory(e.target.value)
+                        }
+                      }}
                     >
                       <option value="">בחר קטגוריה</option>
+                      {hasFund && type === 'Expense' && (
+                        <option value="__FUND__" className="bg-blue-50 dark:bg-blue-900/20">
+                          💰 הוריד מהקופה
+                        </option>
+                      )}
                       <option value="ניקיון">ניקיון</option>
                       <option value="חשמל">חשמל</option>
                       <option value="ביטוח">ביטוח</option>
                       <option value="גינון">גינון</option>
                       <option value="אחר">אחר</option>
                     </select>
+                    {fromFund && type === 'Expense' && (
+                      <div className="mt-2 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md">
+                        <p className="text-xs text-blue-700 dark:text-blue-300 font-medium mb-1">
+                          ⚠️ עסקה זו תרד מהקופה ולא תיכלל בחישובי ההוצאות הרגילות
+                        </p>
+                        {fundBalance !== null && (
+                          <p className="text-xs text-blue-600 dark:text-blue-400">
+                            יתרה בקופה: {fundBalance.toLocaleString('he-IL')} ₪
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   <div>
@@ -535,22 +569,24 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
                     </select>
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      ספק * <span className="text-red-500">(חובה)</span>
-                    </label>
-                    <select
-                      className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      value={supplierId}
-                      onChange={e => setSupplierId(e.target.value === '' ? '' : Number(e.target.value))}
-                      required
-                    >
-                      <option value="">בחר ספק</option>
-                      {suppliers.filter(s => s.is_active).map(s => (
-                        <option key={s.id} value={s.id}>{s.name}</option>
-                      ))}
-                    </select>
-                  </div>
+                  {!fromFund && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        ספק * <span className="text-red-500">(חובה)</span>
+                      </label>
+                      <select
+                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        value={supplierId}
+                        onChange={e => setSupplierId(e.target.value === '' ? '' : Number(e.target.value))}
+                        required={!fromFund && type === 'Expense'}
+                      >
+                        <option value="">בחר ספק</option>
+                        {suppliers.filter(s => s.is_active).map(s => (
+                          <option key={s.id} value={s.id}>{s.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
 
                   <div className="md:col-span-2">
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">תיאור</label>
@@ -584,32 +620,6 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
                     <label htmlFor="exceptional" className="text-sm text-gray-700 dark:text-gray-300">הוצאה חריגה</label>
                   </div>
 
-                  {hasFund && type === 'Expense' && (
-                    <div className="md:col-span-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md p-3">
-                      <div className="flex items-center gap-2 mb-2">
-                        <input
-                          id="fromFund"
-                          type="checkbox"
-                          checked={fromFund}
-                          onChange={e => setFromFund(e.target.checked)}
-                          className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
-                        />
-                        <label htmlFor="fromFund" className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                          הוריד מהקופה
-                        </label>
-                      </div>
-                      {fundBalance !== null && (
-                        <p className="text-xs text-gray-600 dark:text-gray-400">
-                          יתרה בקופה: {fundBalance.toLocaleString('he-IL')} ₪
-                        </p>
-                      )}
-                      {fromFund && (
-                        <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
-                          הערה: עסקה זו לא תיכלל בהוצאות הרגילות ולא תופיע בדוחות
-                        </p>
-                      )}
-                    </div>
-                  )}
 
                   <div className="md:col-span-2">
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">

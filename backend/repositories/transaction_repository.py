@@ -28,8 +28,20 @@ class TransactionRepository:
         await self.db.delete(tx)
         await self.db.commit()
 
-    async def list_by_project(self, project_id: int) -> list[Transaction]:
-        res = await self.db.execute(select(Transaction).where(Transaction.project_id == project_id))
+    async def list_by_project(self, project_id: int, exclude_fund: bool = False) -> list[Transaction]:
+        """List transactions for a project, optionally excluding fund transactions"""
+        from sqlalchemy import and_
+        if exclude_fund:
+            res = await self.db.execute(
+                select(Transaction).where(
+                    and_(
+                        Transaction.project_id == project_id,
+                        Transaction.from_fund == False
+                    )
+                )
+            )
+        else:
+            res = await self.db.execute(select(Transaction).where(Transaction.project_id == project_id))
         return list(res.scalars().all())
 
     async def delete_by_project(self, project_id: int) -> None:
@@ -37,30 +49,39 @@ class TransactionRepository:
         await self.db.commit()
 
     async def get_transaction_value(self, project_id: int) -> float:
+        """Get transaction value excluding fund transactions"""
+        from sqlalchemy import and_
         res = await self.db.execute(
-            select(func.sum(Transaction.amount)).where(Transaction.project_id == project_id)
+            select(func.sum(Transaction.amount)).where(
+                and_(
+                    Transaction.project_id == project_id,
+                    Transaction.from_fund == False  # Exclude fund transactions
+                )
+            )
         )
         return res.scalar() or 0.0
 
     async def get_monthly_financial_summary(self, project_id: int, month_start: date) -> dict:
-        """Get monthly financial summary for a project"""
+        """Get monthly financial summary for a project (excluding fund transactions)"""
         from sqlalchemy import and_
         
-        # Income for the month
+        # Income for the month (excluding fund transactions)
         income_query = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
             and_(
                 Transaction.project_id == project_id,
                 Transaction.type == "Income",
-                Transaction.tx_date >= month_start
+                Transaction.tx_date >= month_start,
+                Transaction.from_fund == False  # Exclude fund transactions
             )
         )
         
-        # Expenses for the month
+        # Expenses for the month (excluding fund transactions)
         expense_query = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
             and_(
                 Transaction.project_id == project_id,
                 Transaction.type == "Expense",
-                Transaction.tx_date >= month_start
+                Transaction.tx_date >= month_start,
+                Transaction.from_fund == False  # Exclude fund transactions
             )
         )
         
@@ -88,7 +109,7 @@ class TransactionRepository:
         return (await self.db.execute(query)).scalar_one() or 0
 
     async def get_unpaid_recurring_count(self, project_id: int) -> int:
-        """Count unpaid recurring expenses for a project"""
+        """Count unpaid recurring expenses for a project (excluding fund transactions)"""
         from sqlalchemy import and_
         from datetime import date
         
@@ -100,7 +121,8 @@ class TransactionRepository:
                 Transaction.type == "Expense",
                 Transaction.is_exceptional == False,
                 Transaction.tx_date < current_date,
-                Transaction.file_path.is_(None)
+                Transaction.file_path.is_(None),
+                Transaction.from_fund == False  # Exclude fund transactions
             )
         )
         

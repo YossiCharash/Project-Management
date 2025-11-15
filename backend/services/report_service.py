@@ -217,12 +217,13 @@ class ReportService:
                 if yearly_expense > 0:
                     print(f"  ⚠️ Project has expenses ({yearly_expense}) but no budget set!")
 
-            # Check for missing proof (transactions without file_path)
+            # Check for missing proof (transactions without file_path, excluding fund transactions)
             missing_proof_query = select(func.count(Transaction.id)).where(
                 and_(
                     Transaction.project_id == project.id,
                     Transaction.file_path.is_(None),
-                    Transaction.tx_date >= current_year_start
+                    Transaction.tx_date >= current_year_start,
+                    Transaction.from_fund == False  # Exclude fund transactions
                 )
             )
             try:
@@ -236,14 +237,15 @@ class ReportService:
                 except Exception:
                     pass
 
-            # Check for unpaid recurring expenses (simplified - could be enhanced)
+            # Check for unpaid recurring expenses (simplified - could be enhanced, excluding fund transactions)
             unpaid_recurring_query = select(func.count(Transaction.id)).where(
                 and_(
                     Transaction.project_id == project.id,
                     Transaction.type == "Expense",
                     Transaction.is_exceptional == False,
                     Transaction.tx_date < current_date,
-                    Transaction.file_path.is_(None)
+                    Transaction.file_path.is_(None),
+                    Transaction.from_fund == False  # Exclude fund transactions
                 )
             )
             try:

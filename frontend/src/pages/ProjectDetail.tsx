@@ -86,6 +86,10 @@ export default function ProjectDetail() {
     current_balance: number
     monthly_amount: number
     last_monthly_addition: string | null
+    initial_balance: number
+    initial_total: number
+    total_additions: number
+    total_deductions: number
     transactions: Array<{
       id: number
       tx_date: string
@@ -94,6 +98,13 @@ export default function ProjectDetail() {
       description: string | null
       category: string | null
       notes: string | null
+      created_by_user: {
+        id: number
+        full_name: string
+        email: string
+      } | null
+      file_path: string | null
+      documents_count: number
     }>
   } | null>(null)
   const [hasFund, setHasFund] = useState(false)
@@ -177,12 +188,20 @@ export default function ProjectDetail() {
       }
       // Check if project has fund and load fund data
       const hasFundFlag = data.has_fund || false
+      const monthlyFundAmount = data.monthly_fund_amount || 0
       setHasFund(hasFundFlag)
+      
+      // Always try to load fund data if has_fund is true (even if fund doesn't exist yet)
       if (hasFundFlag) {
         await loadFundData()
       } else {
-        setFundData(null)
-        setFundLoading(false)
+        // Also try to load if monthly_fund_amount exists (backward compatibility)
+        if (monthlyFundAmount > 0) {
+          await loadFundData()
+        } else {
+          setFundData(null)
+          setFundLoading(false)
+        }
       }
     } catch (err: any) {
       setProjectName(`פרויקט ${id}`)
@@ -196,9 +215,18 @@ export default function ProjectDetail() {
     setFundLoading(true)
     try {
       const { data } = await api.get(`/projects/${id}/fund`)
-      setFundData(data)
+      if (data) {
+        setFundData(data)
+        setHasFund(true) // Ensure hasFund is set to true if fund data exists
+      } else {
+        setFundData(null)
+      }
     } catch (err: any) {
       console.error('Error loading fund data:', err)
+      // If fund doesn't exist (404), that's OK - project might not have fund yet
+      if (err?.response?.status !== 404) {
+        console.error('Unexpected error loading fund data:', err)
+      }
       setFundData(null)
     } finally {
       setFundLoading(false)
@@ -401,6 +429,50 @@ export default function ProjectDetail() {
         </button>
       </motion.div>
 
+      {/* Financial Summary */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.03 }}
+        className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6"
+      >
+        <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">סיכום פיננסי</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg text-center">
+            <div className="text-green-600 dark:text-green-400 font-semibold mb-1">הכנסות</div>
+            <div className="text-2xl font-bold text-green-700 dark:text-green-300">
+              {income.toFixed(2)} ₪
+            </div>
+          </div>
+          <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg text-center">
+            <div className="text-red-600 dark:text-red-400 font-semibold mb-1">הוצאות</div>
+            <div className="text-2xl font-bold text-red-700 dark:text-red-300">
+              {expense.toFixed(2)} ₪
+            </div>
+          </div>
+          <div className={`p-4 rounded-lg text-center ${
+            income - expense < 0 
+              ? 'bg-red-50 dark:bg-red-900/20' 
+              : 'bg-green-50 dark:bg-green-900/20'
+          }`}>
+            <div className={`font-semibold mb-1 ${
+              income - expense < 0 
+                ? 'text-red-600 dark:text-red-400' 
+                : 'text-green-600 dark:text-green-400'
+            }`}>
+              רווח נטו
+            </div>
+            <div className={`text-2xl font-bold ${
+              income - expense < 0 
+                ? 'text-red-700 dark:text-red-300' 
+                : 'text-green-700 dark:text-green-300'
+            }`}>
+              {(income - expense).toFixed(2)} ₪
+            </div>
+          </div>
+        </div>
+      </motion.div>
+
       {/* Fund Section */}
       {(hasFund || fundData) && (
         <motion.div
@@ -425,7 +497,7 @@ export default function ProjectDetail() {
           ) : fundData ? (
             <div className="space-y-6">
               {/* Fund Balance Card */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 border border-blue-200 dark:border-blue-800 rounded-xl p-6">
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="text-sm font-medium text-blue-700 dark:text-blue-300">
@@ -438,39 +510,59 @@ export default function ProjectDetail() {
                   <p className="text-3xl font-bold text-blue-900 dark:text-blue-100">
                     {fundData.current_balance.toLocaleString('he-IL')} ₪
                   </p>
+                  <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                    יתרה זמינה כעת
+                  </p>
                 </div>
 
                 <div className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 border border-green-200 dark:border-green-800 rounded-xl p-6">
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="text-sm font-medium text-green-700 dark:text-green-300">
-                      סכום חודשי
+                      כמה היה מתחילה
                     </h3>
                     <svg className="w-6 h-6 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                   </div>
                   <p className="text-3xl font-bold text-green-900 dark:text-green-100">
-                    {fundData.monthly_amount.toLocaleString('he-IL')} ₪
+                    {fundData.initial_total.toLocaleString('he-IL')} ₪
                   </p>
                   <p className="text-xs text-green-600 dark:text-green-400 mt-1">
-                    מתווסף אוטומטית כל חודש
+                    סכום כולל שנכנס לקופה
+                  </p>
+                </div>
+
+                <div className="bg-gradient-to-br from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20 border border-red-200 dark:border-red-800 rounded-xl p-6">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-sm font-medium text-red-700 dark:text-red-300">
+                      כמה יצא
+                    </h3>
+                    <svg className="w-6 h-6 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                    </svg>
+                  </div>
+                  <p className="text-3xl font-bold text-red-900 dark:text-red-100">
+                    {fundData.total_deductions.toLocaleString('he-IL')} ₪
+                  </p>
+                  <p className="text-xs text-red-600 dark:text-red-400 mt-1">
+                    סה"כ סכום שירד מהקופה
                   </p>
                 </div>
 
                 <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 border border-purple-200 dark:border-purple-800 rounded-xl p-6">
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="text-sm font-medium text-purple-700 dark:text-purple-300">
-                      עסקאות מהקופה
+                      סכום חודשי
                     </h3>
                     <svg className="w-6 h-6 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                     </svg>
                   </div>
                   <p className="text-3xl font-bold text-purple-900 dark:text-purple-100">
-                    {fundData.transactions.length}
+                    {fundData.monthly_amount.toLocaleString('he-IL')} ₪
                   </p>
                   <p className="text-xs text-purple-600 dark:text-purple-400 mt-1">
-                    סה"כ עסקאות מהקופה
+                    מתווסף אוטומטית כל חודש
                   </p>
                 </div>
               </div>
@@ -491,34 +583,185 @@ export default function ProjectDetail() {
                             תאריך
                           </th>
                           <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                            תיאור
+                            סכום
                           </th>
                           <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                             קטגוריה
                           </th>
                           <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                            סכום
+                            תיאור
+                          </th>
+                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                            בוצע על ידי
+                          </th>
+                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                            מסמכים
+                          </th>
+                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                            פעולות
                           </th>
                         </tr>
                       </thead>
                       <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                         {fundData.transactions.map((tx) => (
                           <tr key={tx.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-gray-900 dark:text-white">
                               {new Date(tx.tx_date).toLocaleDateString('he-IL', {
                                 year: 'numeric',
                                 month: 'long',
                                 day: 'numeric'
                               })}
                             </td>
-                            <td className="px-6 py-4 text-sm text-gray-900 dark:text-white">
+                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium text-red-600 dark:text-red-400">
+                              -{tx.amount.toLocaleString('he-IL')} ₪
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
+                              {tx.category ? (
+                                <span className="text-gray-500 dark:text-gray-400">{tx.category}</span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs font-medium">
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                  </svg>
+                                  קופה
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 text-right text-sm text-gray-900 dark:text-white">
                               {tx.description || 'ללא תיאור'}
                             </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                              {tx.category || '-'}
+                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-gray-500 dark:text-gray-400">
+                              {tx.created_by_user ? (
+                                <span className="inline-flex items-center gap-1 justify-end">
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                                  </svg>
+                                  {tx.created_by_user.full_name}
+                                </span>
+                              ) : (
+                                <span className="text-gray-400 dark:text-gray-500">-</span>
+                              )}
                             </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-red-600 dark:text-red-400">
-                              -{tx.amount.toLocaleString('he-IL')} ₪
+                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-gray-500 dark:text-gray-400">
+                              <div className="flex items-center justify-end gap-2">
+                                <button
+                                  onClick={async () => {
+                                    setSelectedTransactionForDocuments(tx)
+                                    setShowDocumentsModal(true)
+                                    setDocumentsLoading(true)
+                                    try {
+                                      const { data } = await api.get(`/transactions/${tx.id}/documents`)
+                                      setTransactionDocuments(data || [])
+                                    } catch (err) {
+                                      setTransactionDocuments([])
+                                    } finally {
+                                      setDocumentsLoading(false)
+                                    }
+                                  }}
+                                  className="px-2 py-1 text-xs bg-purple-600 text-white rounded hover:bg-purple-700 flex items-center gap-1"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                  </svg>
+                                  מסמכים
+                                  {tx.documents_count > 0 && (
+                                    <span className="bg-white/20 px-1 rounded text-xs">
+                                      {tx.documents_count}
+                                    </span>
+                                  )}
+                                </button>
+                                <label className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 cursor-pointer flex items-center gap-1">
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                  </svg>
+                                  העלה מסמכים
+                                  <input
+                                    type="file"
+                                    multiple
+                                    className="hidden"
+                                    onChange={async (e) => {
+                                      const files = Array.from(e.target.files || [])
+                                      if (files.length === 0) return
+
+                                      let successCount = 0
+                                      let errorCount = 0
+                                      const uploadedDocs: Array<{id: number, fileName: string, description: string}> = []
+                                      
+                                      // Upload each file
+                                      for (let i = 0; i < files.length; i++) {
+                                        const file = files[i]
+                                        try {
+                                          const formData = new FormData()
+                                          formData.append('file', file)
+                                          const response = await api.post(`/transactions/${tx.id}/supplier-document`, formData, {
+                                            headers: { 'Content-Type': 'multipart/form-data' }
+                                          })
+                                          
+                                          // Get document ID from response
+                                          if (response.data && response.data.id) {
+                                            successCount++
+                                            uploadedDocs.push({
+                                              id: response.data.id,
+                                              fileName: file.name,
+                                              description: response.data.description || ''
+                                            })
+                                          }
+                                        } catch (err: any) {
+                                          errorCount++
+                                        }
+                                      }
+                                      
+                                      // If some files were uploaded successfully, show description modal
+                                      if (successCount > 0 && uploadedDocs.length > 0) {
+                                        setUploadedDocuments(uploadedDocs)
+                                        setSelectedTransactionForDocuments(tx)
+                                        setShowDescriptionModal(true)
+                                        
+                                        await loadFundData()
+                                        // Reload documents in modal if it's open
+                                        if (showDocumentsModal && selectedTransactionForDocuments?.id === tx.id) {
+                                          const { data } = await api.get(`/transactions/${tx.id}/documents`)
+                                          setTransactionDocuments(data || [])
+                                        }
+                                      } else if (successCount > 0) {
+                                        // Files uploaded but no IDs received - just reload
+                                        await loadFundData()
+                                        if (showDocumentsModal && selectedTransactionForDocuments?.id === tx.id) {
+                                          const { data } = await api.get(`/transactions/${tx.id}/documents`)
+                                          setTransactionDocuments(data || [])
+                                        }
+                                      }
+                                      
+                                      // Show result message if there were errors
+                                      if (errorCount > 0) {
+                                        if (successCount > 0) {
+                                          alert(`הועלו ${successCount} מסמכים, ${errorCount} נכשלו`)
+                                        } else {
+                                          alert(`שגיאה בהעלאת המסמכים`)
+                                        }
+                                      }
+                                      
+                                      e.target.value = ''
+                                    }}
+                                  />
+                                </label>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
+                              <div className="flex items-center justify-end gap-2">
+                                <button
+                                  onClick={() => handleEditAnyTransaction(tx as Transaction)}
+                                  className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+                                >
+                                  ערוך
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteTransaction(tx.id)}
+                                  className="px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700"
+                                >
+                                  מחק
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         ))}
@@ -1079,49 +1322,6 @@ export default function ProjectDetail() {
         )}
       </motion.div>
 
-      {/* Summary */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.5 }}
-        className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6"
-      >
-        <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">סיכום פיננסי</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg text-center">
-            <div className="text-green-600 dark:text-green-400 font-semibold mb-1">הכנסות</div>
-            <div className="text-2xl font-bold text-green-700 dark:text-green-300">
-              {income.toFixed(2)} ₪
-            </div>
-          </div>
-          <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg text-center">
-            <div className="text-red-600 dark:text-red-400 font-semibold mb-1">הוצאות</div>
-            <div className="text-2xl font-bold text-red-700 dark:text-red-300">
-              {expense.toFixed(2)} ₪
-            </div>
-          </div>
-          <div className={`p-4 rounded-lg text-center ${
-            income - expense < 0 
-              ? 'bg-red-50 dark:bg-red-900/20' 
-              : 'bg-green-50 dark:bg-green-900/20'
-          }`}>
-            <div className={`font-semibold mb-1 ${
-              income - expense < 0 
-                ? 'text-red-600 dark:text-red-400' 
-                : 'text-green-600 dark:text-green-400'
-            }`}>
-              רווח נטו
-            </div>
-            <div className={`text-2xl font-bold ${
-              income - expense < 0 
-                ? 'text-red-700 dark:text-red-300' 
-                : 'text-green-700 dark:text-green-300'
-            }`}>
-              {(income - expense).toFixed(2)} ₪
-            </div>
-          </div>
-        </div>
-      </motion.div>
 
       {/* Modals */}
       <CreateTransactionModal

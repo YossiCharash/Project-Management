@@ -185,7 +185,7 @@ async def get_project(project_id: int, db: DBSessionDep, user = Depends(get_curr
         "image_url": project.image_url,
         "is_active": project.is_active,
         "created_at": project.created_at,
-        "total_value": project.total_value,
+        "total_value": getattr(project, 'total_value', 0.0),  # Use getattr with default value
         "has_fund": fund is not None,
         "monthly_fund_amount": float(fund.monthly_amount) if fund else None
     }
@@ -217,12 +217,13 @@ async def create_project(db: DBSessionDep, data: ProjectCreate, user = Depends(g
     # Create the project
     project = await ProjectService(db).create(**project_data)
     
-    # Create fund if requested
-    if has_fund and monthly_fund_amount is not None:
+    # Create fund if requested (even if monthly_amount is 0)
+    if has_fund:
         fund_service = FundService(db)
+        monthly_amount = monthly_fund_amount if monthly_fund_amount is not None and monthly_fund_amount > 0 else 0
         await fund_service.create_fund(
             project_id=project.id,
-            monthly_amount=monthly_fund_amount if monthly_fund_amount > 0 else 0,
+            monthly_amount=monthly_amount,
             initial_balance=0
         )
     
@@ -355,22 +356,26 @@ async def update_project(project_id: int, db: DBSessionDep, data: ProjectUpdate,
     existing_fund = await fund_service.get_fund_by_project(project_id)
     
     if has_fund is not None:
-        if has_fund and monthly_fund_amount is not None:
+        if has_fund:
             # Create or update fund (even if monthly_amount is 0)
+            monthly_amount = monthly_fund_amount if monthly_fund_amount is not None and monthly_fund_amount > 0 else 0
             if existing_fund:
-                await fund_service.update_fund(existing_fund, monthly_amount=monthly_fund_amount if monthly_fund_amount > 0 else 0)
+                # Update existing fund (repository already commits)
+                await fund_service.update_fund(existing_fund, monthly_amount=monthly_amount)
             else:
+                # Create new fund (repository already commits)
                 await fund_service.create_fund(
                     project_id=project_id,
-                    monthly_amount=monthly_fund_amount if monthly_fund_amount > 0 else 0,
+                    monthly_amount=monthly_amount,
                     initial_balance=0
                 )
         elif not has_fund and existing_fund:
-            # Delete fund if has_fund is False
+            # Delete fund if has_fund is False (repository already commits)
             await fund_service.funds.delete(existing_fund)
     elif monthly_fund_amount is not None and existing_fund:
-        # Update monthly amount only
-        await fund_service.update_fund(existing_fund, monthly_amount=monthly_fund_amount if monthly_fund_amount > 0 else 0)
+        # Update monthly amount only (if has_fund wasn't explicitly set) (repository already commits)
+        monthly_amount = monthly_fund_amount if monthly_fund_amount > 0 else 0
+        await fund_service.update_fund(existing_fund, monthly_amount=monthly_amount)
 
     # Handle new category budgets if provided
     if budgets_to_add:
@@ -446,7 +451,36 @@ async def update_project(project_id: int, db: DBSessionDep, data: ProjectUpdate,
         }
     )
 
-    return updated_project
+    # Refresh project to get updated data including fund info
+    await db.refresh(updated_project)
+    
+    # Get updated fund information for response
+    fund = await fund_service.get_fund_by_project(project_id)
+    
+    # Convert to dict to modify
+    project_dict = {
+        "id": updated_project.id,
+        "name": updated_project.name,
+        "description": updated_project.description,
+        "start_date": updated_project.start_date,
+        "end_date": updated_project.end_date,
+        "budget_monthly": updated_project.budget_monthly,
+        "budget_annual": updated_project.budget_annual,
+        "manager_id": updated_project.manager_id,
+        "relation_project": updated_project.relation_project,
+        "num_residents": updated_project.num_residents,
+        "monthly_price_per_apartment": updated_project.monthly_price_per_apartment,
+        "address": updated_project.address,
+        "city": updated_project.city,
+        "image_url": updated_project.image_url,
+        "is_active": updated_project.is_active,
+        "created_at": updated_project.created_at,
+        "total_value": getattr(updated_project, 'total_value', 0.0),  # Use getattr with default value
+        "has_fund": fund is not None,
+        "monthly_fund_amount": float(fund.monthly_amount) if fund else None
+    }
+    
+    return project_dict
 
 
 @router.post("/{project_id}/upload-image", response_model=ProjectOut)
@@ -700,8 +734,9 @@ async def get_project_fund(
 ):
     """Get fund details for a project"""
     from backend.schemas.fund import FundWithTransactions
-    from sqlalchemy import select, and_
+    from sqlalchemy import select, and_, func
     from backend.models.transaction import Transaction
+    from datetime import date
     
     fund_service = FundService(db)
     fund = await fund_service.get_fund_by_project(project_id)
@@ -725,9 +760,76 @@ async def get_project_fund(
     transactions_result = await db.execute(transactions_query)
     transactions = transactions_result.scalars().all()
     
-    # Convert transactions to dict
+    # Calculate total deductions (total amount withdrawn from fund)
+    total_deductions_query = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
+        and_(
+            Transaction.project_id == project_id,
+            Transaction.from_fund == True,
+            Transaction.type == 'Expense'
+        )
+    )
+    total_deductions_result = await db.execute(total_deductions_query)
+    total_deductions = float(total_deductions_result.scalar_one())
+    
+    # Calculate initial balance and total additions
+    # Initial balance is 0 (fund starts with 0)
+    initial_balance = 0.0
+    monthly_amount = float(fund.monthly_amount)
+    
+    # Calculate total monthly additions based on creation date and last addition
+    total_additions = 0.0
+    if fund.last_monthly_addition and monthly_amount > 0:
+        # Calculate months between creation and last addition (inclusive)
+        created_date = fund.created_at.date() if hasattr(fund.created_at, 'date') else date.today()
+        last_addition_date = fund.last_monthly_addition
+        
+        # Count months from creation to last addition
+        if last_addition_date >= created_date:
+            # Calculate number of months (including the creation month)
+            months_count = (last_addition_date.year - created_date.year) * 12 + (last_addition_date.month - created_date.month) + 1
+            total_additions = months_count * monthly_amount
+    elif monthly_amount > 0:
+        # If no monthly addition yet, but fund exists, at least the current month should count
+        # This handles the case where fund was just created
+        created_date = fund.created_at.date() if hasattr(fund.created_at, 'date') else date.today()
+        today = date.today()
+        if created_date <= today:
+            months_count = (today.year - created_date.year) * 12 + (today.month - created_date.month) + 1
+            # Only count if this month's addition should have been made
+            if today.year > created_date.year or (today.year == created_date.year and today.month > created_date.month) or (today.year == created_date.year and today.month == created_date.month and today.day >= 1):
+                total_additions = months_count * monthly_amount
+    
+    # Initial total = initial_balance + total_additions
+    initial_total = initial_balance + total_additions
+    
+    # Load user repository for created_by_user
+    from backend.repositories.user_repository import UserRepository
+    from backend.repositories.supplier_document_repository import SupplierDocumentRepository
+    user_repo = UserRepository(db)
+    doc_repo = SupplierDocumentRepository(db)
+    
+    # Convert transactions to dict with additional info
     transactions_list = []
     for tx in transactions:
+        # Get creator user info
+        created_by_user = None
+        if hasattr(tx, 'created_by_user_id') and tx.created_by_user_id:
+            creator = await user_repo.get_by_id(tx.created_by_user_id)
+            if creator:
+                created_by_user = {
+                    'id': creator.id,
+                    'full_name': creator.full_name,
+                    'email': creator.email
+                }
+        
+        # Get documents count
+        documents_count = 0
+        try:
+            documents = await doc_repo.get_by_transaction_id(tx.id)
+            documents_count = len(documents) if documents else 0
+        except Exception:
+            pass
+        
         transactions_list.append({
             'id': tx.id,
             'tx_date': tx.tx_date.isoformat() if tx.tx_date else None,
@@ -735,17 +837,24 @@ async def get_project_fund(
             'amount': float(tx.amount),
             'description': tx.description,
             'category': tx.category,
-            'notes': tx.notes
+            'notes': tx.notes,
+            'created_by_user': created_by_user,
+            'file_path': getattr(tx, 'file_path', None),
+            'documents_count': documents_count
         })
     
     return {
         'id': fund.id,
         'project_id': fund.project_id,
         'current_balance': float(fund.current_balance),
-        'monthly_amount': float(fund.monthly_amount),
+        'monthly_amount': monthly_amount,
         'last_monthly_addition': fund.last_monthly_addition.isoformat() if fund.last_monthly_addition else None,
         'created_at': fund.created_at.isoformat(),
         'updated_at': fund.updated_at.isoformat(),
+        'initial_balance': initial_balance,
+        'initial_total': initial_total,  # Initial balance + all monthly additions
+        'total_additions': total_additions,  # Total monthly additions made
+        'total_deductions': total_deductions,  # Total amount withdrawn from fund
         'transactions': transactions_list
     }
 

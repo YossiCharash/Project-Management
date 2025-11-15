@@ -120,13 +120,16 @@ async def create_transaction(db: DBSessionDep, data: TransactionCreate, user = D
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     
-    # Validate supplier if provided
+    # Validate supplier if provided (not required for fund transactions)
     if data.supplier_id is not None:
         supplier = await SupplierRepository(db).get(data.supplier_id)
         if not supplier:
             raise HTTPException(status_code=404, detail="Supplier not found")
         if not supplier.is_active:
             raise HTTPException(status_code=400, detail="Cannot create transaction with inactive supplier")
+    elif not data.from_fund:
+        # Supplier is required for non-fund transactions
+        raise HTTPException(status_code=400, detail="Supplier is required for non-fund transactions")
     
     # Add user_id to transaction data
     transaction_data = data.model_dump()
