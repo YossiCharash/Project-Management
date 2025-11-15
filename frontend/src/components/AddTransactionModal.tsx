@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Project, TransactionCreate } from '../types/api'
 import { ProjectAPI, TransactionAPI } from '../lib/apiClient'
+import api from '../lib/api'
 
 interface AddTransactionModalProps {
   isOpen: boolean
@@ -23,8 +24,11 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     category: '',
     notes: '',
     tx_date: new Date().toISOString().split('T')[0],
-    is_exceptional: false
+    is_exceptional: false,
+    from_fund: false
   })
+  const [hasFund, setHasFund] = useState(false)
+  const [fundBalance, setFundBalance] = useState<number | null>(null)
 
   const [availableProjects, setAvailableProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(false)
@@ -36,6 +40,16 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       loadProjects()
     }
   }, [isOpen])
+
+  // Load fund info when project is selected
+  useEffect(() => {
+    if (formData.project_id && isOpen) {
+      loadFundInfo()
+    } else {
+      setHasFund(false)
+      setFundBalance(null)
+    }
+  }, [formData.project_id, isOpen])
 
   // Update form when selectedProjectId changes
   useEffect(() => {
@@ -53,6 +67,28 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     }
   }
 
+  const loadFundInfo = async () => {
+    try {
+      const project = await ProjectAPI.getProject(formData.project_id)
+      const hasFundFlag = (project as any).has_fund || false
+      setHasFund(hasFundFlag)
+      
+      if (hasFundFlag) {
+        try {
+          const { data } = await api.get(`/projects/${formData.project_id}/fund`)
+          setFundBalance(data.current_balance)
+        } catch (fundErr) {
+          setFundBalance(null)
+        }
+      } else {
+        setFundBalance(null)
+      }
+    } catch (err) {
+      setHasFund(false)
+      setFundBalance(null)
+    }
+  }
+
   const resetForm = () => {
     setFormData({
       project_id: selectedProjectId || 0,
@@ -62,9 +98,12 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       category: '',
       notes: '',
       tx_date: new Date().toISOString().split('T')[0],
-      is_exceptional: false
+      is_exceptional: false,
+      from_fund: false
     })
     setError(null)
+    setHasFund(false)
+    setFundBalance(null)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -225,17 +264,46 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
             />
           </div>
 
-          <div className="flex items-center gap-2">
-            <input
-              id="exceptional"
-              type="checkbox"
-              checked={formData.is_exceptional}
-              onChange={(e) => setFormData({ ...formData, is_exceptional: e.target.checked })}
-              className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
-            />
-            <label htmlFor="exceptional" className="text-sm text-gray-700 dark:text-gray-300">
-              עסקה חריגה
-            </label>
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <input
+                id="exceptional"
+                type="checkbox"
+                checked={formData.is_exceptional}
+                onChange={(e) => setFormData({ ...formData, is_exceptional: e.target.checked })}
+                className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+              />
+              <label htmlFor="exceptional" className="text-sm text-gray-700 dark:text-gray-300">
+                עסקה חריגה
+              </label>
+            </div>
+            
+            {hasFund && formData.type === 'Expense' && (
+              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <input
+                    id="fromFund"
+                    type="checkbox"
+                    checked={formData.from_fund}
+                    onChange={(e) => setFormData({ ...formData, from_fund: e.target.checked })}
+                    className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+                  />
+                  <label htmlFor="fromFund" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    הוריד מהקופה
+                  </label>
+                </div>
+                {fundBalance !== null && (
+                  <p className="text-xs text-gray-600 dark:text-gray-400">
+                    יתרה בקופה: {fundBalance.toLocaleString('he-IL')} ₪
+                  </p>
+                )}
+                {formData.from_fund && (
+                  <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
+                    הערה: עסקה זו לא תיכלל בהוצאות הרגילות ולא תופיע בדוחות
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
           {error && (

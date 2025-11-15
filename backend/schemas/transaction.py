@@ -14,6 +14,7 @@ class TransactionBase(BaseModel):
     notes: str | None = None
     is_exceptional: bool = False
     supplier_id: int | None = None
+    from_fund: bool = False
 
 
 class TransactionCreate(TransactionBase):
@@ -30,6 +31,7 @@ class TransactionUpdate(BaseModel):
     notes: str | None = None
     is_exceptional: bool | None = None
     supplier_id: int | None = None
+    from_fund: bool | None = None
 
 
 class TransactionOut(BaseModel):
@@ -49,6 +51,7 @@ class TransactionOut(BaseModel):
     created_by_user_id: int | None = None
     created_at: datetime
     created_by_user: dict | None = None  # Will contain user info if loaded
+    from_fund: bool = False
 
     class Config:
         from_attributes = True

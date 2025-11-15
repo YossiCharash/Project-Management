@@ -33,9 +33,8 @@ class Project(Base):
 
     transactions: Mapped[list["Transaction"]] = relationship(back_populates="project", cascade="all, delete-orphan")
     recurring_templates: Mapped[list["RecurringTransactionTemplate"]] = relationship(back_populates="project", cascade="all, delete-orphan")
+    subprojects: Mapped[list["Subproject"]] = relationship(back_populates="project", cascade="all, delete-orphan")
     budgets: Mapped[list["Budget"]] = relationship(back_populates="project", cascade="all, delete-orphan")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    fund: Mapped["Fund | None"] = relationship(back_populates="project", cascade="all, delete-orphan", uselist=False)
 
-    @property
-    def total_value(self) -> float:
-        return self.revenue - self.cost
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

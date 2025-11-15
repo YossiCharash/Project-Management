@@ -14,10 +14,18 @@ class ReportService:
 
     async def project_profitability(self, project_id: int) -> dict:
         income_q = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
-            Transaction.project_id == project_id, Transaction.type == "Income"
+            and_(
+                Transaction.project_id == project_id, 
+                Transaction.type == "Income",
+                Transaction.from_fund == False  # Exclude fund transactions
+            )
         )
         expense_q = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
-            Transaction.project_id == project_id, Transaction.type == "Expense"
+            and_(
+                Transaction.project_id == project_id, 
+                Transaction.type == "Expense",
+                Transaction.from_fund == False  # Exclude fund transactions
+            )
         )
         income_val = (await self.db.execute(income_q)).scalar_one()
         expense_val = (await self.db.execute(expense_q)).scalar_one()
@@ -96,19 +104,21 @@ class ReportService:
             # Wrap each project's processing in error handling
             # If a query fails for this project, skip it and continue with others
             try:
-                # Get current year's transactions
+                # Get current year's transactions (exclude fund transactions)
                 yearly_income_query = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
                     and_(
                         Transaction.project_id == project.id,
                         Transaction.type == "Income",
-                        Transaction.tx_date >= current_year_start
+                        Transaction.tx_date >= current_year_start,
+                        Transaction.from_fund == False  # Exclude fund transactions
                     )
                 )
                 yearly_expense_query = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
                     and_(
                         Transaction.project_id == project.id,
                         Transaction.type == "Expense",
-                        Transaction.tx_date >= current_year_start
+                        Transaction.tx_date >= current_year_start,
+                        Transaction.from_fund == False  # Exclude fund transactions
                     )
                 )
 
@@ -143,8 +153,15 @@ class ReportService:
             # Calculate profit including budgets
             # Use annual budget if set, otherwise use monthly budget * 12
             # Don't add both to avoid double counting
-            budget_annual = float(project.budget_annual or 0)
-            budget_monthly = float(project.budget_monthly or 0)
+            # Access budget fields directly - they should already be loaded
+            try:
+                budget_annual = float(project.budget_annual if project.budget_annual is not None else 0)
+                budget_monthly = float(project.budget_monthly if project.budget_monthly is not None else 0)
+            except (AttributeError, ValueError) as e:
+                # If there's an issue accessing budget fields, use defaults
+                print(f"⚠️ Warning: Could not access budget fields for project {project.id}: {e}")
+                budget_annual = 0.0
+                budget_monthly = 0.0
             if budget_annual > 0:
                 # If annual budget is set, use it directly
                 yearly_budget_amount = budget_annual
@@ -308,7 +325,8 @@ class ReportService:
         ).where(
             and_(
                 Transaction.type == "Expense",
-                Transaction.tx_date >= current_year_start
+                Transaction.tx_date >= current_year_start,
+                Transaction.from_fund == False  # Exclude fund transactions
             )
         ).group_by(Transaction.category)
         
@@ -372,7 +390,8 @@ class ReportService:
         ).where(
             and_(
                 Transaction.project_id == project_id,
-                Transaction.type == "Expense"
+                Transaction.type == "Expense",
+                Transaction.from_fund == False  # Exclude fund transactions
             )
         ).group_by(Transaction.category)
         

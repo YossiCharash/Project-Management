@@ -37,6 +37,8 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [budgetInputType, setBudgetInputType] = useState<'monthly' | 'yearly'>('monthly')
   const [categoryBudgets, setCategoryBudgets] = useState<BudgetCreate[]>([])
+  const [hasFund, setHasFund] = useState(false)
+  const [monthlyFundAmount, setMonthlyFundAmount] = useState<number>(0)
   
   // Available expense categories
   const expenseCategories = ['ניקיון', 'חשמל', 'ביטוח', 'גינון', 'אחר']
@@ -63,6 +65,11 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
         relation_project: editingProject.relation_project || undefined,
         manager_id: editingProject.manager_id || undefined
       })
+      // Load fund data if exists
+      if ('has_fund' in editingProject) {
+        setHasFund((editingProject as any).has_fund || false)
+        setMonthlyFundAmount((editingProject as any).monthly_fund_amount || 0)
+      }
       // Reset image states when editing
       setSelectedImage(null)
       setImagePreview(editingProject.image_url ? getImageUrl(editingProject.image_url) : null)
@@ -98,6 +105,8 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
     setImagePreview(null)
     setBudgetInputType('monthly')
     setCategoryBudgets([])
+    setHasFund(false)
+    setMonthlyFundAmount(0)
   }
 
   const getImageUrl = (imageUrl: string): string => {
@@ -163,7 +172,9 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
         city: formData.city || undefined,
         relation_project: formData.relation_project || undefined,
         manager_id: formData.manager_id || undefined,
-        budgets: validBudgets.length > 0 ? validBudgets : undefined
+        budgets: validBudgets.length > 0 ? validBudgets : undefined,
+        has_fund: hasFund || false,
+        monthly_fund_amount: hasFund ? (monthlyFundAmount || 0) : undefined
       }
 
       
@@ -490,6 +501,48 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                 className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
+          </div>
+
+          {/* Fund Section */}
+          <div className="space-y-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+            <div className="flex items-center gap-2 mb-2">
+              <input
+                id="hasFund"
+                type="checkbox"
+                checked={hasFund}
+                onChange={(e) => {
+                  setHasFund(e.target.checked)
+                  if (!e.target.checked) {
+                    setMonthlyFundAmount(0)
+                  }
+                }}
+                className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+              />
+              <label htmlFor="hasFund" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                הוסף קופה לפרויקט
+              </label>
+            </div>
+            
+            {hasFund && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  סכום חודשי לקופה (₪) *
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  required={hasFund}
+                  value={monthlyFundAmount}
+                  onChange={(e) => setMonthlyFundAmount(parseFloat(e.target.value) || 0)}
+                  placeholder="הכנס סכום חודשי"
+                  className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  הסכום יתווסף לקופה כל חודש באופן אוטומטי
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Category Budgets Section */}

@@ -47,19 +47,21 @@ class ProjectService:
         current_date = date.today()
         current_year_start = current_date.replace(month=1, day=1)
         
-        # Get current year's income and expenses
+        # Get current year's income and expenses (exclude fund transactions)
         yearly_income_query = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
             and_(
                 Transaction.project_id == project_id,
                 Transaction.type == "Income",
-                Transaction.tx_date >= current_year_start
+                Transaction.tx_date >= current_year_start,
+                Transaction.from_fund == False  # Exclude fund transactions
             )
         )
         yearly_expense_query = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
             and_(
                 Transaction.project_id == project_id,
                 Transaction.type == "Expense",
-                Transaction.tx_date >= current_year_start
+                Transaction.tx_date >= current_year_start,
+                Transaction.from_fund == False  # Exclude fund transactions
             )
         )
         

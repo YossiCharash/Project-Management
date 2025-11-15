@@ -3,9 +3,11 @@ import { BudgetWithSpending } from '../../types/api'
 
 interface BudgetCardProps {
   budget: BudgetWithSpending
+  onDelete?: () => void
+  deleting?: boolean
 }
 
-const BudgetCard: React.FC<BudgetCardProps> = ({ budget }) => {
+const BudgetCard: React.FC<BudgetCardProps> = ({ budget, onDelete, deleting }) => {
   // Calculate progress percentage
   const progressPercent = Math.min((budget.spent_amount / budget.amount) * 100, 100)
   
@@ -37,11 +39,26 @@ const BudgetCard: React.FC<BudgetCardProps> = ({ budget }) => {
     <div className={`bg-white dark:bg-gray-800 rounded-xl shadow-md border-2 ${isOverBudget ? 'border-red-500' : isSpendingTooFast ? 'border-orange-500' : isWarning ? 'border-yellow-400' : 'border-gray-200 dark:border-gray-700'} p-6`}>
       {/* Header */}
       <div className="mb-4">
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center justify-between mb-2 gap-2">
           <h4 className="text-lg font-bold text-gray-900 dark:text-white">{budget.category}</h4>
-          <span className={`px-3 py-1 rounded-full text-xs font-semibold ${isOverBudget ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' : isSpendingTooFast ? 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200' : isWarning ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' : 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'}`}>
-            {statusText}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${isOverBudget ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' : isSpendingTooFast ? 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200' : isWarning ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' : 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'}`}>
+              {statusText}
+            </span>
+            {onDelete && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onDelete()
+                }}
+                disabled={deleting}
+                className="px-2 py-1 text-xs bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 rounded-md hover:bg-red-200 dark:hover:bg-red-800/50 disabled:opacity-50"
+              >
+                {deleting ? 'מוחק...' : 'מחק'}
+              </button>
+            )}
+          </div>
         </div>
         <div className="text-sm text-gray-600 dark:text-gray-400">
           {budget.period_type === 'Annual' ? 'תקציב שנתי' : 'תקציב חודשי'}

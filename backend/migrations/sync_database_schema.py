@@ -7,7 +7,13 @@ import sys
 import os
 
 # Add parent directory to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if backend_dir not in sys.path:
+    sys.path.insert(0, backend_dir)
+# Also add parent of backend_dir (project root)
+project_root = os.path.dirname(backend_dir)
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 
 from sqlalchemy import text
 from backend.db.session import AsyncSessionLocal
@@ -151,6 +157,11 @@ async def sync_database_schema():
             changes_made |= await check_and_add_column(session, "transactions", "is_generated", "BOOLEAN", nullable=False, default="FALSE")
             if changes_made:
                 await check_and_create_index(session, "ix_transactions_is_generated", "transactions", "is_generated")
+            
+            # Add from_fund column to transactions
+            changes_made |= await check_and_add_column(session, "transactions", "from_fund", "BOOLEAN", nullable=False, default="FALSE")
+            if changes_made:
+                await check_and_create_index(session, "ix_transactions_from_fund", "transactions", "from_fund")
             
             # 5. Sync supplier_documents table
             print("\n[5/6] Syncing supplier_documents table...")

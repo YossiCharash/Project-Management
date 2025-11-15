@@ -39,6 +39,9 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
   const [subprojectId, setSubprojectId] = useState<number | ''>('')
   const [supplierId, setSupplierId] = useState<number | ''>('')
   const [isExceptional, setIsExceptional] = useState(false)
+  const [fromFund, setFromFund] = useState(false)
+  const [hasFund, setHasFund] = useState(false)
+  const [fundBalance, setFundBalance] = useState<number | null>(null)
   const [filesToUpload, setFilesToUpload] = useState<File[]>([])
   
   // Recurring transaction states
@@ -67,9 +70,38 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
     if (isOpen) {
       dispatch(fetchSuppliers())
       loadSubprojects()
+      loadFundInfo()
       resetForms()
     }
   }, [isOpen, projectId, dispatch])
+
+  const loadFundInfo = async () => {
+    if (!projectId) {
+      setHasFund(false)
+      setFundBalance(null)
+      return
+    }
+    
+    try {
+      const { data } = await api.get(`/projects/${projectId}`)
+      const hasFundFlag = data.has_fund || false
+      setHasFund(hasFundFlag)
+      
+      if (hasFundFlag) {
+        try {
+          const { data: fundData } = await api.get(`/projects/${projectId}/fund`)
+          setFundBalance(fundData.current_balance)
+        } catch (fundErr) {
+          setFundBalance(null)
+        }
+      } else {
+        setFundBalance(null)
+      }
+    } catch (err) {
+      setHasFund(false)
+      setFundBalance(null)
+    }
+  }
 
   const loadSubprojects = async () => {
     try {
@@ -94,6 +126,7 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
     setSubprojectId('')
     setSupplierId('')
     setIsExceptional(false)
+    setFromFund(false)
     setFilesToUpload([])
     
     // Reset recurring transaction form
@@ -152,6 +185,7 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
         notes: notes || undefined,
         supplier_id: Number(supplierId),
         is_exceptional: isExceptional,
+        from_fund: fromFund && type === 'Expense' ? true : false,
       }
 
       const response = await api.post('/transactions/', payload)
@@ -549,6 +583,33 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
                     />
                     <label htmlFor="exceptional" className="text-sm text-gray-700 dark:text-gray-300">הוצאה חריגה</label>
                   </div>
+
+                  {hasFund && type === 'Expense' && (
+                    <div className="md:col-span-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md p-3">
+                      <div className="flex items-center gap-2 mb-2">
+                        <input
+                          id="fromFund"
+                          type="checkbox"
+                          checked={fromFund}
+                          onChange={e => setFromFund(e.target.checked)}
+                          className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+                        />
+                        <label htmlFor="fromFund" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                          הוריד מהקופה
+                        </label>
+                      </div>
+                      {fundBalance !== null && (
+                        <p className="text-xs text-gray-600 dark:text-gray-400">
+                          יתרה בקופה: {fundBalance.toLocaleString('he-IL')} ₪
+                        </p>
+                      )}
+                      {fromFund && (
+                        <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
+                          הערה: עסקה זו לא תיכלל בהוצאות הרגילות ולא תופיע בדוחות
+                        </p>
+                      )}
+                    </div>
+                  )}
 
                   <div className="md:col-span-2">
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">

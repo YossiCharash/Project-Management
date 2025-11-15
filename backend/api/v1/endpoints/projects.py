@@ -14,6 +14,7 @@ from backend.services.project_service import ProjectService
 from backend.services.recurring_transaction_service import RecurringTransactionService
 from backend.services.financial_aggregation_service import FinancialAggregationService
 from backend.services.budget_service import BudgetService
+from backend.services.fund_service import FundService
 from backend.services.audit_service import AuditService
 from backend.models.user import UserRole
 
@@ -81,9 +82,9 @@ async def get_profitability_alerts(
             transactions_result = await db.execute(transactions_query)
             transactions = transactions_result.scalars().all()
             
-            # Calculate income and expenses
-            income = sum(float(t.amount) for t in transactions if t.type == 'Income')
-            expense = sum(float(t.amount) for t in transactions if t.type == 'Expense')
+            # Calculate income and expenses (exclude fund transactions)
+            income = sum(float(t.amount) for t in transactions if t.type == 'Income' and not (hasattr(t, 'from_fund') and t.from_fund))
+            expense = sum(float(t.amount) for t in transactions if t.type == 'Expense' and not (hasattr(t, 'from_fund') and t.from_fund))
             profit = income - expense
             
             # Also check all transactions regardless of date for debugging
@@ -160,7 +161,35 @@ async def get_project(project_id: int, db: DBSessionDep, user = Depends(get_curr
     project = await ProjectRepository(db).get_by_id(project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    return project
+    
+    # Add fund information to project response
+    from backend.services.fund_service import FundService
+    fund_service = FundService(db)
+    fund = await fund_service.get_fund_by_project(project_id)
+    
+    # Convert to dict to modify
+    project_dict = {
+        "id": project.id,
+        "name": project.name,
+        "description": project.description,
+        "start_date": project.start_date,
+        "end_date": project.end_date,
+        "budget_monthly": project.budget_monthly,
+        "budget_annual": project.budget_annual,
+        "manager_id": project.manager_id,
+        "relation_project": project.relation_project,
+        "num_residents": project.num_residents,
+        "monthly_price_per_apartment": project.monthly_price_per_apartment,
+        "address": project.address,
+        "city": project.city,
+        "image_url": project.image_url,
+        "is_active": project.is_active,
+        "created_at": project.created_at,
+        "total_value": project.total_value,
+        "has_fund": fund is not None,
+        "monthly_fund_amount": float(fund.monthly_amount) if fund else None
+    }
+    return project_dict
 
 @router.get("/{project_id}/subprojects", response_model=list[ProjectOut])
 async def get_subprojects(project_id: int, db: DBSessionDep, user = Depends(get_current_user)):
@@ -178,13 +207,24 @@ async def get_project_values(project_id: int, db: DBSessionDep, user = Depends(g
 @router.post("/", response_model=ProjectOut)
 async def create_project(db: DBSessionDep, data: ProjectCreate, user = Depends(get_current_user)):
     """Create project - accessible to all authenticated users"""
-    # Extract recurring transactions and budgets from project data
-    project_data = data.model_dump(exclude={'recurring_transactions', 'budgets'})
+    # Extract recurring transactions, budgets, and fund data from project data
+    project_data = data.model_dump(exclude={'recurring_transactions', 'budgets', 'has_fund', 'monthly_fund_amount'})
     recurring_transactions = data.recurring_transactions or []
     budgets = data.budgets or []
+    has_fund = data.has_fund or False
+    monthly_fund_amount = data.monthly_fund_amount
     
     # Create the project
     project = await ProjectService(db).create(**project_data)
+    
+    # Create fund if requested
+    if has_fund and monthly_fund_amount is not None:
+        fund_service = FundService(db)
+        await fund_service.create_fund(
+            project_id=project.id,
+            monthly_amount=monthly_fund_amount if monthly_fund_amount > 0 else 0,
+            initial_balance=0
+        )
     
     # Create recurring transactions if provided
     if recurring_transactions:
@@ -294,6 +334,8 @@ async def update_project(project_id: int, db: DBSessionDep, data: ProjectUpdate,
         raise HTTPException(status_code=404, detail="Project not found")
 
     budgets_to_add = data.budgets or []
+    has_fund = data.has_fund
+    monthly_fund_amount = data.monthly_fund_amount
 
     # Store old values for audit log
     old_values = {
@@ -305,8 +347,30 @@ async def update_project(project_id: int, db: DBSessionDep, data: ProjectUpdate,
         'city': project.city or ''
     }
 
-    update_payload = data.model_dump(exclude_unset=True, exclude={'budgets'})
+    update_payload = data.model_dump(exclude_unset=True, exclude={'budgets', 'has_fund', 'monthly_fund_amount'})
     updated_project = await ProjectService(db).update(project, **update_payload)
+    
+    # Handle fund creation/update
+    fund_service = FundService(db)
+    existing_fund = await fund_service.get_fund_by_project(project_id)
+    
+    if has_fund is not None:
+        if has_fund and monthly_fund_amount is not None:
+            # Create or update fund (even if monthly_amount is 0)
+            if existing_fund:
+                await fund_service.update_fund(existing_fund, monthly_amount=monthly_fund_amount if monthly_fund_amount > 0 else 0)
+            else:
+                await fund_service.create_fund(
+                    project_id=project_id,
+                    monthly_amount=monthly_fund_amount if monthly_fund_amount > 0 else 0,
+                    initial_balance=0
+                )
+        elif not has_fund and existing_fund:
+            # Delete fund if has_fund is False
+            await fund_service.funds.delete(existing_fund)
+    elif monthly_fund_amount is not None and existing_fund:
+        # Update monthly amount only
+        await fund_service.update_fund(existing_fund, monthly_amount=monthly_fund_amount if monthly_fund_amount > 0 else 0)
 
     # Handle new category budgets if provided
     if budgets_to_add:
@@ -627,6 +691,63 @@ async def get_parent_project_financial_summary(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving financial summary: {str(e)}")
 
+
+@router.get("/{project_id}/fund")
+async def get_project_fund(
+    project_id: int,
+    db: DBSessionDep,
+    user = Depends(get_current_user)
+):
+    """Get fund details for a project"""
+    from backend.schemas.fund import FundWithTransactions
+    from sqlalchemy import select, and_
+    from backend.models.transaction import Transaction
+    
+    fund_service = FundService(db)
+    fund = await fund_service.get_fund_by_project(project_id)
+    
+    if not fund:
+        raise HTTPException(status_code=404, detail="Fund not found for this project")
+    
+    # Ensure monthly addition is made if needed
+    await fund_service.ensure_monthly_addition(project_id)
+    # Refresh fund after potential update
+    fund = await fund_service.get_fund_by_project(project_id)
+    
+    # Get transactions from fund
+    transactions_query = select(Transaction).where(
+        and_(
+            Transaction.project_id == project_id,
+            Transaction.from_fund == True
+        )
+    ).order_by(Transaction.tx_date.desc())
+    
+    transactions_result = await db.execute(transactions_query)
+    transactions = transactions_result.scalars().all()
+    
+    # Convert transactions to dict
+    transactions_list = []
+    for tx in transactions:
+        transactions_list.append({
+            'id': tx.id,
+            'tx_date': tx.tx_date.isoformat() if tx.tx_date else None,
+            'type': tx.type,
+            'amount': float(tx.amount),
+            'description': tx.description,
+            'category': tx.category,
+            'notes': tx.notes
+        })
+    
+    return {
+        'id': fund.id,
+        'project_id': fund.project_id,
+        'current_balance': float(fund.current_balance),
+        'monthly_amount': float(fund.monthly_amount),
+        'last_monthly_addition': fund.last_monthly_addition.isoformat() if fund.last_monthly_addition else None,
+        'created_at': fund.created_at.isoformat(),
+        'updated_at': fund.updated_at.isoformat(),
+        'transactions': transactions_list
+    }
 
 @router.get("/{project_id}/financial-trends")
 async def get_financial_trends(

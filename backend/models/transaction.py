@@ -62,3 +62,6 @@ class Transaction(Base):
     
     # Relationship to user who created the transaction
     created_by_user: Mapped["User | None"] = relationship("User", foreign_keys=[created_by_user_id], lazy="selectin")
+    
+    # Fund-related fields
+    from_fund: Mapped[bool] = mapped_column(Boolean, default=False, index=True)

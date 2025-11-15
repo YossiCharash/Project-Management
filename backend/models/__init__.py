@@ -13,6 +13,7 @@ from backend.models.admin_invite import AdminInvite
 from backend.models.email_verification import EmailVerification
 from backend.models.member_invite import MemberInvite
 from backend.models.budget import Budget
+from backend.models.fund import Fund
 
 __all__ = [
     "User",
@@ -29,5 +30,6 @@ __all__ = [
     "EmailVerification",
     "RecurringTransactionTemplate",
     "MemberInvite",
-    "Budget"
+    "Budget",
+    "Fund"
 ]

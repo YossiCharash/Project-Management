@@ -151,6 +151,18 @@ export class ReportAPI {
 }
 
 export class BudgetAPI {
+  // Create a new budget for a project
+  static async createBudget(payload: {
+    project_id: number
+    category: string
+    amount: number
+    period_type?: 'Annual' | 'Monthly'
+    start_date: string
+    end_date?: string | null
+  }): Promise<void> {
+    await api.post('/budgets', payload)
+  }
+
   // Get all budgets for a project with spending information
   static async getProjectBudgets(projectId: number): Promise<BudgetWithSpending[]> {
     const { data } = await api.get<BudgetWithSpending[]>(`/budgets/project/${projectId}`)
@@ -161,6 +173,11 @@ export class BudgetAPI {
   static async getBudget(budgetId: number): Promise<BudgetWithSpending> {
     const { data } = await api.get<BudgetWithSpending>(`/budgets/${budgetId}`)
     return data
+  }
+
+  // Delete a specific budget
+  static async deleteBudget(budgetId: number): Promise<void> {
+    await api.delete(`/budgets/${budgetId}`)
   }
 }
 

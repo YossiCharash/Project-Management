@@ -15,4 +15,4 @@ class Subproject(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
-    project: Mapped["Project"] = relationship(backref="subprojects")
+    project: Mapped["Project"] = relationship("Project", back_populates="subprojects")

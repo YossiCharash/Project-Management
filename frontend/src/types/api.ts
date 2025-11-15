@@ -68,6 +68,8 @@ export interface ProjectCreate {
   manager_id?: number | null
   recurring_transactions?: RecurringTransactionTemplateCreate[] | null
   budgets?: BudgetCreate[] | null
+  has_fund?: boolean
+  monthly_fund_amount?: number | null
 }
 
 export interface TransactionCreate {
@@ -81,6 +83,7 @@ export interface TransactionCreate {
   notes?: string | null
   is_exceptional?: boolean
   supplier_id?: number | null
+  from_fund?: boolean
 }
 
 // Dashboard-specific types

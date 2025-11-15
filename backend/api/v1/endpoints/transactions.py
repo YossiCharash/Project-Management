@@ -88,7 +88,8 @@ async def list_transactions(project_id: int, db: DBSessionDep, user = Depends(ge
             'supplier_id': tx.supplier_id,
             'created_by_user_id': getattr(tx, 'created_by_user_id', None),
             'created_at': tx.created_at,
-            'created_by_user': None
+            'created_by_user': None,
+            'from_fund': tx.from_fund if hasattr(tx, 'from_fund') else False
         }
         
         # Debug: Print transaction info
@@ -130,6 +131,21 @@ async def create_transaction(db: DBSessionDep, data: TransactionCreate, user = D
     # Add user_id to transaction data
     transaction_data = data.model_dump()
     transaction_data['created_by_user_id'] = user.id
+    
+    # Handle fund deduction if from_fund is True
+    if data.from_fund and data.type == 'Expense':
+        from backend.services.fund_service import FundService
+        fund_service = FundService(db)
+        fund = await fund_service.get_fund_by_project(data.project_id)
+        if not fund:
+            raise HTTPException(status_code=400, detail="Fund not found for this project")
+        
+        # Check if fund has enough balance
+        if float(fund.current_balance) < float(data.amount):
+            raise HTTPException(status_code=400, detail=f"Insufficient fund balance. Current balance: {fund.current_balance} ₪")
+        
+        # Deduct from fund
+        await fund_service.deduct_from_fund(data.project_id, data.amount)
     
     # Debug: Print to verify user_id is being set
     print(f"DEBUG: Creating transaction with created_by_user_id={user.id}, user={user.full_name}")
@@ -184,7 +200,8 @@ async def create_transaction(db: DBSessionDep, data: TransactionCreate, user = D
         'supplier_id': transaction.supplier_id,
         'created_by_user_id': transaction.created_by_user_id,
         'created_at': transaction.created_at,
-        'created_by_user': None
+        'created_by_user': None,
+        'from_fund': transaction.from_fund if hasattr(transaction, 'from_fund') else False
     }
     
     # Load user info if exists
