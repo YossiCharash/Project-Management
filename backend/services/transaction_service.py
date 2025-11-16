@@ -6,11 +6,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.core.config import settings
 from backend.repositories.transaction_repository import TransactionRepository
 from backend.models.transaction import Transaction, ExpenseCategory
+from backend.services.s3_service import S3Service
 
 
 class TransactionService:
     def __init__(self, db: AsyncSession):
         self.transactions = TransactionRepository(db)
+        # Keep local directory for backward compatibility (old files)
         os.makedirs(settings.FILE_UPLOAD_DIR, exist_ok=True)
 
     def _normalize_category(self, category: str | None) -> str | None:
@@ -63,11 +65,19 @@ class TransactionService:
     async def attach_file(self, tx: Transaction, file: UploadFile | None) -> Transaction:
         if not file:
             return tx
-        ext = os.path.splitext(file.filename or "")[1]
-        filename = f"{uuid4().hex}{ext}"
-        path = os.path.join(settings.FILE_UPLOAD_DIR, filename)
+
+        # Upload to S3 instead of local filesystem
+        from io import BytesIO
+
         content = await file.read()
-        with open(path, "wb") as f:
-            f.write(content)
-        tx.file_path = path
+        file_obj = BytesIO(content)
+        s3 = S3Service()
+        file_url = s3.upload_file(
+            prefix="transactions",
+            file_obj=file_obj,
+            filename=file.filename or "transaction-file",
+            content_type=file.content_type,
+        )
+        # Store full URL
+        tx.file_path = file_url
         return await self.transactions.update(tx)

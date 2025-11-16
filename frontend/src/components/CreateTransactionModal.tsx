@@ -466,7 +466,14 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
                     <select
                       className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                       value={type}
-                      onChange={e => setType(e.target.value as any)}
+                      onChange={e => {
+                        const newType = e.target.value as 'Income' | 'Expense'
+                        setType(newType)
+                        // Reset supplier when switching to Income
+                        if (newType === 'Income') {
+                          setSupplierId('')
+                        }
+                      }}
                       required
                     >
                       <option value="Income">הכנסה</option>
@@ -580,16 +587,16 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
                     </select>
                   </div>
 
-                  {!fromFund && (
+                  {!fromFund && type === 'Expense' && (
                     <div>
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        ספק * <span className="text-red-500">(חובה)</span>
+                        ספק <span className="text-red-500">* (חובה)</span>
                       </label>
                       <select
                         className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                         value={supplierId}
                         onChange={e => setSupplierId(e.target.value === '' ? '' : Number(e.target.value))}
-                        required={!fromFund && type === 'Expense'}
+                        required
                       >
                         <option value="">
                           {category ? 'בחר ספק' : 'בחר קודם קטגוריה'}

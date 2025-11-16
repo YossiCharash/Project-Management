@@ -46,6 +46,14 @@ class Settings(BaseModel):
     ]
 
     FILE_UPLOAD_DIR: str = os.getenv("FILE_UPLOAD_DIR", "./uploads")
+
+    # AWS S3 configuration (for documents and project images)
+    AWS_ACCESS_KEY_ID: str | None = os.getenv("AWS_ACCESS_KEY_ID")
+    AWS_SECRET_ACCESS_KEY: str | None = os.getenv("AWS_SECRET_ACCESS_KEY")
+    AWS_REGION: str = os.getenv("AWS_REGION", "eu-central-1")
+    AWS_S3_BUCKET: str | None = os.getenv("AWS_S3_BUCKET")
+    # Optional custom base URL (e.g. CloudFront). If not set, default S3 URL will be used.
+    AWS_S3_BASE_URL: str | None = os.getenv("AWS_S3_BASE_URL")
     
     # Super Admin Configuration
     SUPER_ADMIN_EMAIL: str = Field(default=os.getenv("SUPER_ADMIN_EMAIL", "c0548508540@gmail.com"))

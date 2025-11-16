@@ -102,8 +102,8 @@ const CreateRecurringTransactionModal: React.FC<CreateRecurringTransactionModalP
       return
     }
 
-    if (!formData.supplier_id || formData.supplier_id === 0) {
-      setError('יש לבחור ספק (חובה)')
+    if (formData.type === 'Expense' && (!formData.supplier_id || formData.supplier_id === 0)) {
+      setError('יש לבחור ספק (חובה לעסקאות הוצאה)')
       return
     }
 
@@ -284,7 +284,15 @@ const CreateRecurringTransactionModal: React.FC<CreateRecurringTransactionModalP
               <select
                 required
                 value={formData.type}
-                onChange={(e) => setFormData({ ...formData, type: e.target.value as 'Income' | 'Expense' })}
+                onChange={(e) => {
+                  const newType = e.target.value as 'Income' | 'Expense'
+                  setFormData({ 
+                    ...formData, 
+                    type: newType,
+                    // Reset supplier when switching to Income
+                    supplier_id: newType === 'Income' ? 0 : formData.supplier_id
+                  })
+                }}
                 className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
               >
                 <option value="Expense">הוצאה</option>
@@ -351,31 +359,33 @@ const CreateRecurringTransactionModal: React.FC<CreateRecurringTransactionModalP
               </select>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                ספק * <span className="text-red-500">(חובה)</span>
-              </label>
-              <select
-                required
-                value={formData.supplier_id || 0}
-                onChange={(e) => setFormData({ ...formData, supplier_id: parseInt(e.target.value) || 0 })}
-                className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              >
-              <option value="0">
-                {formData.category ? 'בחר ספק' : 'בחר קודם קטגוריה'}
-              </option>
-              {suppliers
-                .filter(
-                  s =>
-                    s.is_active &&
-                    !!formData.category &&
-                    s.category === formData.category
-                )
-                .map(s => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
-                ))}
-              </select>
-            </div>
+            {formData.type === 'Expense' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  ספק <span className="text-red-500">* (חובה)</span>
+                </label>
+                <select
+                  required
+                  value={formData.supplier_id || 0}
+                  onChange={(e) => setFormData({ ...formData, supplier_id: parseInt(e.target.value) || 0 })}
+                  className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                >
+                <option value="0">
+                  {formData.category ? 'בחר ספק' : 'בחר קודם קטגוריה'}
+                </option>
+                {suppliers
+                  .filter(
+                    s =>
+                      s.is_active &&
+                      !!formData.category &&
+                      s.category === formData.category
+                  )
+                  .map(s => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">

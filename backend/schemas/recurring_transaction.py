@@ -12,7 +12,7 @@ class RecurringTransactionTemplateBase(BaseModel):
     amount: float
     category: Optional[str] = None
     notes: Optional[str] = None
-    supplier_id: int = Field(..., description="Supplier ID is required")
+    supplier_id: int | None = Field(None, description="Supplier ID is required for Expense transactions")
     frequency: Literal["Monthly"] = "Monthly"
     day_of_month: int = Field(ge=1, le=31)
     start_date: date
@@ -53,7 +53,7 @@ class RecurringTransactionTemplateOut(RecurringTransactionTemplateBase):
             # Handle SQLAlchemy model objects - use getattr to access attributes
             obj_dict = {}
             for attr in ['id', 'project_id', 'description', 'type', 'amount', 'category', 'notes',
-                        'frequency', 'day_of_month', 'start_date', 'end_type', 'end_date',
+                        'supplier_id', 'frequency', 'day_of_month', 'start_date', 'end_type', 'end_date',
                         'max_occurrences', 'is_active', 'created_at', 'updated_at']:
                 if hasattr(data, attr):
                     value = getattr(data, attr)

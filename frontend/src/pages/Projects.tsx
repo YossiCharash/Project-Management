@@ -73,7 +73,12 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
 
   const getImageUrl = (imageUrl: string | null | undefined): string | null => {
     if (!imageUrl) return null
-    const apiUrl = '/api/v1'
+    // If backend already returned full URL (S3 / CloudFront), use as-is
+    if (imageUrl.startsWith('http')) {
+      return imageUrl
+    }
+    const apiUrl = import.meta.env.VITE_API_URL
+    // @ts-ignore
     const baseUrl = apiUrl.replace('/api/v1', '')
     return `${baseUrl}/uploads/${imageUrl}`
   }

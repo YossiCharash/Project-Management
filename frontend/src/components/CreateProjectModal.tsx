@@ -110,6 +110,10 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
   }
 
   const getImageUrl = (imageUrl: string): string => {
+    // If backend already returned full URL (S3 / CloudFront), use as-is
+    if (imageUrl.startsWith('http')) {
+      return imageUrl
+    }
     const apiUrl = import.meta.env.VITE_API_URL
     // @ts-ignore
     const baseUrl = apiUrl.replace('/api/v1', '')
@@ -221,6 +225,10 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
       onSuccess(result)
       // Only close if there was no image upload error
       if (!imageUploadError) {
+        // Dispatch custom event to notify other components (e.g., ProjectDetail) that project was updated
+        if (editingProject) {
+          window.dispatchEvent(new CustomEvent('projectUpdated', { detail: { projectId: result.id } }))
+        }
         onClose()
         resetForm()
       }

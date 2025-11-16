@@ -99,20 +99,17 @@ export default function SupplierDocuments() {
   }
 
   const getFileUrl = (filePath: string): string => {
-    // If filePath already starts with http, return as is
+    // If filePath already starts with http (S3 / CloudFront), return as is
     if (filePath.startsWith('http')) {
       return filePath
     }
+    // Backward compatibility for old local /uploads paths
     const apiUrl = import.meta.env.VITE_API_URL
     // @ts-ignore
     const baseUrl = apiUrl.replace('/api/v1', '')
-    // Ensure filePath starts with /
     let normalizedPath = filePath.startsWith('/') ? filePath : `/${filePath}`
-    // Remove any double slashes except at the start
     normalizedPath = normalizedPath.replace(/([^:]\/)\/+/g, '$1')
-    const fullUrl = `${baseUrl}${normalizedPath}`
-    // File URL
-    return fullUrl
+    return `${baseUrl}${normalizedPath}`
   }
 
   if (!supplierId) {

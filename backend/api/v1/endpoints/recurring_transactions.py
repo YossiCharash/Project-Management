@@ -35,6 +35,10 @@ async def create_recurring_template(
     user = Depends(get_current_user)
 ):
     """Create a new recurring transaction template"""
+    # Validate supplier - required only for Expense transactions
+    if data.type == 'Expense' and (not data.supplier_id or data.supplier_id == 0):
+        raise HTTPException(status_code=400, detail="Supplier is required for expense transactions")
+    
     template = await RecurringTransactionService(db).create_template(data)
     # Convert to schema to handle enum serialization
     return RecurringTransactionTemplateOut.model_validate(template)

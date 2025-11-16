@@ -15,6 +15,7 @@ from backend.services.recurring_transaction_service import RecurringTransactionS
 from backend.services.financial_aggregation_service import FinancialAggregationService
 from backend.services.budget_service import BudgetService
 from backend.services.fund_service import FundService
+from backend.services.s3_service import S3Service
 from backend.services.audit_service import AuditService
 from backend.models.user import UserRole
 
@@ -485,37 +486,36 @@ async def update_project(project_id: int, db: DBSessionDep, data: ProjectUpdate,
 
 @router.post("/{project_id}/upload-image", response_model=ProjectOut)
 async def upload_project_image(project_id: int, db: DBSessionDep, file: UploadFile = File(...), user = Depends(get_current_user)):
-    """Upload project image - accessible to all authenticated users"""
+    """Upload project image to S3 - accessible to all authenticated users"""
     repo = ProjectRepository(db)
     project = await repo.get_by_id(project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    
+
     # Validate file type (only images)
     allowed_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
     ext = os.path.splitext(file.filename or "")[1].lower()
     if ext not in allowed_extensions:
         raise HTTPException(status_code=400, detail=f"Invalid file type. Allowed types: {', '.join(allowed_extensions)}")
-    
-    # Create projects directory in uploads if it doesn't exist
-    uploads_dir = get_uploads_dir()
-    upload_dir = os.path.join(uploads_dir, 'projects')
-    os.makedirs(upload_dir, exist_ok=True)
-    
-    # Generate unique filename
-    filename = f"{uuid4().hex}{ext}"
-    file_path = os.path.join(upload_dir, filename)
-    
-    # Save file
+
+    # Upload to S3
+    s3 = S3Service()
     content = await file.read()
-    with open(file_path, 'wb') as f:
-        f.write(content)
-    
-    # Update project with image URL (relative path from uploads directory)
-    image_url = f"projects/{filename}"
+
+    from io import BytesIO
+    file_obj = BytesIO(content)
+
+    image_url = s3.upload_file(
+        prefix="projects",
+        file_obj=file_obj,
+        filename=file.filename or "project-image",
+        content_type=file.content_type,
+    )
+
+    # Store full URL in image_url
     project.image_url = image_url
     await repo.update(project)
-    
+
     return project
 
 

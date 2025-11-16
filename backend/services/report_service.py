@@ -6,6 +6,7 @@ from dateutil.relativedelta import relativedelta
 
 from backend.models.transaction import Transaction
 from backend.models.project import Project
+from backend.models.budget import Budget
 from backend.services.budget_service import BudgetService
 from backend.services.project_service import calculate_start_date
 
@@ -210,8 +211,101 @@ class ReportService:
                 budget_income = (budget_annual / days_in_year) * days_in_period
                 print(f"📊 Project {project.id}: Using ANNUAL budget calculation: {budget_annual} / {days_in_year} * {days_in_period} = {budget_income}")
             
-            project_total_income = yearly_income + budget_income
-            print(f"💰 Project {project.id}: yearly_income={yearly_income}, budget_income={budget_income}, project_total_income={project_total_income}")
+            # Calculate category budgets income
+            category_budgets_income = 0.0
+            try:
+                # Load category budgets for this project
+                category_budgets_query = select(Budget).where(
+                    and_(
+                        Budget.project_id == project.id,
+                        Budget.is_active == True
+                    )
+                )
+                category_budgets_result = await self.db.execute(category_budgets_query)
+                category_budgets = list(category_budgets_result.scalars().all())
+                
+                print(f"📊 Project {project.id}: Found {len(category_budgets)} active category budgets")
+                
+                for budget in category_budgets:
+                    budget_amount = 0.0
+                    
+                    if budget.period_type == "Monthly":
+                        # For monthly budgets, calculate how many months from budget start_date (or project start_date) to now
+                        if budget.start_date:
+                            budget_start_month = date(budget.start_date.year, budget.start_date.month, 1)
+                        elif project.start_date:
+                            budget_start_month = date(project.start_date.year, project.start_date.month, 1)
+                        else:
+                            budget_start_month = date(calculation_start_date.year, calculation_start_date.month, 1)
+                        
+                        # Check if budget has end_date and if we're past it
+                        if budget.end_date and current_date > budget.end_date:
+                            effective_end_month = date(budget.end_date.year, budget.end_date.month, 1)
+                        else:
+                            effective_end_month = date(current_date.year, current_date.month, 1)
+                        
+                        # Count months from budget_start_month to effective_end_month (inclusive)
+                        month_count = 0
+                        temp_month = budget_start_month
+                        while temp_month <= effective_end_month:
+                            month_count += 1
+                            if temp_month.month == 12:
+                                temp_month = date(temp_month.year + 1, 1, 1)
+                            else:
+                                temp_month = date(temp_month.year, temp_month.month + 1, 1)
+                        
+                        budget_amount = float(budget.amount) * month_count
+                        print(f"📊 Budget {budget.id} ({budget.category}): Monthly, monthCount={month_count}, amount={budget_amount}")
+                    elif budget.period_type == "Annual":
+                        # For annual budgets, calculate by full months (not proportional)
+                        # Annual budget / 12 = monthly amount
+                        monthly_amount = float(budget.amount) / 12
+                        
+                        if budget.start_date:
+                            budget_start_month = date(budget.start_date.year, budget.start_date.month, 1)
+                        elif project.start_date:
+                            budget_start_month = date(project.start_date.year, project.start_date.month, 1)
+                        else:
+                            budget_start_month = date(calculation_start_date.year, calculation_start_date.month, 1)
+                        
+                        # Check if budget has end_date and if we're past it
+                        if budget.end_date and current_date > budget.end_date:
+                            effective_end_month = date(budget.end_date.year, budget.end_date.month, 1)
+                        else:
+                            effective_end_month = date(current_date.year, current_date.month, 1)
+                        
+                        # Count months from budget_start_month to effective_end_month (inclusive)
+                        month_count = 0
+                        temp_month = budget_start_month
+                        while temp_month <= effective_end_month:
+                            month_count += 1
+                            if temp_month.month == 12:
+                                temp_month = date(temp_month.year + 1, 1, 1)
+                            else:
+                                temp_month = date(temp_month.year, temp_month.month + 1, 1)
+                        
+                        budget_amount = monthly_amount * month_count
+                        print(f"📊 Budget {budget.id} ({budget.category}): Annual ({budget.amount}/year = {monthly_amount}/month), monthCount={month_count}, amount={budget_amount}")
+                    
+                    category_budgets_income += budget_amount
+                
+                print(f"📊 Project {project.id}: Category budgets total income: {category_budgets_income}")
+            except Exception as e:
+                # If category budgets calculation fails, rollback and continue without them
+                try:
+                    await self.db.rollback()
+                except Exception:
+                    pass
+                print(f"⚠️ Warning: Could not calculate category budgets for project {project.id}: {e}")
+                category_budgets_income = 0.0
+            
+            # Include all budgets (project budget + category budgets) in income
+            project_total_income = yearly_income + budget_income + category_budgets_income
+            print(
+                f"💰 Project {project.id}: yearly_income={yearly_income}, "
+                f"budget_income={budget_income}, category_budgets_income={category_budgets_income}, "
+                f"project_total_income={project_total_income}"
+            )
             
             profit = project_total_income - yearly_expense
             

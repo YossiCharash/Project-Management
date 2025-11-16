@@ -61,7 +61,9 @@ class BudgetRepository:
         budget: Budget, 
         as_of_date: date | None = None
     ) -> float:
-        """Calculate total spending for a budget's category within the budget period"""
+        """Calculate net spending for a budget's category within the budget period
+        Net spending = Expenses - Income (Income reduces the spending amount)
+        """
         if as_of_date is None:
             as_of_date = date.today()
         
@@ -69,17 +71,38 @@ class BudgetRepository:
         start_date = budget.start_date
         end_date = budget.end_date if budget.end_date else as_of_date
         
-        # Calculate spending for transactions in this category within the period
-        spending_query = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
+        # Calculate expenses for transactions in this category within the period
+        expenses_query = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
             and_(
                 Transaction.project_id == budget.project_id,
                 Transaction.type == "Expense",
                 Transaction.category == budget.category,
                 Transaction.tx_date >= start_date,
-                Transaction.tx_date <= end_date
+                Transaction.tx_date <= end_date,
+                Transaction.from_fund == False  # Exclude fund transactions
             )
         )
         
-        result = await self.db.execute(spending_query)
-        return float(result.scalar_one())
+        # Calculate income for transactions in this category within the period
+        income_query = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
+            and_(
+                Transaction.project_id == budget.project_id,
+                Transaction.type == "Income",
+                Transaction.category == budget.category,
+                Transaction.tx_date >= start_date,
+                Transaction.tx_date <= end_date,
+                Transaction.from_fund == False  # Exclude fund transactions
+            )
+        )
+        
+        expenses_result = await self.db.execute(expenses_query)
+        income_result = await self.db.execute(income_query)
+        
+        total_expenses = float(expenses_result.scalar_one())
+        total_income = float(income_result.scalar_one())
+        
+        # Net spending = Expenses - Income (Income reduces spending)
+        net_spending = max(0, total_expenses - total_income)  # Don't allow negative spending
+        
+        return net_spending
 

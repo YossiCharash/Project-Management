@@ -31,9 +31,9 @@ class RecurringTransactionTemplate(Base):
     category: Mapped[str | None] = mapped_column(Text, default=None)
     notes: Mapped[str | None] = mapped_column(Text, default=None)
     
-    # Supplier relationship
-    supplier_id: Mapped[int] = mapped_column(ForeignKey("suppliers.id"), nullable=False, index=True)
-    supplier: Mapped["Supplier"] = relationship("Supplier", lazy="selectin")
+    # Supplier relationship (optional for Income transactions)
+    supplier_id: Mapped[int | None] = mapped_column(ForeignKey("suppliers.id"), nullable=True, index=True)
+    supplier: Mapped["Supplier | None"] = relationship("Supplier", lazy="selectin")
 
     # Recurring settings
     frequency: Mapped[str] = mapped_column(SAEnum(RecurringFrequency, name="recurring_frequency", create_constraint=True, native_enum=True), default=RecurringFrequency.MONTHLY.value)

@@ -116,6 +116,15 @@ async def get_project_transactions(project_id: int, db: DBSessionDep, user = Dep
                         except json.JSONDecodeError:
                             created_by_user = None
 
+                    # Get is_generated value - check both is_generated and recurring_template_id
+                    is_generated_value = row_dict.get('is_generated', False) if has_recurring_fields else False
+                    recurring_template_id = row_dict.get('recurring_template_id', None) if has_recurring_fields else None
+                    
+                    # If transaction has recurring_template_id but is_generated is False, set it to True
+                    if recurring_template_id and not is_generated_value:
+                        is_generated_value = True
+                        print(f"⚠️  Transaction {row_dict.get('id')} has recurring_template_id={recurring_template_id} but is_generated=False, fixing to True")
+                    
                     tx_dict = {
                         "id": row_dict.get('id'),
                         "project_id": row_dict.get('project_id'),
@@ -126,7 +135,7 @@ async def get_project_transactions(project_id: int, db: DBSessionDep, user = Dep
                         "category": row_dict.get('category'),
                         "notes": row_dict.get('notes'),
                         "is_exceptional": row_dict.get('is_exceptional', False),
-                        "is_generated": row_dict.get('is_generated', False) if has_recurring_fields else False,
+                        "is_generated": is_generated_value,
                         "file_path": row_dict.get('file_path'),
                         "created_at": row_dict.get('created_at') or datetime.utcnow(),
                         "payment_method": row_dict.get('payment_method'),

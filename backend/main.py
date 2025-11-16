@@ -5,6 +5,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.openapi.utils import get_openapi
 import re
 import os
+import asyncio
+from datetime import date
 
 # Import all models to ensure Base.metadata is populated
 # This import ensures all models are registered before create_all is called
@@ -79,6 +81,9 @@ def create_app() -> FastAPI:
         # Create super admin from environment variables
         from backend.core.seed import create_super_admin
         await create_super_admin()
+        
+        # Start background task for recurring transactions
+        asyncio.create_task(run_recurring_transactions_scheduler())
 
     def custom_openapi():
         if app.openapi_schema:
@@ -136,6 +141,56 @@ def create_app() -> FastAPI:
         return {"status": "healthy", "message": "Project Management System is running"}
 
     return app
+
+
+async def run_recurring_transactions_scheduler():
+    """
+    Background task that runs daily to generate recurring transactions.
+    Checks every day if there are any recurring templates that need to generate transactions.
+    Runs immediately on startup, then every 24 hours.
+    """
+    from backend.db.session import AsyncSessionLocal
+    from backend.services.recurring_transaction_service import RecurringTransactionService
+    
+    # Run immediately on startup
+    first_run = True
+    
+    while True:
+        try:
+            if not first_run:
+                # Wait 24 hours before next run
+                await asyncio.sleep(60 * 60 * 24)
+            else:
+                first_run = False
+                # Wait 5 seconds after startup to let the app fully initialize
+                await asyncio.sleep(5)
+            
+            # Get today's date
+            today = date.today()
+            
+            # Create a new database session for this task
+            async with AsyncSessionLocal() as db:
+                try:
+                    service = RecurringTransactionService(db)
+                    # Generate transactions for today
+                    transactions = await service.generate_transactions_for_date(today)
+                    
+                    if transactions:
+                        print(f"✅ Generated {len(transactions)} recurring transactions for {today}")
+                    else:
+                        print(f"ℹ️  No recurring transactions to generate for {today}")
+                except Exception as e:
+                    print(f"❌ Error generating recurring transactions: {e}")
+                    import traceback
+                    traceback.print_exc()
+                finally:
+                    await db.close()
+        except Exception as e:
+            print(f"❌ Error in recurring transactions scheduler: {e}")
+            import traceback
+            traceback.print_exc()
+            # Wait a bit before retrying
+            await asyncio.sleep(60 * 60)  # Wait 1 hour before retrying
 
 
 app = create_app()

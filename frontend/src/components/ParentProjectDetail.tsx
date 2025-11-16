@@ -1274,10 +1274,21 @@ export default function ParentProjectDetail() {
         {parentProject.image_url && (
           <div className="mb-6 rounded-lg overflow-hidden">
             {(() => {
+              const rawUrl = parentProject.image_url
+              // If backend already returned full URL (S3 / CloudFront), use as-is
+              if (rawUrl.startsWith('http')) {
+                return (
+                  <img
+                    src={rawUrl}
+                    alt={parentProject.name}
+                    className="w-full h-64 object-cover"
+                  />
+                )
+              }
               const apiUrl = import.meta.env.VITE_API_URL
               // @ts-ignore
               const baseUrl = apiUrl.replace('/api/v1', '')
-              const imageUrl = `${baseUrl}/uploads/${parentProject.image_url}`
+              const imageUrl = `${baseUrl}/uploads/${rawUrl}`
               return (
                 <img
                   src={imageUrl}

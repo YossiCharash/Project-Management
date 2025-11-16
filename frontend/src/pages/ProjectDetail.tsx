@@ -12,6 +12,32 @@ import CreateTransactionModal from '../components/CreateTransactionModal'
 import { useAppDispatch, useAppSelector } from '../utils/hooks'
 import { fetchSuppliers } from '../store/slices/suppliersSlice'
 
+const CATEGORY_LABELS: Record<string, string> = {
+  CLEANING: 'ניקיון',
+  'ניקיון': 'ניקיון',
+  ELECTRICITY: 'חשמל',
+  'חשמל': 'חשמל',
+  INSURANCE: 'ביטוח',
+  'ביטוח': 'ביטוח',
+  GARDENING: 'גינון',
+  'גינון': 'גינון',
+  OTHER: 'אחר',
+  'אחר': 'אחר'
+}
+
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  STANDING_ORDER: 'הוראת קבע',
+  'הוראת קבע': 'הוראת קבע',
+  CREDIT: 'אשראי',
+  'אשראי': 'אשראי',
+  CHECK: 'שיק',
+  'שיק': 'שיק',
+  CASH: 'מזומן',
+  'מזומן': 'מזומן',
+  BANK_TRANSFER: 'העברה בנקאית',
+  'העברה בנקאית': 'העברה בנקאית'
+}
+
 interface Transaction {
   id: number
   type: 'Income' | 'Expense'
@@ -23,6 +49,7 @@ interface Transaction {
   notes?: string | null
   subproject_id?: number | null
   is_exceptional?: boolean
+  is_generated?: boolean
   supplier_id?: number | null
   created_by_user_id?: number | null
   created_by_user?: {
@@ -67,6 +94,7 @@ export default function ProjectDetail() {
   })
   const [startDate, setStartDate] = useState<string>('')
   const [endDate, setEndDate] = useState<string>('')
+  const [categoryFilter, setCategoryFilter] = useState<string>('all')
 
   const [editTransactionModalOpen, setEditTransactionModalOpen] = useState(false)
   const [selectedTransactionForEdit, setSelectedTransactionForEdit] = useState<any | null>(null)
@@ -119,6 +147,7 @@ export default function ProjectDetail() {
   } | null>(null)
   const [hasFund, setHasFund] = useState(false)
   const [fundLoading, setFundLoading] = useState(false)
+  const [fundCategoryFilter, setFundCategoryFilter] = useState<string>('all')
 
   const load = async () => {
     if (!id) return
@@ -126,6 +155,14 @@ export default function ProjectDetail() {
     setLoading(true)
     try {
       const { data } = await api.get(`/transactions/project/${id}`)
+      console.log('📊 Loaded transactions from /transactions/project:', data?.length || 0)
+      if (data && data.length > 0) {
+        const withIsGenerated = data.filter((t: any) => t.is_generated === true)
+        console.log('🔄 Transactions with is_generated=true:', withIsGenerated.length)
+        if (withIsGenerated.length > 0) {
+          console.log('🔄 Sample recurring transaction:', withIsGenerated[0])
+        }
+      }
       setTxs(data || [])
     } catch (err: any) {
       console.error('Error loading transactions:', err)
@@ -163,6 +200,14 @@ export default function ProjectDetail() {
       })
       
       setExpenseCategories(categoriesData || [])
+      console.log('📊 Loaded transactions from ReportAPI:', transactionsData?.length || 0)
+      if (transactionsData && transactionsData.length > 0) {
+        const withIsGenerated = transactionsData.filter((t: any) => t.is_generated === true)
+        console.log('🔄 Transactions with is_generated=true:', withIsGenerated.length)
+        if (withIsGenerated.length > 0) {
+          console.log('🔄 Sample recurring transaction:', withIsGenerated[0])
+        }
+      }
       setTxs(transactionsData || [])
       setProjectBudgets(budgetsData || [])
     } catch (err: any) {
@@ -206,10 +251,16 @@ export default function ProjectDetail() {
         projectBudget: { budget_monthly: data.budget_monthly || 0, budget_annual: data.budget_annual || 0 }
       })
       if (data.image_url) {
-        const apiUrl = import.meta.env.VITE_API_URL
-        // @ts-ignore
-        const baseUrl = apiUrl.replace('/api/v1', '')
-        setProjectImageUrl(`${baseUrl}/uploads/${data.image_url}`)
+        // Backend now returns full S3 URL in image_url for new uploads.
+        // For backward compatibility, if it's a relative path we still prefix with /uploads.
+        if (data.image_url.startsWith('http')) {
+          setProjectImageUrl(data.image_url)
+        } else {
+          const apiUrl = import.meta.env.VITE_API_URL
+          // @ts-ignore
+          const baseUrl = apiUrl.replace('/api/v1', '')
+          setProjectImageUrl(`${baseUrl}/uploads/${data.image_url}`)
+        }
       }
       // Check if project has fund and load fund data
       const hasFundFlag = data.has_fund || false
@@ -261,14 +312,28 @@ export default function ProjectDetail() {
   useEffect(() => {
     if (id) {
       loadProjectInfo()
-      load() // Load transactions list
-      loadChartsData()
+      // Load transactions list first, then charts data
+      load().then(() => {
+        loadChartsData()
+      })
     }
   }, [id])
 
   useEffect(() => {
     dispatch(fetchSuppliers())
   }, [dispatch])
+
+  // Reload project info when project is updated (e.g., after editing in modal)
+  useEffect(() => {
+    const handleProjectUpdated = (event: CustomEvent) => {
+      if (event.detail?.projectId && id && event.detail.projectId === parseInt(id)) {
+        loadProjectInfo()
+      }
+    }
+
+    window.addEventListener('projectUpdated', handleProjectUpdated as EventListener)
+    return () => window.removeEventListener('projectUpdated', handleProjectUpdated as EventListener)
+  }, [id])
 
   const handleDeleteBudget = async (budgetId: number) => {
     if (!confirm('האם אתה בטוח שברצונך למחוק את התקציב?')) {
@@ -364,7 +429,8 @@ export default function ProjectDetail() {
     
     return dateMatches &&
       (filterType === 'all' || t.type === filterType) &&
-      (filterExceptional === 'all' || t.is_exceptional)
+      (filterExceptional === 'all' || t.is_exceptional) &&
+      (categoryFilter === 'all' || t.category === categoryFilter)
   })
 
   const handleDeleteTransaction = async (transactionId: number) => {
@@ -392,6 +458,7 @@ export default function ProjectDetail() {
     console.log('🔍 calculateFinancialSummary called with:', {
       projectStartDate,
       projectBudget,
+      projectBudgetsCount: projectBudgets.length,
       txsCount: txs.length
     })
     
@@ -410,12 +477,15 @@ export default function ProjectDetail() {
     }
     
     // Filter transactions from calculationStartDate to now
+    // Exclude fund transactions (from_fund == true) - only include regular transactions
     const summaryTransactions = txs.filter(t => {
       const txDate = new Date(t.tx_date)
-      return txDate >= calculationStartDate && txDate <= now
+      const isInDateRange = txDate >= calculationStartDate && txDate <= now
+      const isNotFromFund = !t.from_fund  // Exclude fund transactions
+      return isInDateRange && isNotFromFund
     })
     
-    // Calculate actual transaction income and expense
+    // Calculate actual transaction income and expense (excluding fund transactions)
     const transactionIncome = summaryTransactions
       .filter(t => t.type === 'Income')
       .reduce((s, t) => s + Number(t.amount || 0), 0)
@@ -424,9 +494,9 @@ export default function ProjectDetail() {
       .filter(t => t.type === 'Expense')
       .reduce((s, t) => s + Number(t.amount || 0), 0)
     
-    // Calculate budget income from project start_date to now
+    // Calculate project budget income from project start_date to now
     // Prioritize monthly budget if both are set
-    let budgetIncome = 0
+    let projectBudgetIncome = 0
     if (projectBudget.budget_monthly > 0) {
       // If monthly budget, calculate how many months from project start_date to now
       // Each month's budget is added on the 1st of that month
@@ -463,18 +533,142 @@ export default function ProjectDetail() {
         calculatedIncome: projectBudget.budget_monthly * monthCount
       })
       
-      budgetIncome = projectBudget.budget_monthly * monthCount
+      projectBudgetIncome = projectBudget.budget_monthly * monthCount
     } else if (projectBudget.budget_annual > 0) {
       // If only annual budget is set (and no monthly), calculate proportionally
       const daysInPeriod = Math.floor((now.getTime() - calculationStartDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
       const daysInYear = 365
-      budgetIncome = (projectBudget.budget_annual / daysInYear) * daysInPeriod
+      projectBudgetIncome = (projectBudget.budget_annual / daysInYear) * daysInPeriod
     }
     
-    const finalIncome = transactionIncome + budgetIncome
+    // Calculate category budgets income
+    // Include all active category budgets (Monthly or Annual)
+    let categoryBudgetsIncome = 0
+    console.log('📊 Calculating category budgets income from', projectBudgets.length, 'budgets')
+    
+    for (const budget of projectBudgets) {
+      if (!budget.is_active) {
+        console.log(`⏭️ Skipping inactive budget ${budget.id} (${budget.category})`)
+        continue
+      }
+      
+      let budgetAmount = 0
+      
+      if (budget.period_type === 'Monthly') {
+        // For monthly budgets, calculate how many months from budget start_date (or project start_date) to now
+        let budgetStartMonth: Date
+        if (budget.start_date) {
+          const budgetStart = new Date(budget.start_date)
+          budgetStartMonth = new Date(budgetStart.getFullYear(), budgetStart.getMonth(), 1)
+          console.log(`📅 Budget ${budget.id} (${budget.category}): Using budget start_date ${budget.start_date} -> startMonth:`, budgetStartMonth)
+        } else if (projectStartDate) {
+          const projectStart = new Date(projectStartDate)
+          budgetStartMonth = new Date(projectStart.getFullYear(), projectStart.getMonth(), 1)
+          console.log(`📅 Budget ${budget.id} (${budget.category}): No budget start_date, using project start_date ${projectStartDate} -> startMonth:`, budgetStartMonth)
+        } else {
+          budgetStartMonth = new Date(calculationStartDate.getFullYear(), calculationStartDate.getMonth(), 1)
+          console.log(`📅 Budget ${budget.id} (${budget.category}): No dates, using calculationStartDate -> startMonth:`, budgetStartMonth)
+        }
+        
+        // Check if budget has end_date and if we're past it
+        if (budget.end_date) {
+          const budgetEnd = new Date(budget.end_date)
+          if (now > budgetEnd) {
+            // Budget has ended, calculate up to end_date
+            const endMonth = new Date(budgetEnd.getFullYear(), budgetEnd.getMonth(), 1)
+            let monthCount = 0
+            let tempMonth = new Date(budgetStartMonth)
+            while (tempMonth <= endMonth) {
+              monthCount++
+              tempMonth = new Date(tempMonth.getFullYear(), tempMonth.getMonth() + 1, 1)
+            }
+            budgetAmount = budget.amount * monthCount
+            console.log(`📊 Budget ${budget.id} (${budget.category}): Monthly, ended, monthCount=${monthCount}, amount=${budgetAmount}`)
+          } else {
+            // Budget is still active, calculate up to now
+            const endMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+            let monthCount = 0
+            let tempMonth = new Date(budgetStartMonth)
+            while (tempMonth <= endMonth) {
+              monthCount++
+              tempMonth = new Date(tempMonth.getFullYear(), tempMonth.getMonth() + 1, 1)
+            }
+            budgetAmount = budget.amount * monthCount
+            console.log(`📊 Budget ${budget.id} (${budget.category}): Monthly, active, monthCount=${monthCount}, amount=${budgetAmount}`)
+          }
+        } else {
+          // No end_date, calculate up to now
+          const endMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+          let monthCount = 0
+          let tempMonth = new Date(budgetStartMonth)
+          while (tempMonth <= endMonth) {
+            monthCount++
+            tempMonth = new Date(tempMonth.getFullYear(), tempMonth.getMonth() + 1, 1)
+          }
+          budgetAmount = budget.amount * monthCount
+          console.log(`📊 Budget ${budget.id} (${budget.category}): Monthly, no end_date, monthCount=${monthCount}, amount=${budgetAmount}`)
+        }
+      } else if (budget.period_type === 'Annual') {
+        // For annual budgets, calculate by full months (not proportional)
+        // Each month's portion is added on the 1st of that month
+        // Annual budget / 12 = monthly amount
+        const monthlyAmount = budget.amount / 12
+        
+        let budgetStartMonth: Date
+        if (budget.start_date) {
+          const budgetStart = new Date(budget.start_date)
+          budgetStartMonth = new Date(budgetStart.getFullYear(), budgetStart.getMonth(), 1)
+          console.log(`📅 Budget ${budget.id} (${budget.category}): Using budget start_date ${budget.start_date} -> startMonth:`, budgetStartMonth)
+        } else if (projectStartDate) {
+          const projectStart = new Date(projectStartDate)
+          budgetStartMonth = new Date(projectStart.getFullYear(), projectStart.getMonth(), 1)
+          console.log(`📅 Budget ${budget.id} (${budget.category}): No budget start_date, using project start_date ${projectStartDate} -> startMonth:`, budgetStartMonth)
+        } else {
+          budgetStartMonth = new Date(calculationStartDate.getFullYear(), calculationStartDate.getMonth(), 1)
+          console.log(`📅 Budget ${budget.id} (${budget.category}): No dates, using calculationStartDate -> startMonth:`, budgetStartMonth)
+        }
+        
+        // Check if budget has end_date and if we're past it
+        let effectiveEndMonth: Date
+        if (budget.end_date) {
+          const budgetEnd = new Date(budget.end_date)
+          if (now > budgetEnd) {
+            // Budget has ended, calculate up to end_date
+            effectiveEndMonth = new Date(budgetEnd.getFullYear(), budgetEnd.getMonth(), 1)
+            console.log(`📅 Budget ${budget.id} (${budget.category}): Budget ended, using end_date ${budget.end_date} -> endMonth:`, effectiveEndMonth)
+          } else {
+            // Budget is still active, calculate up to now
+            effectiveEndMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+            console.log(`📅 Budget ${budget.id} (${budget.category}): Budget active, using now -> endMonth:`, effectiveEndMonth)
+          }
+        } else {
+          // No end_date, calculate up to now
+          effectiveEndMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+          console.log(`📅 Budget ${budget.id} (${budget.category}): No end_date, using now -> endMonth:`, effectiveEndMonth)
+        }
+        
+        // Count months from budgetStartMonth to effectiveEndMonth (inclusive)
+        let monthCount = 0
+        let tempMonth = new Date(budgetStartMonth)
+        while (tempMonth <= effectiveEndMonth) {
+          monthCount++
+          tempMonth = new Date(tempMonth.getFullYear(), tempMonth.getMonth() + 1, 1)
+        }
+        
+        budgetAmount = monthlyAmount * monthCount
+        console.log(`📊 Budget ${budget.id} (${budget.category}): Annual (${budget.amount}/year = ${monthlyAmount}/month), monthCount=${monthCount}, amount=${budgetAmount}`)
+      }
+      
+      categoryBudgetsIncome += budgetAmount
+    }
+    
+    console.log('📊 Category budgets total income:', categoryBudgetsIncome)
+    
+    const finalIncome = transactionIncome + projectBudgetIncome + categoryBudgetsIncome
     console.log('💰 Final calculation:', {
       transactionIncome,
-      budgetIncome,
+      projectBudgetIncome,
+      categoryBudgetsIncome,
       finalIncome,
       expense: transactionExpense
     })
@@ -686,10 +880,25 @@ export default function ProjectDetail() {
               {/* Fund Transactions Table */}
               {fundData.transactions.length > 0 ? (
                 <div className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
-                  <div className="bg-gray-50 dark:bg-gray-700 px-6 py-4 border-b border-gray-200 dark:border-gray-600">
+                  <div className="bg-gray-50 dark:bg-gray-700 px-6 py-4 border-b border-gray-200 dark:border-gray-600 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                     <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
                       עסקאות מהקופה
                     </h3>
+                    <div className="flex items-center gap-3">
+                      <label className="text-sm text-gray-700 dark:text-gray-300">
+                        <span className="ml-2">סינון לפי קטגוריה:</span>
+                        <select
+                          className="mt-1 md:mt-0 px-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white"
+                          value={fundCategoryFilter}
+                          onChange={(e) => setFundCategoryFilter(e.target.value)}
+                        >
+                          <option value="all">כל הקטגוריות</option>
+                          {expenseCategoryOptions.map(option => (
+                            <option key={option} value={option}>{option}</option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full">
@@ -719,7 +928,9 @@ export default function ProjectDetail() {
                         </tr>
                       </thead>
                       <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                        {fundData.transactions.map((tx) => (
+                        {fundData.transactions
+                          .filter(tx => fundCategoryFilter === 'all' || tx.category === fundCategoryFilter)
+                          .map((tx) => (
                           <tr key={tx.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                             <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-gray-900 dark:text-white">
                               {new Date(tx.tx_date).toLocaleDateString('he-IL', {
@@ -733,7 +944,9 @@ export default function ProjectDetail() {
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
                               {tx.category ? (
-                                <span className="text-gray-500 dark:text-gray-400">{tx.category}</span>
+                                <span className="text-gray-500 dark:text-gray-400">
+                                  {CATEGORY_LABELS[tx.category] || tx.category}
+                                </span>
                               ) : (
                                 <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs font-medium">
                                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1139,24 +1352,41 @@ export default function ProjectDetail() {
               רשימת עסקאות
             </h3>
             <div className="flex items-center gap-4">
-              <select
-                className="px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                value={filterType}
-                onChange={e => setFilterType(e.target.value as any)}
-              >
-                <option value="all">הכל</option>
-                <option value="Income">הכנסות</option>
-                <option value="Expense">הוצאות</option>
-              </select>
-              <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
-                <input
-                  type="checkbox"
-                  checked={filterExceptional === 'only'}
-                  onChange={e => setFilterExceptional(e.target.checked ? 'only' : 'all')}
-                  className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
-                />
-                רק חריגות
-              </label>
+              <div className="flex items-center gap-3">
+                <select
+                  className="px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={filterType}
+                  onChange={e => setFilterType(e.target.value as any)}
+                >
+                  <option value="all">הכל</option>
+                  <option value="Income">הכנסות</option>
+                  <option value="Expense">הוצאות</option>
+                </select>
+                <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                  <input
+                    type="checkbox"
+                    checked={filterExceptional === 'only'}
+                    onChange={e => setFilterExceptional(e.target.checked ? 'only' : 'all')}
+                    className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+                  />
+                  רק חריגות
+                </label>
+              </div>
+              <div>
+                <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                  <span>קטגוריה:</span>
+                  <select
+                    className="px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={categoryFilter}
+                    onChange={(e) => setCategoryFilter(e.target.value)}
+                  >
+                    <option value="all">כל הקטגוריות</option>
+                    {expenseCategoryOptions.map(option => (
+                      <option key={option} value={option}>{option}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
             </div>
           </div>
 
@@ -1270,7 +1500,6 @@ export default function ProjectDetail() {
               </thead>
               <tbody>
                 {filtered.map(t => {
-                  const transaction = t as any // Cast to access is_generated
                   return (
                   <tr key={t.id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700">
                     <td className="p-3">
@@ -1283,7 +1512,7 @@ export default function ProjectDetail() {
                           {t.type === 'Income' ? 'הכנסה' : 'הוצאה'}
                           {t.is_exceptional ? ' (חריגה)' : ''}
                         </span>
-                        {transaction.is_generated && (
+                        {t.is_generated && (
                           <span className="px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-300" title="נוצר אוטומטית מעסקה מחזורית">
                             🔄 מחזורי
                           </span>
@@ -1294,8 +1523,12 @@ export default function ProjectDetail() {
                     <td className={`p-3 font-semibold ${t.type === 'Income' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                       {Number(t.amount || 0).toFixed(2)} ₪
                     </td>
-                    <td className="p-3 text-gray-700 dark:text-gray-300">{t.category ?? '-'}</td>
-                    <td className="p-3 text-gray-700 dark:text-gray-300">{t.payment_method ?? '-'}</td>
+                    <td className="p-3 text-gray-700 dark:text-gray-300">
+                      {t.category ? (CATEGORY_LABELS[t.category] || t.category) : '-'}
+                    </td>
+                    <td className="p-3 text-gray-700 dark:text-gray-300">
+                      {t.payment_method ? (PAYMENT_METHOD_LABELS[t.payment_method] || t.payment_method) : '-'}
+                    </td>
                     <td className="p-3 text-gray-700 dark:text-gray-300">
                       {(() => {
                         const supplierId = t.supplier_id
@@ -1312,7 +1545,7 @@ export default function ProjectDetail() {
                           <span className="font-medium">{t.created_by_user.full_name}</span>
                           <span className="text-xs text-gray-500 dark:text-gray-400">{t.created_by_user.email}</span>
                         </div>
-                      ) : transaction.is_generated ? (
+                      ) : t.is_generated ? (
                         <span className="text-gray-400 dark:text-gray-500">מערכת (מחזורי)</span>
                       ) : (
                         <span className="text-gray-400 dark:text-gray-500">מערכת</span>
