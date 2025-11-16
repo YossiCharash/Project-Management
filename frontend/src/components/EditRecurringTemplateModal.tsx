@@ -165,7 +165,19 @@ const EditRecurringTemplateModal: React.FC<EditRecurringTemplateModalProps> = ({
             </label>
             <select
               value={formData.category}
-              onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+              onChange={(e) => {
+                const newCategory = e.target.value
+                const candidates = suppliers.filter(
+                  s => s.is_active && s.category === newCategory
+                )
+                setFormData({
+                  ...formData,
+                  category: newCategory,
+                  // auto-select only supplier if exactly one exists
+                  supplier_id:
+                    newCategory && candidates.length === 1 ? candidates[0].id : null,
+                })
+              }}
               className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
             >
               <option value="">בחר קטגוריה</option>
@@ -188,8 +200,17 @@ const EditRecurringTemplateModal: React.FC<EditRecurringTemplateModalProps> = ({
               onChange={(e) => setFormData({ ...formData, supplier_id: parseInt(e.target.value) || null })}
               className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
             >
-              <option value="0">בחר ספק</option>
-              {suppliers.filter(s => s.is_active).map(s => (
+              <option value="0">
+                {formData.category ? 'בחר ספק' : 'בחר קודם קטגוריה'}
+              </option>
+              {suppliers
+                .filter(
+                  s =>
+                    s.is_active &&
+                    !!formData.category &&
+                    s.category === formData.category
+                )
+                .map(s => (
                 <option key={s.id} value={s.id}>{s.name}</option>
               ))}
             </select>

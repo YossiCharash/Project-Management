@@ -7,10 +7,12 @@ class SupplierBase(BaseModel):
     contact_email: EmailStr | None = None
     phone: str | None = None
     annual_budget: float | None = None
+    category: str | None = None
 
 
 class SupplierCreate(SupplierBase):
-    pass
+    # For creation, category is mandatory
+    category: str
 
 
 class SupplierUpdate(BaseModel):
@@ -18,6 +20,7 @@ class SupplierUpdate(BaseModel):
     contact_email: EmailStr | None = None
     phone: str | None = None
     annual_budget: float | None = None
+    category: str | None = None
 
 
 class SupplierOut(SupplierBase):

@@ -507,9 +507,20 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
                         if (e.target.value === '__FUND__') {
                           setFromFund(true)
                           setCategory('')
+                          setSupplierId('')
                         } else {
                           setFromFund(false)
-                          setCategory(e.target.value)
+                          const newCategory = e.target.value
+                          setCategory(newCategory)
+                          // reset supplier when category changes
+                          setSupplierId('')
+                          // If there is exactly one active supplier in this category, select it automatically
+                          const candidates = suppliers.filter(
+                            s => s.is_active && s.category === newCategory
+                          )
+                          if (candidates.length === 1) {
+                            setSupplierId(candidates[0].id)
+                          }
                         }
                       }}
                     >
@@ -580,8 +591,12 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
                         onChange={e => setSupplierId(e.target.value === '' ? '' : Number(e.target.value))}
                         required={!fromFund && type === 'Expense'}
                       >
-                        <option value="">בחר ספק</option>
-                        {suppliers.filter(s => s.is_active).map(s => (
+                        <option value="">
+                          {category ? 'בחר ספק' : 'בחר קודם קטגוריה'}
+                        </option>
+                        {suppliers
+                          .filter(s => s.is_active && !!category && s.category === category)
+                          .map(s => (
                           <option key={s.id} value={s.id}>{s.name}</option>
                         ))}
                       </select>
@@ -746,7 +761,24 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">קטגוריה</label>
                     <select
                       value={recurringFormData.category || ''}
-                      onChange={(e) => setRecurringFormData({ ...recurringFormData, category: e.target.value || '' })}
+                      onChange={(e) =>
+                        {
+                          const newCategory = e.target.value || ''
+                          // Find suppliers in this category
+                          const candidates = suppliers.filter(
+                            s => s.is_active && s.category === newCategory
+                          )
+                          setRecurringFormData({
+                            ...recurringFormData,
+                            category: newCategory,
+                            // If exactly one supplier, select it; otherwise reset
+                            supplier_id:
+                              newCategory && candidates.length === 1
+                                ? candidates[0].id
+                                : 0,
+                          })
+                        }
+                      }
                       className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                     >
                       <option value="">בחר קטגוריה</option>
@@ -768,8 +800,17 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
                       onChange={(e) => setRecurringFormData({ ...recurringFormData, supplier_id: parseInt(e.target.value) || 0 })}
                       className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                     >
-                      <option value="0">בחר ספק</option>
-                      {suppliers.filter(s => s.is_active).map(s => (
+                      <option value="0">
+                        {recurringFormData.category ? 'בחר ספק' : 'בחר קודם קטגוריה'}
+                      </option>
+                      {suppliers
+                        .filter(
+                          s =>
+                            s.is_active &&
+                            !!recurringFormData.category &&
+                            s.category === recurringFormData.category
+                        )
+                        .map(s => (
                         <option key={s.id} value={s.id}>{s.name}</option>
                       ))}
                     </select>

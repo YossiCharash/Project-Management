@@ -142,8 +142,14 @@ async def sync_database_schema():
             changes_made |= await check_and_add_column(session, "projects", "relation_project", "INTEGER", nullable=True)
             changes_made |= await check_and_add_column(session, "projects", "image_url", "VARCHAR(500)", nullable=True)
             
-            # 4. Sync transactions table
-            print("\n[4/6] Syncing transactions table...")
+            # 4. Sync suppliers table
+            print("\n[4/6] Syncing suppliers table...")
+            changes_made |= await check_and_add_column(session, "suppliers", "category", "VARCHAR(255)", nullable=True)
+            if changes_made:
+                await check_and_create_index(session, "ix_suppliers_category", "suppliers", "category")
+            
+            # 5. Sync transactions table
+            print("\n[5/7] Syncing transactions table...")
             changes_made |= await check_and_add_column(session, "transactions", "supplier_id", "INTEGER", nullable=True)
             if changes_made:
                 await check_and_create_index(session, "ix_transactions_supplier_id", "transactions", "supplier_id")
@@ -163,15 +169,15 @@ async def sync_database_schema():
             if changes_made:
                 await check_and_create_index(session, "ix_transactions_from_fund", "transactions", "from_fund")
             
-            # 5. Sync supplier_documents table
-            print("\n[5/6] Syncing supplier_documents table...")
+            # 6. Sync supplier_documents table
+            print("\n[6/7] Syncing supplier_documents table...")
             changes_made |= await check_and_add_column(session, "supplier_documents", "transaction_id", "INTEGER", nullable=True)
             if changes_made:
                 await check_and_create_index(session, "ix_supplier_documents_transaction_id", "supplier_documents", "transaction_id")
                 await check_and_add_foreign_key(session, "supplier_documents_transaction_id_fkey", "supplier_documents", "transaction_id", "transactions")
             
-            # 6. Sync recurring_transaction_templates table
-            print("\n[6/6] Syncing recurring_transaction_templates table...")
+            # 7. Sync recurring_transaction_templates table
+            print("\n[7/7] Syncing recurring_transaction_templates table...")
             # Check if table exists first
             table_check = text("""
                 SELECT table_name 

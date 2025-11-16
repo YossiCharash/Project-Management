@@ -202,7 +202,21 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
               </label>
               <select
                 value={formData.category || ''}
-                onChange={(e) => setFormData({ ...formData, category: e.target.value || '' })}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    category: e.target.value || '',
+                    // reset or auto-select supplier when category changes
+                    supplier_id: (() => {
+                      const newCategory = e.target.value || ''
+                      if (!newCategory) return undefined
+                      const candidates = suppliers.filter(
+                        s => s.is_active && s.category === newCategory
+                      )
+                      return candidates.length === 1 ? candidates[0].id : undefined
+                    })(),
+                  })
+                }
                 className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
               >
                 <option value="">בחר קטגוריה</option>
@@ -242,8 +256,17 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                 onChange={(e) => setFormData({ ...formData, supplier_id: e.target.value === '' ? undefined : Number(e.target.value) })}
                 className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
               >
-                <option value="">בחר ספק</option>
-                {suppliers.filter(s => s.is_active).map(s => (
+                <option value="">
+                  {formData.category ? 'בחר ספק' : 'בחר קודם קטגוריה'}
+                </option>
+                {suppliers
+                  .filter(
+                    s =>
+                      s.is_active &&
+                      !!formData.category &&
+                      s.category === formData.category
+                  )
+                  .map(s => (
                   <option key={s.id} value={s.id}>{s.name}</option>
                 ))}
               </select>

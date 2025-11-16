@@ -34,7 +34,9 @@ interface Transaction {
 }
 
 export default function ProjectDetail() {
+  console.log('🚀🚀🚀 ProjectDetail component RENDERED 🚀🚀🚀')
   const { id } = useParams()
+  console.log('📋 ProjectDetail - id from params:', id)
   const navigate = useNavigate()
   const dispatch = useAppDispatch()
   const { items: suppliers } = useAppSelector(s => s.suppliers)
@@ -46,6 +48,14 @@ export default function ProjectDetail() {
   const [chartsLoading, setChartsLoading] = useState(false)
   const [projectImageUrl, setProjectImageUrl] = useState<string | null>(null)
   const [projectBudget, setProjectBudget] = useState<{ budget_monthly: number; budget_annual: number }>({ budget_monthly: 0, budget_annual: 0 })
+  const [projectStartDate, setProjectStartDate] = useState<string | null>(null)
+  
+  console.log('📊 ProjectDetail state:', {
+    id,
+    projectStartDate,
+    projectBudget,
+    txsCount: txs.length
+  })
 
 
   const [filterType, setFilterType] = useState<'all' | 'Income' | 'Expense'>('all')
@@ -174,11 +184,26 @@ export default function ProjectDetail() {
     if (!id) return
 
     try {
+      console.log('🔍🔍🔍 loadProjectInfo CALLED for project:', id)
       const { data } = await api.get(`/projects/${id}`)
+      console.log('📥📥📥 Project data loaded:', {
+        id: data.id,
+        name: data.name,
+        start_date: data.start_date,
+        budget_monthly: data.budget_monthly,
+        budget_annual: data.budget_annual
+      })
+      
       setProjectName(data.name || `פרויקט ${id}`)
       setProjectBudget({
         budget_monthly: data.budget_monthly || 0,
         budget_annual: data.budget_annual || 0
+      })
+      setProjectStartDate(data.start_date || null)
+      
+      console.log('✅ State updated:', {
+        projectStartDate: data.start_date,
+        projectBudget: { budget_monthly: data.budget_monthly || 0, budget_annual: data.budget_annual || 0 }
       })
       if (data.image_url) {
         const apiUrl = import.meta.env.VITE_API_URL
@@ -359,21 +384,112 @@ export default function ProjectDetail() {
     }
   }
 
-  // Calculate income from transactions plus budget
-  const transactionIncome = filtered
-    .filter(t => t.type === 'Income')
-    .reduce((s, t) => s + Number(t.amount || 0), 0)
+  // Calculate income and expense from project start_date or 1 year back (whichever is later) until now
+  // This is separate from the filtered transactions which are used for the transactions list
+  const calculateFinancialSummary = () => {
+    // Force console log to appear
+    console.log('🔍🔍🔍 calculateFinancialSummary CALLED 🔍🔍🔍')
+    console.log('🔍 calculateFinancialSummary called with:', {
+      projectStartDate,
+      projectBudget,
+      txsCount: txs.length
+    })
+    
+    const now = new Date()
+    const oneYearAgo = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate())
+    
+    // Calculate start date: max(project.start_date, 1 year ago)
+    let calculationStartDate: Date
+    if (projectStartDate) {
+      const projectStart = new Date(projectStartDate)
+      calculationStartDate = projectStart > oneYearAgo ? projectStart : oneYearAgo
+      console.log('📅 Project start date found:', projectStartDate, '-> calculationStartDate:', calculationStartDate)
+    } else {
+      calculationStartDate = oneYearAgo
+      console.log('⚠️ No project start date, using oneYearAgo:', oneYearAgo)
+    }
+    
+    // Filter transactions from calculationStartDate to now
+    const summaryTransactions = txs.filter(t => {
+      const txDate = new Date(t.tx_date)
+      return txDate >= calculationStartDate && txDate <= now
+    })
+    
+    // Calculate actual transaction income and expense
+    const transactionIncome = summaryTransactions
+      .filter(t => t.type === 'Income')
+      .reduce((s, t) => s + Number(t.amount || 0), 0)
+    
+    const transactionExpense = summaryTransactions
+      .filter(t => t.type === 'Expense')
+      .reduce((s, t) => s + Number(t.amount || 0), 0)
+    
+    // Calculate budget income from project start_date to now
+    // Prioritize monthly budget if both are set
+    let budgetIncome = 0
+    if (projectBudget.budget_monthly > 0) {
+      // If monthly budget, calculate how many months from project start_date to now
+      // Each month's budget is added on the 1st of that month
+      // ALWAYS use project.start_date if available, NOT calculationStartDate
+      let startMonth: Date
+      if (projectStartDate) {
+        const projectStart = new Date(projectStartDate)
+        // Use the 1st of the project's start month
+        startMonth = new Date(projectStart.getFullYear(), projectStart.getMonth(), 1)
+        console.log('📅 Using project start date:', projectStartDate, '-> startMonth:', startMonth)
+      } else {
+        // Only use calculationStartDate if no project start date
+        startMonth = new Date(calculationStartDate.getFullYear(), calculationStartDate.getMonth(), 1)
+        console.log('⚠️ No project start date, using calculationStartDate:', calculationStartDate, '-> startMonth:', startMonth)
+      }
+      
+      // Always include current month (since we're past the 1st of it)
+      const endMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+      console.log('📅 endMonth:', endMonth, 'now:', now)
+      
+      // Count months from startMonth to endMonth (inclusive)
+      let monthCount = 0
+      let tempMonth = new Date(startMonth)
+      while (tempMonth <= endMonth) {
+        monthCount++
+        tempMonth = new Date(tempMonth.getFullYear(), tempMonth.getMonth() + 1, 1)
+      }
+      
+      console.log('📊 Monthly budget calculation:', {
+        budget_monthly: projectBudget.budget_monthly,
+        monthCount,
+        startMonth,
+        endMonth,
+        calculatedIncome: projectBudget.budget_monthly * monthCount
+      })
+      
+      budgetIncome = projectBudget.budget_monthly * monthCount
+    } else if (projectBudget.budget_annual > 0) {
+      // If only annual budget is set (and no monthly), calculate proportionally
+      const daysInPeriod = Math.floor((now.getTime() - calculationStartDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
+      const daysInYear = 365
+      budgetIncome = (projectBudget.budget_annual / daysInYear) * daysInPeriod
+    }
+    
+    const finalIncome = transactionIncome + budgetIncome
+    console.log('💰 Final calculation:', {
+      transactionIncome,
+      budgetIncome,
+      finalIncome,
+      expense: transactionExpense
+    })
+    
+    return {
+      income: finalIncome,
+      expense: transactionExpense
+    }
+  }
   
-  // Add budget to income (use annual if set, otherwise monthly * 12)
-  const budgetIncome = (projectBudget.budget_annual || 0) > 0 
-    ? projectBudget.budget_annual 
-    : (projectBudget.budget_monthly || 0) * 12
+  const financialSummary = calculateFinancialSummary()
+  const income = financialSummary.income
+  const expense = financialSummary.expense
   
-  const income = transactionIncome + budgetIncome
-
-  const expense = filtered
-    .filter(t => t.type === 'Expense')
-    .reduce((s, t) => s + Number(t.amount || 0), 0)
+  console.log('📊 Financial Summary Result:', { income, expense })
 
   if (!id) {
     return (

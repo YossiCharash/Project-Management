@@ -12,6 +12,7 @@ export default function Suppliers() {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
+  const [category, setCategory] = useState('')
   const [annualBudget, setAnnualBudget] = useState<number | ''>('')
   const [formError, setFormError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -28,14 +29,24 @@ export default function Suppliers() {
       setFormError('שם הספק הוא שדה חובה')
       return
     }
+    if (!category || category.trim() === '') {
+      setFormError('קטגוריה היא שדה חובה')
+      return
+    }
 
     setSaving(true)
     try {
-      const result = await dispatch(createSupplier({ name: name.trim(), contact_email: email.trim() || undefined, phone: phone.trim() || undefined, annual_budget: annualBudget === '' ? undefined : Number(annualBudget) }))
+      const result = await dispatch(createSupplier({
+        name: name.trim(),
+        contact_email: email.trim() || undefined,
+        phone: phone.trim() || undefined,
+        category: category || undefined,
+        annual_budget: annualBudget === '' ? undefined : Number(annualBudget)
+      }))
       if (createSupplier.rejected.match(result)) {
         setFormError(result.payload as string || 'שגיאה ביצירת ספק')
       } else {
-        setName(''); setEmail(''); setPhone(''); setAnnualBudget('')
+        setName(''); setEmail(''); setPhone(''); setCategory(''); setAnnualBudget('')
         setFormError(null)
       }
     } catch (err: any) {
@@ -46,8 +57,17 @@ export default function Suppliers() {
   }
 
   const onUpdate = async (id: number) => {
-    await dispatch(updateSupplier({ id, changes: { name, contact_email: email || undefined, phone: phone || undefined, annual_budget: annualBudget === '' ? undefined : Number(annualBudget) } }))
-    setEditId(null); setName(''); setEmail(''); setPhone(''); setAnnualBudget('')
+    await dispatch(updateSupplier({
+      id,
+      changes: {
+        name,
+        contact_email: email || undefined,
+        phone: phone || undefined,
+        category: category || undefined,
+        annual_budget: annualBudget === '' ? undefined : Number(annualBudget)
+      }
+    }))
+    setEditId(null); setName(''); setEmail(''); setPhone(''); setCategory(''); setAnnualBudget('')
   }
 
   const onDelete = async (id: number) => {
@@ -62,6 +82,7 @@ export default function Suppliers() {
     setName(s.name)
     setEmail(s.contact_email ?? '')
     setPhone(s.phone ?? '')
+    setCategory(s.category ?? '')
     setAnnualBudget(s.annual_budget ?? '')
   }
 
@@ -94,6 +115,18 @@ export default function Suppliers() {
             value={phone} 
             onChange={e=>setPhone(e.target.value)} 
           />
+          <select
+            className="border rounded p-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white border-gray-300 dark:border-gray-600"
+            value={category}
+            onChange={e => setCategory(e.target.value)}
+          >
+            <option value="">קטגוריה</option>
+            <option value="ניקיון">ניקיון</option>
+            <option value="חשמל">חשמל</option>
+            <option value="ביטוח">ביטוח</option>
+            <option value="גינון">גינון</option>
+            <option value="אחר">אחר</option>
+          </select>
           <input 
             className="border rounded p-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white border-gray-300 dark:border-gray-600" 
             placeholder="תקציב שנתי" 
@@ -129,6 +162,7 @@ export default function Suppliers() {
                 <th className="p-2 text-gray-900 dark:text-white">שם</th>
                 <th className="p-2 text-gray-900 dark:text-white">אימייל</th>
                 <th className="p-2 text-gray-900 dark:text-white">טלפון</th>
+                <th className="p-2 text-gray-900 dark:text-white">קטגוריה</th>
                 <th className="p-2 text-gray-900 dark:text-white">תקציב שנתי</th>
                 <th className="p-2 text-gray-900 dark:text-white">מסמכים</th>
                 <th className="p-2 text-gray-900 dark:text-white"></th>
@@ -140,6 +174,24 @@ export default function Suppliers() {
                   <td className="p-2 text-gray-900 dark:text-white">{editId===s.id ? <input className="border border-gray-300 dark:border-gray-600 p-1 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded" value={name} onChange={e=>setName(e.target.value)} /> : s.name}</td>
                   <td className="p-2 text-gray-900 dark:text-white">{editId===s.id ? <input className="border border-gray-300 dark:border-gray-600 p-1 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded" value={email} onChange={e=>setEmail(e.target.value)} /> : (s.contact_email ?? '')}</td>
                   <td className="p-2 text-gray-900 dark:text-white">{editId===s.id ? <input className="border border-gray-300 dark:border-gray-600 p-1 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded" value={phone} onChange={e=>setPhone(e.target.value)} /> : (s.phone ?? '')}</td>
+                  <td className="p-2 text-gray-900 dark:text-white">
+                    {editId===s.id ? (
+                      <select
+                        className="border border-gray-300 dark:border-gray-600 p-1 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded"
+                        value={category}
+                        onChange={e => setCategory(e.target.value)}
+                      >
+                        <option value="">קטגוריה</option>
+                        <option value="ניקיון">ניקיון</option>
+                        <option value="חשמל">חשמל</option>
+                        <option value="ביטוח">ביטוח</option>
+                        <option value="גינון">גינון</option>
+                        <option value="אחר">אחר</option>
+                      </select>
+                    ) : (
+                      s.category ?? ''
+                    )}
+                  </td>
                   <td className="p-2 text-gray-900 dark:text-white">{editId===s.id ? <input className="border border-gray-300 dark:border-gray-600 p-1 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded" type="number" value={annualBudget} onChange={e=>setAnnualBudget(e.target.value === '' ? '' : Number(e.target.value))} /> : (s.annual_budget ?? '')}</td>
                   <td className="p-2">
                     <button

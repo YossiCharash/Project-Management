@@ -1,4 +1,15 @@
 // TypeScript interfaces generated from backend models
+export interface Supplier {
+  id: number
+  name: string
+  contact_email?: string | null
+  phone?: string | null
+  annual_budget?: number | null
+  category?: string | null
+  is_active: boolean
+  created_at: string
+}
+
 export interface Project {
   id: number
   name: string

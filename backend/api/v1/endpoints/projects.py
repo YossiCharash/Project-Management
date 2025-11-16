@@ -601,6 +601,8 @@ async def get_parent_project_financial_summary(
         from sqlalchemy import select, and_, func
         from backend.models.project import Project
         from backend.models.transaction import Transaction
+        from backend.services.project_service import calculate_start_date
+        from datetime import date as date_type
         
         # Get parent project
         parent_result = await db.execute(
@@ -622,6 +624,14 @@ async def get_parent_project_financial_summary(
             )
         )
         subprojects = subprojects_result.scalars().all()
+        
+        # If no start_date provided, use project start_date or 1 year back (whichever is later)
+        if not start_date:
+            start_date = calculate_start_date(parent_project.start_date)
+        
+        # If no end_date provided, use today
+        if not end_date:
+            end_date = date_type.today()
         
         # Build date filter
         date_conditions = []

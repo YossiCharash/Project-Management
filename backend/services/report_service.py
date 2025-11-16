@@ -2,10 +2,12 @@ from sqlalchemy import func, select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import date
 from typing import List, Dict, Any
+from dateutil.relativedelta import relativedelta
 
 from backend.models.transaction import Transaction
 from backend.models.project import Project
 from backend.services.budget_service import BudgetService
+from backend.services.project_service import calculate_start_date
 
 
 class ReportService:
@@ -78,9 +80,8 @@ class ReportService:
                 "expense_categories": []
             }
 
-        # Get current year's date range
+        # Get current date
         current_date = date.today()
-        current_year_start = current_date.replace(month=1, day=1)
 
         # Initialize budget service for category budget alerts
         budget_service = BudgetService(self.db)
@@ -104,12 +105,16 @@ class ReportService:
             # Wrap each project's processing in error handling
             # If a query fails for this project, skip it and continue with others
             try:
-                # Get current year's transactions (exclude fund transactions)
+                # Calculate start date: max(project.start_date, 1 year ago)
+                calculation_start_date = calculate_start_date(project.start_date)
+                
+                # Get transactions from calculation_start_date to now (exclude fund transactions)
                 yearly_income_query = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
                     and_(
                         Transaction.project_id == project.id,
                         Transaction.type == "Income",
-                        Transaction.tx_date >= current_year_start,
+                        Transaction.tx_date >= calculation_start_date,
+                        Transaction.tx_date <= current_date,
                         Transaction.from_fund == False  # Exclude fund transactions
                     )
                 )
@@ -117,7 +122,8 @@ class ReportService:
                     and_(
                         Transaction.project_id == project.id,
                         Transaction.type == "Expense",
-                        Transaction.tx_date >= current_year_start,
+                        Transaction.tx_date >= calculation_start_date,
+                        Transaction.tx_date <= current_date,
                         Transaction.from_fund == False  # Exclude fund transactions
                     )
                 )
@@ -150,9 +156,7 @@ class ReportService:
                     pass
                 continue  # Skip this project and continue with the next one
 
-            # Calculate profit including budgets
-            # Use annual budget if set, otherwise use monthly budget * 12
-            # Don't add both to avoid double counting
+            # Calculate budget income
             # Access budget fields directly - they should already be loaded
             try:
                 budget_annual = float(project.budget_annual if project.budget_annual is not None else 0)
@@ -162,14 +166,52 @@ class ReportService:
                 print(f"⚠️ Warning: Could not access budget fields for project {project.id}: {e}")
                 budget_annual = 0.0
                 budget_monthly = 0.0
-            if budget_annual > 0:
-                # If annual budget is set, use it directly
-                yearly_budget_amount = budget_annual
-            else:
-                # If no annual budget, calculate from monthly
-                yearly_budget_amount = budget_monthly * 12
             
-            project_total_income = yearly_income + yearly_budget_amount
+            # Calculate budget income from calculation_start_date to now
+            budget_income = 0.0
+            print(f"🔍 Project {project.id}: Checking budget - budget_annual={budget_annual}, budget_monthly={budget_monthly}")
+            # Prioritize monthly budget if both are set
+            if budget_monthly > 0:
+                print(f"📊 Project {project.id}: Using MONTHLY budget calculation")
+                # If monthly budget, calculate how many months from project start_date to now
+                # Each month's budget is added on the 1st of that month
+                # ALWAYS use project.start_date if available, NOT calculation_start_date
+                if project.start_date:
+                    # Use the 1st of the project's start month
+                    start_month = date(project.start_date.year, project.start_date.month, 1)
+                    print(f"📅 Project {project.id}: Using project.start_date {project.start_date} -> start_month {start_month}")
+                else:
+                    # If no project start date, use calculation_start_date
+                    start_month = date(calculation_start_date.year, calculation_start_date.month, 1)
+                    print(f"⚠️ Project {project.id}: No start_date, using calculation_start_date {calculation_start_date} -> start_month {start_month}")
+                
+                # Always include current month (since we're past the 1st of it)
+                end_month = date(current_date.year, current_date.month, 1)
+                print(f"📅 Project {project.id}: end_month {end_month}, current_date {current_date}")
+                
+                # Count months from start_month to end_month (inclusive)
+                month_count = 0
+                temp_month = start_month
+                while temp_month <= end_month:
+                    month_count += 1
+                    print(f"  Month {month_count}: {temp_month}")
+                    if temp_month.month == 12:
+                        temp_month = date(temp_month.year + 1, 1, 1)
+                    else:
+                        temp_month = date(temp_month.year, temp_month.month + 1, 1)
+                
+                budget_income = budget_monthly * month_count
+                print(f"📊 Project {project.id}: budget_monthly={budget_monthly}, month_count={month_count}, budget_income={budget_income}")
+            elif budget_annual > 0:
+                # If only annual budget is set (and no monthly), calculate proportionally from start_date to now
+                # Calculate how many days from calculation_start_date to now
+                days_in_period = (current_date - calculation_start_date).days + 1
+                days_in_year = 365
+                budget_income = (budget_annual / days_in_year) * days_in_period
+                print(f"📊 Project {project.id}: Using ANNUAL budget calculation: {budget_annual} / {days_in_year} * {days_in_period} = {budget_income}")
+            
+            project_total_income = yearly_income + budget_income
+            print(f"💰 Project {project.id}: yearly_income={yearly_income}, budget_income={budget_income}, project_total_income={project_total_income}")
             
             profit = project_total_income - yearly_expense
             
@@ -187,12 +229,31 @@ class ReportService:
             else:
                 status_color = "yellow"
 
-            # Check for budget overrun and warnings (compare yearly expense to yearly budget)
-            # Use the same logic as above to avoid double counting
-            if budget_annual > 0:
-                yearly_budget = budget_annual
-            else:
-                yearly_budget = budget_monthly * 12
+            # Check for budget overrun and warnings
+            # Calculate expected budget for the period (same logic as budget_income)
+            yearly_budget = 0.0
+            # Prioritize monthly budget if both are set
+            if budget_monthly > 0:
+                # Same logic as budget_income calculation
+                if project.start_date:
+                    start_month = date(project.start_date.year, project.start_date.month, 1)
+                else:
+                    start_month = date(calculation_start_date.year, calculation_start_date.month, 1)
+                end_month = date(current_date.year, current_date.month, 1)
+                month_count = 0
+                temp_month = start_month
+                while temp_month <= end_month:
+                    month_count += 1
+                    if temp_month.month == 12:
+                        temp_month = date(temp_month.year + 1, 1, 1)
+                    else:
+                        temp_month = date(temp_month.year, temp_month.month + 1, 1)
+                yearly_budget = budget_monthly * month_count
+            elif budget_annual > 0:
+                # If only annual budget is set (and no monthly), calculate proportionally
+                days_in_period = (current_date - calculation_start_date).days + 1
+                days_in_year = 365
+                yearly_budget = (budget_annual / days_in_year) * days_in_period
             print(f"🔍 Project {project.id} ({project.name}):")
             print(f"  - budget_annual: {project.budget_annual}")
             print(f"  - budget_monthly: {project.budget_monthly}")
@@ -222,7 +283,8 @@ class ReportService:
                 and_(
                     Transaction.project_id == project.id,
                     Transaction.file_path.is_(None),
-                    Transaction.tx_date >= current_year_start,
+                    Transaction.tx_date >= calculation_start_date,
+                    Transaction.tx_date <= current_date,
                     Transaction.from_fund == False  # Exclude fund transactions
                 )
             )
@@ -302,6 +364,7 @@ class ReportService:
                 "children": []
             }
 
+            print(f"📤 Project {project.id} final data: income_month_to_date={project_total_income}")
             projects_with_finance.append(project_data)
             total_income += project_total_income  # project_total_income includes budgets
             total_expense += yearly_expense
@@ -320,14 +383,22 @@ class ReportService:
         # Calculate total profit
         total_profit = total_income - total_expense
 
-        # Get expense categories breakdown
+        # Get expense categories breakdown (from earliest project start_date or 1 year ago)
+        # Calculate the earliest calculation_start_date across all projects
+        earliest_start = date.today() - relativedelta(years=1)
+        for project in projects:
+            project_start = calculate_start_date(project.start_date)
+            if project_start < earliest_start:
+                earliest_start = project_start
+        
         expense_categories_query = select(
             Transaction.category,
             func.coalesce(func.sum(Transaction.amount), 0).label('total_amount')
         ).where(
             and_(
                 Transaction.type == "Expense",
-                Transaction.tx_date >= current_year_start,
+                Transaction.tx_date >= earliest_start,
+                Transaction.tx_date <= current_date,
                 Transaction.from_fund == False  # Exclude fund transactions
             )
         ).group_by(Transaction.category)
