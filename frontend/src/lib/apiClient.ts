@@ -68,6 +68,16 @@ export class ProjectAPI {
     const { data } = await api.get('/projects/profitability-alerts')
     return data
   }
+
+  // Check if project name exists
+  static async checkProjectName(name: string, excludeId?: number): Promise<{ exists: boolean; available: boolean }> {
+    const params = new URLSearchParams({ name })
+    if (excludeId) {
+      params.append('exclude_id', excludeId.toString())
+    }
+    const { data } = await api.get<{ exists: boolean; available: boolean }>(`/projects/check-name?${params.toString()}`)
+    return data
+  }
 }
 
 export class TransactionAPI {

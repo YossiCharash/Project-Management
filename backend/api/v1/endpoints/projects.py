@@ -18,6 +18,7 @@ from backend.services.fund_service import FundService
 from backend.services.s3_service import S3Service
 from backend.services.audit_service import AuditService
 from backend.models.user import UserRole
+from backend.models.project import Project
 
 router = APIRouter()
 
@@ -44,6 +45,28 @@ async def list_projects_no_slash(db: DBSessionDep, include_archived: bool = Quer
     """Alias without trailing slash to avoid 404 when redirect_slashes=False"""
     return await ProjectRepository(db).list(include_archived=include_archived, only_archived=only_archived)
 
+@router.get("/check-name")
+async def check_project_name(
+    db: DBSessionDep,
+    name: str = Query(..., description="Project name to check"),
+    exclude_id: Optional[int] = Query(None, description="Project ID to exclude from check (for updates)"),
+    user = Depends(get_current_user)
+):
+    """Check if a project name already exists - accessible to all authenticated users"""
+    from sqlalchemy import select
+
+    query = select(Project).where(Project.name == name)
+    if exclude_id:
+        query = query.where(Project.id != exclude_id)
+
+    result = await db.execute(query)
+    existing_project = result.scalar_one_or_none()
+
+    return {
+        "exists": existing_project is not None,
+        "available": existing_project is None
+    }
+
 @router.get("/profitability-alerts")
 async def get_profitability_alerts(
     db: DBSessionDep,
@@ -58,19 +81,19 @@ async def get_profitability_alerts(
         from backend.models.project import Project
         from backend.models.transaction import Transaction
         from datetime import timedelta
-        
+
         # Calculate date 6 months ago
         today = date.today()
         six_months_ago = today - timedelta(days=180)
-        
+
         # Get all projects (both active and inactive) - we'll check transactions for all
         projects_result = await db.execute(
             select(Project)
         )
         all_projects = projects_result.scalars().all()
-        
+
         alerts = []
-        
+
         for project in all_projects:
             # Get transactions for the last 6 months
             transactions_query = select(Transaction).where(
@@ -82,17 +105,17 @@ async def get_profitability_alerts(
             )
             transactions_result = await db.execute(transactions_query)
             transactions = transactions_result.scalars().all()
-            
+
             # Calculate income and expenses (exclude fund transactions)
             income = sum(float(t.amount) for t in transactions if t.type == 'Income' and not (hasattr(t, 'from_fund') and t.from_fund))
             expense = sum(float(t.amount) for t in transactions if t.type == 'Expense' and not (hasattr(t, 'from_fund') and t.from_fund))
             profit = income - expense
-            
+
             # Also check all transactions regardless of date for debugging
             all_transactions_query = select(Transaction).where(Transaction.project_id == project.id)
             all_transactions_result = await db.execute(all_transactions_query)
             all_transactions = all_transactions_result.scalars().all()
-            
+
             # If no transactions in the last 6 months, check if there are any transactions at all
             if len(transactions) == 0 and len(all_transactions) > 0:
                 # Check if the oldest transaction is recent (within last year)
@@ -114,7 +137,7 @@ async def get_profitability_alerts(
                     income = sum(float(t.amount) for t in transactions if t.type == 'Income')
                     expense = sum(float(t.amount) for t in transactions if t.type == 'Expense')
                     profit = income - expense
-            
+
             # Calculate profit margin
             if income > 0:
                 profit_margin = (profit / income) * 100
@@ -124,12 +147,12 @@ async def get_profitability_alerts(
             else:
                 # No transactions, skip this project
                 continue
-            
+
             # Only include projects with profit margin <= -10% (loss-making)
             if profit_margin <= -10:
                 # Determine if it's a sub-project
                 is_subproject = project.relation_project is not None
-                
+
                 alerts.append({
                     'id': int(project.id),
                     'name': str(project.name),
@@ -140,19 +163,19 @@ async def get_profitability_alerts(
                     'is_subproject': bool(is_subproject),
                     'parent_project_id': int(project.relation_project) if project.relation_project else None
                 })
-        
+
         # Sort by profit margin (most negative first)
         alerts.sort(key=lambda x: x['profit_margin'])
-        
+
         result = {
             'alerts': alerts,
             'count': int(len(alerts)),
             'period_start': str(six_months_ago.isoformat()),
             'period_end': str(today.isoformat())
         }
-        
+
         return result
-            
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving profitability alerts: {str(e)}")
 

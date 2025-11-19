@@ -203,9 +203,8 @@ export default function ProjectDetail() {
   const [hasFund, setHasFund] = useState(false)
   const [fundLoading, setFundLoading] = useState(false)
   const [fundCategoryFilter, setFundCategoryFilter] = useState<string>('all')
-  const [fundExpandedId, setFundExpandedId] = useState<number | null>(null)
-  const [miniTransactionExpandedId, setMiniTransactionExpandedId] = useState<number | null>(null)
   const [transactionsExpandedId, setTransactionsExpandedId] = useState<number | null>(null)
+  const [showFundTransactionsModal, setShowFundTransactionsModal] = useState(false)
 
   const load = async () => {
     if (!id) return
@@ -394,6 +393,15 @@ const formatDate = (value: string | null) => {
       return
     }
 
+    // Check if budget already exists for this category
+    const existingBudget = projectBudgets.find(
+      budget => budget.category === newBudgetForm.category
+    )
+    if (existingBudget) {
+      setBudgetFormError(`כבר קיים תקציב לקטגוריה "${newBudgetForm.category}". ניתן לערוך את התקציב הקיים או למחוק אותו לפני יצירת תקציב חדש.`)
+      return
+    }
+
     try {
       setBudgetSaving(true)
       setBudgetFormError(null)
@@ -434,6 +442,11 @@ const formatDate = (value: string | null) => {
   const currentYear = currentDate.getFullYear()
 
   const filtered = txs.filter(t => {
+    // Exclude fund transactions from the list
+    if (t.from_fund === true) {
+      return false
+    }
+    
     const txDate = new Date(t.tx_date)
     let dateMatches = false
 
@@ -495,9 +508,6 @@ const formatDate = (value: string | null) => {
                (t.category && String(t.category).trim() === String(categoryFilter).trim())
       }).length
 
-  const fundTransactions = (fundData?.transactions || []).slice(0, 6)
-  const budgetPreview = projectBudgets ? projectBudgets.slice(0, 3) : []
-  const recentTransactions = filtered.slice(0, 6)
 
 
   const handleDeleteTransaction = async (transactionId: number) => {
@@ -722,155 +732,26 @@ const formatDate = (value: string | null) => {
             צור עסקה חדשה
           </button>
           <button
+            type="button"
+            onClick={() => {
+              setShowAddBudgetForm(true)
+              setBudgetFormError(null)
+            }}
+            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2 text-sm"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            + הוסף תקציב
+          </button>
+                    <button
             onClick={() => navigate('/dashboard')}
             className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors text-sm"
           >
             ← חזור לדשבורד
-          </button>
-        </div>
+                    </button>
+                      </div>
       </motion.div>
-
-      {/* Quick Overview Row */}
-      <div className="grid gap-4 max-w-6xl mx-auto w-full lg:grid-cols-3">
-        {/* Fund mini panel */}
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-4">
-          <div className="flex items-center justify-between mb-3 gap-3">
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">קופה</h3>
-              <p className="text-xs text-gray-500 dark:text-gray-400">עסקאות קופה אחרונות</p>
-            </div>
-            <span className="text-xs text-gray-500 dark:text-gray-400">{fundTransactions.length} עסקאות</span>
-          </div>
-          {fundLoading ? (
-            <div className="text-center py-6 text-sm text-gray-500 dark:text-gray-400">טוען קופה...</div>
-          ) : fundTransactions.length === 0 ? (
-            <div className="text-center py-6 text-sm text-gray-500 dark:text-gray-400">אין עסקאות קופה</div>
-          ) : (
-            <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-              {fundTransactions.map((tx) => {
-                const expanded = fundExpandedId === tx.id
-                return (
-                  <div key={tx.id} className="border border-gray-200 dark:border-gray-700 rounded-xl">
-                    <button
-                      className="w-full px-3 py-2 text-right text-sm text-gray-800 dark:text-gray-200 flex items-center justify-between gap-3"
-                      onClick={() => setFundExpandedId(expanded ? null : tx.id)}
-                    >
-                      <div>
-                        <div className="font-medium text-gray-900 dark:text-white">
-                          -{formatCurrency(Math.abs(Number(tx.amount || 0)))} ₪
-                        </div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400">
-                          {new Date(tx.tx_date).toLocaleDateString('he-IL')} · {tx.category || 'קופה'}
-                        </div>
-                      </div>
-                      <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${expanded ? 'rotate-180' : ''}`} />
-                    </button>
-                    {expanded && (
-                      <div className="px-3 pb-3 text-xs text-gray-600 dark:text-gray-300 space-y-1 border-t border-gray-100 dark:border-gray-700">
-                        <div><span className="font-medium">תיאור:</span> {tx.description || 'ללא'}</div>
-                        <div><span className="font-medium">נוצר ע&quot;י:</span> {tx.created_by_user?.full_name || '-'}</div>
-                        <div><span className="font-medium">הערות:</span> {tx.notes || '-'}</div>
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* Budget mini panel */}
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">תקציבים</h3>
-              <p className="text-xs text-gray-500 dark:text-gray-400">מעקב קצר לקטגוריות מובילות</p>
-            </div>
-            <span className="text-xs text-gray-500 dark:text-gray-400">{projectBudgets?.length || 0} תקציבים</span>
-          </div>
-          {(!projectBudgets || projectBudgets.length === 0) ? (
-            <div className="text-center py-6 text-sm text-gray-500 dark:text-gray-400">אין תקציבים פעילים</div>
-          ) : (
-            <div className="space-y-3">
-              {budgetPreview.map((budget) => {
-                const progress = Math.min((Number(budget.spent_amount || 0) / (Number(budget.amount || 1))) * 100, 100)
-                return (
-                  <div key={budget.id} className="border border-gray-200 dark:border-gray-700 rounded-xl p-3 text-sm">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="font-semibold text-gray-900 dark:text-white">{budget.category}</span>
-                      <span className="text-xs text-gray-500 dark:text-gray-400">{formatCurrency(budget.amount)} ₪</span>
-                    </div>
-                    <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-                      <span>הוצא: {formatCurrency(budget.spent_amount)} ₪</span>
-                      <span>נותר: {formatCurrency(budget.remaining_amount)} ₪</span>
-                    </div>
-                    <div className="mt-2 h-2 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
-                      <div
-                        className={`h-full ${budget.is_over_budget ? 'bg-red-500' : 'bg-blue-500'}`}
-                        style={{ width: `${progress}%` }}
-                      />
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* Recent Transactions panel */}
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">עסקאות אחרונות</h3>
-              <p className="text-xs text-gray-500 dark:text-gray-400">קליק להצגת פרטים</p>
-            </div>
-            <button
-              onClick={() => {
-                const element = document.getElementById('transactions-list')
-                if (element) element.scrollIntoView({ behavior: 'smooth', block: 'start' })
-              }}
-              className="text-xs text-blue-600 hover:text-blue-700 dark:text-blue-300"
-            >
-              לכל העסקאות →
-            </button>
-          </div>
-          {recentTransactions.length === 0 ? (
-            <div className="text-center py-6 text-sm text-gray-500 dark:text-gray-400">אין עסקאות</div>
-          ) : (
-            <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-              {recentTransactions.map((tx) => {
-                const expanded = miniTransactionExpandedId === tx.id
-                return (
-                  <div key={tx.id} className="border border-gray-200 dark:border-gray-700 rounded-xl">
-                    <button
-                      className="w-full px-3 py-2 text-right text-sm text-gray-800 dark:text-gray-200 flex items-center justify-between gap-3"
-                      onClick={() => setMiniTransactionExpandedId(expanded ? null : tx.id)}
-                    >
-                      <div className="flex flex-col text-right">
-                        <span className="font-medium">
-                          {tx.category || '-'} · {tx.type === 'Income' ? 'הכנסה' : 'הוצאה'}
-                        </span>
-                        <span className="text-xs text-gray-500 dark:text-gray-400">{new Date(tx.tx_date).toLocaleDateString('he-IL')}</span>
-                      </div>
-                      <div className={`font-semibold ${tx.type === 'Income' ? 'text-green-600' : 'text-red-600'}`}>
-                        {formatCurrency(tx.amount)} ₪
-                      </div>
-                      <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${expanded ? 'rotate-180' : ''}`} />
-                    </button>
-                    {expanded && (
-                      <div className="px-3 pb-3 text-xs text-gray-600 dark:text-gray-300 space-y-1 border-t border-gray-100 dark:border-gray-700">
-                        <div><span className="font-medium">תיאור:</span> {tx.description || 'ללא'}</div>
-                        <div><span className="font-medium">אמצעי תשלום:</span> {tx.payment_method || '-'}</div>
-                        <div><span className="font-medium">ספק:</span> {tx.supplier?.name || '-'}</div>
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
-      </div>
 
       {/* Financial Summary */}
       <motion.div
@@ -916,30 +797,43 @@ const formatDate = (value: string | null) => {
         </div>
       </motion.div>
 
-      {/* Fund Section */}
+      {/* Fund and Transactions Section */}
       {(hasFund || fundData) && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.05 }}
-          className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6"
-        >
-          <div className="mb-4">
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-              פרטי הקופה
-            </h2>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              מעקב אחר יתרת הקופה ועסקאות מהקופה
-            </p>
-          </div>
-
-          {fundLoading ? (
-            <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-              טוען פרטי קופה...
+        <div className="max-w-6xl mx-auto w-full space-y-6 lg:space-y-0 lg:grid lg:grid-cols-3 lg:gap-6">
+          {/* Fund Section */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.05 }}
+            className="lg:col-span-1 bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6"
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+                  פרטי הקופה
+                </h2>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  מעקב אחר יתרת הקופה ועסקאות מהקופה
+                </p>
+              </div>
+              {fundData && fundData.transactions && fundData.transactions.length > 0 && (
+                <button
+                  onClick={() => setShowFundTransactionsModal(true)}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  </svg>
+                  עסקאות קופה ({fundData.transactions.length})
+                </button>
+              )}
             </div>
-          ) : fundData ? (
-            <div className="space-y-6 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-6">
-              {/* Fund Balance Card */}
+
+            {fundLoading ? (
+              <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                טוען פרטי קופה...
+              </div>
+            ) : fundData ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 border border-blue-200 dark:border-blue-800 rounded-xl p-6">
                   <div className="flex items-center justify-between mb-2">
@@ -1009,488 +903,493 @@ const formatDate = (value: string | null) => {
                   </p>
                 </div>
               </div>
+            ) : (
+              <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                לא ניתן לטעון את פרטי הקופה
+              </div>
+            )}
+          </motion.div>
 
-              {/* Fund Transactions Table */}
-              <div className="flex flex-col">
-                {fundData.transactions.length > 0 ? (
-                  <div className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
-                    <div className="bg-gray-50 dark:bg-gray-700 px-6 py-4 border-b border-gray-200 dark:border-gray-600 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                      עסקאות מהקופה
-                    </h3>
-                    <div className="flex items-center gap-3">
-                      <label className="text-sm text-gray-700 dark:text-gray-300">
-                        <span className="ml-2">סינון לפי קטגוריה:</span>
-                        <select
-                          className="mt-1 md:mt-0 px-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white"
-                          value={fundCategoryFilter}
-                          onChange={(e) => setFundCategoryFilter(e.target.value)}
-                        >
-                          <option value="all">כל הקטגוריות</option>
-                          {expenseCategoryOptions.map(option => (
-                            <option key={option} value={option}>{option}</option>
-                          ))}
-                        </select>
-                      </label>
+          {/* Transactions List */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="lg:col-span-2 bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6"
+          >
+            <div className="mb-4">
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+                רשימת עסקאות
+              </h2>
+            </div>
+            <div className="flex flex-col">
+              <div className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
+                  <div className="bg-gray-50 dark:bg-gray-700 px-6 py-4 border-b border-gray-200 dark:border-gray-600">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between mb-4">
+                      <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
+                        רשימת עסקאות
+                      </h3>
+                      <div className="flex flex-wrap items-center gap-4">
+                        <div className="flex items-center gap-3">
+                          <select
+                            className="px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            value={filterType}
+                            onChange={e => setFilterType(e.target.value as any)}
+                          >
+                            <option value="all">הכל</option>
+                            <option value="Income">הכנסות</option>
+                            <option value="Expense">הוצאות</option>
+                          </select>
+                          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                            <input
+                              type="checkbox"
+                              checked={filterExceptional === 'only'}
+                              onChange={e => setFilterExceptional(e.target.checked ? 'only' : 'all')}
+                              className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+                            />
+                            רק חריגות
+                          </label>
+                        </div>
+                        <div>
+                          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                            <span>קטגוריה:</span>
+                            <select
+                              className="px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              value={categoryFilter}
+                              onChange={(e) => setCategoryFilter(e.target.value)}
+                            >
+                              <option value="all">כל הקטגוריות</option>
+                              {allCategoryOptions.map(option => (
+                                <option key={option} value={option}>{option}</option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Date Filter Options */}
+                    <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                          סינון לפי תאריך
+                        </label>
+                        <div className="flex flex-wrap gap-4">
+                          <label className="flex items-center gap-2">
+                            <input
+                              type="radio"
+                              name="dateFilter"
+                              value="current_month"
+                              checked={dateFilterMode === 'current_month'}
+                              onChange={() => setDateFilterMode('current_month')}
+                              className="w-4 h-4 text-blue-600"
+                            />
+                            <span className="text-sm text-gray-700 dark:text-gray-300">חודש נוכחי</span>
+                          </label>
+                          <label className="flex items-center gap-2">
+                            <input
+                              type="radio"
+                              name="dateFilter"
+                              value="selected_month"
+                              checked={dateFilterMode === 'selected_month'}
+                              onChange={() => setDateFilterMode('selected_month')}
+                              className="w-4 h-4 text-blue-600"
+                            />
+                            <span className="text-sm text-gray-700 dark:text-gray-300">חודש מסוים</span>
+                          </label>
+                          <label className="flex items-center gap-2">
+                            <input
+                              type="radio"
+                              name="dateFilter"
+                              value="date_range"
+                              checked={dateFilterMode === 'date_range'}
+                              onChange={() => setDateFilterMode('date_range')}
+                              className="w-4 h-4 text-blue-600"
+                            />
+                            <span className="text-sm text-gray-700 dark:text-gray-300">טווח תאריכים</span>
+                          </label>
+                        </div>
+                      </div>
+
+                      {dateFilterMode === 'selected_month' && (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            בחר חודש
+                          </label>
+                          <input
+                            type="month"
+                            value={selectedMonth}
+                            onChange={(e) => setSelectedMonth(e.target.value)}
+                            className="px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+                      )}
+
+                      {dateFilterMode === 'date_range' && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                              מתאריך
+                            </label>
+                            <input
+                              type="date"
+                              value={startDate}
+                              onChange={(e) => setStartDate(e.target.value)}
+                              className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                              עד תאריך
+                            </label>
+                            <input
+                              type="date"
+                              value={endDate}
+                              onChange={(e) => setEndDate(e.target.value)}
+                              min={startDate}
+                              className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead className="bg-gray-50 dark:bg-gray-700">
-                        <tr>
-                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                            תאריך
-                          </th>
-                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                            סכום
-                          </th>
-                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                            קטגוריה
-                          </th>
-                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                            תיאור
-                          </th>
-                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                            בוצע על ידי
-                          </th>
-                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                            מסמכים
-                          </th>
-                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                            פעולות
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                        {fundData.transactions
-                          .filter(tx => fundCategoryFilter === 'all' || tx.category === fundCategoryFilter)
-                          .map((tx) => (
-                          <tr key={tx.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-gray-900 dark:text-white">
+
+                  {loading ? (
+                    <div className="text-center py-8 text-gray-500 dark:text-gray-400">טוען...</div>
+                  ) : filtered.length === 0 ? (
+                    <div className="text-center py-8 space-y-3">
+                      <div className="text-gray-500 dark:text-gray-400 font-medium">אין עסקאות להצגה</div>
+                      {txs.length > 0 && (
+                        <div className="text-sm text-gray-400 dark:text-gray-500 space-y-2">
+                          {categoryFilter !== 'all' && (
+                            <>
+                              <div>הסינון לפי קטגוריה "{categoryFilter}" לא מצא תוצאות</div>
+                              {transactionsMatchingCategory > 0 && dateFilterMode === 'current_month' && (
+                                <div className="mt-2 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                                  <div className="font-medium text-blue-800 dark:text-blue-200 mb-1">
+                                    נמצאו {transactionsMatchingCategory} עסקאות עם הקטגוריה "{categoryFilter}"
+                                  </div>
+                                  <div className="text-blue-700 dark:text-blue-300 text-xs mb-2">
+                                    אבל הן לא בחודש הנוכחי. שנה את סינון התאריך לראות אותן.
+                                  </div>
+                                  <button
+                                    onClick={() => setDateFilterMode('date_range')}
+                                    className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                                  >
+                                    הצג את כל העסקאות עם הקטגוריה הזו
+                                  </button>
+                                </div>
+                              )}
+                              {transactionsMatchingCategory === 0 && (
+                                <div className="text-xs text-gray-500 dark:text-gray-400">
+                                  אין עסקאות עם הקטגוריה "{categoryFilter}" במערכת
+                                </div>
+                              )}
+                            </>
+                          )}
+                          {categoryFilter === 'all' && dateFilterMode === 'current_month' && (
+                            <div className="mt-1">התצוגה מוגבלת לחודש הנוכחי - נסה לשנות את סינון התאריך לראות עסקאות מחודשים קודמים</div>
+                          )}
+                          <div className="mt-2 text-xs">
+                            סך הכל {txs.length} עסקאות במערכת
+                            {categoryFilter !== 'all' && transactionsMatchingCategory > 0 && (
+                              <span> • {transactionsMatchingCategory} עם הקטגוריה "{categoryFilter}"</span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div id="transactions-list" className="space-y-3 p-4 max-h-[600px] overflow-y-auto">
+                      {filtered.map(tx => {
+                        const expanded = transactionsExpandedId === tx.id
+                        return (
+                          <div key={tx.id} className="border border-gray-200 dark:border-gray-700 rounded-xl">
+                            <button
+                              className="w-full px-4 py-3 text-right flex items-center gap-4 justify-between"
+                              onClick={() => setTransactionsExpandedId(expanded ? null : tx.id)}
+                            >
+                              <div className="flex items-center gap-3">
+                                <span className={`px-3 py-1 rounded-full text-xs font-semibold ${tx.type === 'Income' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                  {tx.type === 'Income' ? 'הכנסה' : 'הוצאה'}
+                                </span>
+                                <span className="text-sm text-gray-600 dark:text-gray-300">{tx.category ? (CATEGORY_LABELS[tx.category] || tx.category) : '-'}</span>
+                              </div>
+                              <div className="flex items-center gap-4">
+                                <span className="text-sm text-gray-500 dark:text-gray-400">{new Date(tx.tx_date).toLocaleDateString('he-IL')}</span>
+                                <span className={`text-lg font-semibold ${tx.type === 'Income' ? 'text-green-600' : 'text-red-600'}`}>
+                                  {formatCurrency(tx.amount)} ₪
+                                </span>
+                                <ChevronDown className={`w-5 h-5 text-gray-400 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+                              </div>
+                            </button>
+                            {expanded && (
+                              <div className="px-4 pb-4 border-t border-gray-100 dark:border-gray-700 text-sm text-gray-700 dark:text-gray-200 space-y-3">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                  <div>
+                                    <div className="text-xs text-gray-500 dark:text-gray-400">אמצעי תשלום</div>
+                                    <div>{tx.payment_method ? PAYMENT_METHOD_LABELS[tx.payment_method] || tx.payment_method : '-'}</div>
+                                  </div>
+                                  <div>
+                                    <div className="text-xs text-gray-500 dark:text-gray-400">ספק</div>
+                                    <div>{tx.supplier?.name || '-'}</div>
+                                  </div>
+                                  <div>
+                                    <div className="text-xs text-gray-500 dark:text-gray-400">נוצר על ידי</div>
+                                    <div>{tx.created_by_user?.full_name || '-'}</div>
+                                  </div>
+                                  <div>
+                                    <div className="text-xs text-gray-500 dark:text-gray-400">חריגה</div>
+                                    <div>{tx.is_exceptional ? 'כן' : 'לא'}</div>
+                                  </div>
+                                </div>
+                                <div className="grid grid-cols-1 gap-3">
+                                  <div>
+                                    <div className="text-xs text-gray-500 dark:text-gray-400">תיאור</div>
+                                    <div>{tx.description || 'ללא'}</div>
+                                  </div>
+                                  <div>
+                                    <div className="text-xs text-gray-500 dark:text-gray-400">הערות</div>
+                                    <div>{tx.notes || 'ללא'}</div>
+                                  </div>
+                                </div>
+
+                                <div className="flex flex-wrap items-center justify-end gap-3 pt-2 border-t border-gray-100 dark:border-gray-700">
+                                  <button
+                                    onClick={async () => {
+                                      setSelectedTransactionForDocuments(tx)
+                                      setShowDocumentsModal(true)
+                                      setDocumentsLoading(true)
+                                      try {
+                                        const { data } = await api.get(`/transactions/${tx.id}/documents`)
+                                        setTransactionDocuments(data || [])
+                                      } catch (err) {
+                                        setTransactionDocuments([])
+                                      } finally {
+                                        setDocumentsLoading(false)
+                                      }
+                                    }}
+                                    className="px-3 py-1.5 text-xs bg-purple-600 text-white rounded hover:bg-purple-700 flex items-center gap-1"
+                                  >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
+                                    מסמכים
+                                    {tx.documents_count > 0 && (
+                                      <span className="bg-white/20 px-1 rounded text-xs">
+                                        {tx.documents_count}
+                                      </span>
+                                    )}
+                                  </button>
+                                  <label className="px-3 py-1.5 text-xs bg-green-600 text-white rounded hover:bg-green-700 cursor-pointer flex items-center gap-1">
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                    </svg>
+                                    העלה מסמכים
+                                    <input
+                                      type="file"
+                                      multiple
+                                      className="hidden"
+                                      onChange={async (e) => {
+                                        const files = Array.from(e.target.files || [])
+                                        if (files.length === 0) return
+
+                                        let successCount = 0
+                                        let errorCount = 0
+                                        const uploadedDocs: Array<{id: number, fileName: string, description: string}> = []
+                                        
+                                        for (let i = 0; i < files.length; i++) {
+                                          const file = files[i]
+                                          try {
+                                            const formData = new FormData()
+                                            formData.append('file', file)
+                                            const response = await api.post(`/transactions/${tx.id}/supplier-document`, formData, {
+                                              headers: { 'Content-Type': 'multipart/form-data' }
+                                            })
+                                            if (response.data && response.data.id) {
+                                              successCount++
+                                              uploadedDocs.push({
+                                                id: response.data.id,
+                                                fileName: file.name,
+                                                description: response.data.description || ''
+                                              })
+                                            }
+                                          } catch (err: any) {
+                                            errorCount++
+                                          }
+                                        }
+
+                                        if (successCount > 0 && uploadedDocs.length > 0) {
+                                          setUploadedDocuments(uploadedDocs)
+                                          setSelectedTransactionForDocuments(tx)
+                                          setShowDescriptionModal(true)
+
+                                          await load()
+                                          if (showDocumentsModal && selectedTransactionForDocuments?.id === tx.id) {
+                                            const { data } = await api.get(`/transactions/${tx.id}/documents`)
+                                            setTransactionDocuments(data || [])
+                                          }
+                                        } else if (successCount > 0) {
+                                          await load()
+                                          if (showDocumentsModal && selectedTransactionForDocuments?.id === tx.id) {
+                                            const { data } = await api.get(`/transactions/${tx.id}/documents`)
+                                            setTransactionDocuments(data || [])
+                                          }
+                                        }
+
+                                        if (errorCount > 0) {
+                                          if (successCount > 0) {
+                                            alert(`הועלו ${successCount} מסמכים, ${errorCount} נכשלו`)
+                                          } else {
+                                            alert(`שגיאה בהעלאת המסמכים`)
+                                          }
+                                        }
+
+                                        e.target.value = ''
+                                      }}
+                                    />
+                                  </label>
+                                  <button
+                                    onClick={() => handleEditAnyTransaction(tx)}
+                                    className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+                                  >
+                                    ערוך
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteTransaction(tx.id)}
+                                    className="px-3 py-1.5 text-xs bg-red-600 text-white rounded hover:bg-red-700"
+                                  >
+                                    מחק
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Fund Transactions Modal */}
+      {showFundTransactionsModal && fundData && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          onClick={() => setShowFundTransactionsModal(false)}
+        >
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
+              <div>
+                <h3 className="text-2xl font-bold text-gray-900 dark:text-white">
+                  עסקאות מהקופה
+                </h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  {fundData.transactions.length} עסקאות
+                </p>
+              </div>
+              <button
+                onClick={() => setShowFundTransactionsModal(false)}
+                className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
+              {fundData.transactions.length === 0 ? (
+                <div className="text-center py-16">
+                  <svg
+                    className="w-24 h-24 text-gray-300 dark:text-gray-600 mx-auto mb-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={1.5}
+                      d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+                    />
+                  </svg>
+                  <h3 className="text-xl font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                    אין עסקאות מהקופה
+                  </h3>
+                  <p className="text-gray-500 dark:text-gray-400 text-sm">
+                    עדיין לא בוצעו עסקאות מהקופה
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {fundData.transactions
+                    .filter(tx => fundCategoryFilter === 'all' || tx.category === fundCategoryFilter)
+                    .map((tx) => (
+                    <div key={tx.id} className="border border-gray-200 dark:border-gray-700 rounded-xl p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-3">
+                          <div className="flex flex-col">
+                            <span className="text-sm font-semibold text-gray-900 dark:text-white">
                               {new Date(tx.tx_date).toLocaleDateString('he-IL', {
                                 year: 'numeric',
                                 month: 'long',
                                 day: 'numeric'
                               })}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium text-red-600 dark:text-red-400">
-                              -{tx.amount.toLocaleString('he-IL')} ₪
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
-                              {tx.category ? (
-                                <span className="text-gray-500 dark:text-gray-400">
-                                  {CATEGORY_LABELS[tx.category] || tx.category}
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs font-medium">
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                  </svg>
-                                  קופה
-                                </span>
-                              )}
-                            </td>
-                            <td className="px-6 py-4 text-right text-sm text-gray-900 dark:text-white">
-                              {tx.description || 'ללא תיאור'}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-gray-500 dark:text-gray-400">
-                              {tx.created_by_user ? (
-                                <span className="inline-flex items-center gap-1 justify-end">
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                                  </svg>
-                                  {tx.created_by_user.full_name}
-                                </span>
-                              ) : (
-                                <span className="text-gray-400 dark:text-gray-500">-</span>
-                              )}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-gray-500 dark:text-gray-400">
-                              <div className="flex items-center justify-end gap-2">
-                                <button
-                                  onClick={async () => {
-                                    setSelectedTransactionForDocuments(tx)
-                                    setShowDocumentsModal(true)
-                                    setDocumentsLoading(true)
-                                    try {
-                                      const { data } = await api.get(`/transactions/${tx.id}/documents`)
-                                      setTransactionDocuments(data || [])
-                                    } catch (err) {
-                                      setTransactionDocuments([])
-                                    } finally {
-                                      setDocumentsLoading(false)
-                                    }
-                                  }}
-                                  className="px-2 py-1 text-xs bg-purple-600 text-white rounded hover:bg-purple-700 flex items-center gap-1"
-                                >
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                  </svg>
-                                  מסמכים
-                                  {tx.documents_count > 0 && (
-                                    <span className="bg-white/20 px-1 rounded text-xs">
-                                      {tx.documents_count}
-                                    </span>
-                                  )}
-                                </button>
-                                <label className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 cursor-pointer flex items-center gap-1">
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                                  </svg>
-                                  העלה מסמכים
-                                  <input
-                                    type="file"
-                                    multiple
-                                    className="hidden"
-                                    onChange={async (e) => {
-                                      const files = Array.from(e.target.files || [])
-                                      if (files.length === 0) return
-
-                                      let successCount = 0
-                                      let errorCount = 0
-                                      const uploadedDocs: Array<{id: number, fileName: string, description: string}> = []
-                                      
-                                      // Upload each file
-                                      for (let i = 0; i < files.length; i++) {
-                                        const file = files[i]
-                                        try {
-                                          const formData = new FormData()
-                                          formData.append('file', file)
-                                          const response = await api.post(`/transactions/${tx.id}/supplier-document`, formData, {
-                                            headers: { 'Content-Type': 'multipart/form-data' }
-                                          })
-                                          
-                                          // Get document ID from response
-                                          if (response.data && response.data.id) {
-                                            successCount++
-                                            uploadedDocs.push({
-                                              id: response.data.id,
-                                              fileName: file.name,
-                                              description: response.data.description || ''
-                                            })
-                                          }
-                                        } catch (err: any) {
-                                          errorCount++
-                                        }
-                                      }
-                                      
-                                      // If some files were uploaded successfully, show description modal
-                                      if (successCount > 0 && uploadedDocs.length > 0) {
-                                        setUploadedDocuments(uploadedDocs)
-                                        setSelectedTransactionForDocuments(tx)
-                                        setShowDescriptionModal(true)
-                                        
-                                        await loadFundData()
-                                        // Reload documents in modal if it's open
-                                        if (showDocumentsModal && selectedTransactionForDocuments?.id === tx.id) {
-                                          const { data } = await api.get(`/transactions/${tx.id}/documents`)
-                                          setTransactionDocuments(data || [])
-                                        }
-                                      } else if (successCount > 0) {
-                                        // Files uploaded but no IDs received - just reload
-                                        await loadFundData()
-                                        if (showDocumentsModal && selectedTransactionForDocuments?.id === tx.id) {
-                                          const { data } = await api.get(`/transactions/${tx.id}/documents`)
-                                          setTransactionDocuments(data || [])
-                                        }
-                                      }
-                                      
-                                      // Show result message if there were errors
-                                      if (errorCount > 0) {
-                                        if (successCount > 0) {
-                                          alert(`הועלו ${successCount} מסמכים, ${errorCount} נכשלו`)
-                                        } else {
-                                          alert(`שגיאה בהעלאת המסמכים`)
-                                        }
-                                      }
-                                      
-                                      e.target.value = ''
-                                    }}
-                                  />
-                                </label>
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
-                              <div className="flex items-center justify-end gap-2">
-                                <button
-                                  onClick={() => handleEditAnyTransaction(tx as Transaction)}
-                                  className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
-                                >
-                                  ערוך
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteTransaction(tx.id)}
-                                  className="px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700"
-                                >
-                                  מחק
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  </div>
-                ) : (
-                  <div className="text-center py-8 border border-gray-200 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-700/50">
-                    <svg className="w-16 h-16 text-gray-400 dark:text-gray-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                    </svg>
-                    <p className="text-gray-500 dark:text-gray-400">
-                      אין עסקאות מהקופה עדיין
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-              לא ניתן לטעון את פרטי הקופה
-            </div>
-          )}
-        </motion.div>
-      )}
-
-      {/* Transactions List */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.25 }}
-        className="max-w-6xl mx-auto w-full bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6"
-      >
-        <div className="mb-6">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between mb-4">
-            <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
-              רשימת עסקאות
-            </h3>
-            <div className="flex flex-wrap items-center gap-4">
-              <div className="flex items-center gap-3">
-                <select
-                  className="px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  value={filterType}
-                  onChange={e => setFilterType(e.target.value as any)}
-                >
-                  <option value="all">הכל</option>
-                  <option value="Income">הכנסות</option>
-                  <option value="Expense">הוצאות</option>
-                </select>
-                <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
-                  <input
-                    type="checkbox"
-                    checked={filterExceptional === 'only'}
-                    onChange={e => setFilterExceptional(e.target.checked ? 'only' : 'all')}
-                    className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
-                  />
-                  רק חריגות
-                </label>
-              </div>
-              <div>
-                <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
-                  <span>קטגוריה:</span>
-                  <select
-                    className="px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    value={categoryFilter}
-                    onChange={(e) => setCategoryFilter(e.target.value)}
-                  >
-                    <option value="all">כל הקטגוריות</option>
-                    {allCategoryOptions.map(option => (
-                      <option key={option} value={option}>{option}</option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-            </div>
-          </div>
-
-          {/* Date Filter Options */}
-          <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                סינון לפי תאריך
-              </label>
-              <div className="flex flex-wrap gap-4">
-                <label className="flex items-center gap-2">
-                  <input
-                    type="radio"
-                    name="dateFilter"
-                    value="current_month"
-                    checked={dateFilterMode === 'current_month'}
-                    onChange={() => setDateFilterMode('current_month')}
-                    className="w-4 h-4 text-blue-600"
-                  />
-                  <span className="text-sm text-gray-700 dark:text-gray-300">חודש נוכחי</span>
-                </label>
-                <label className="flex items-center gap-2">
-                  <input
-                    type="radio"
-                    name="dateFilter"
-                    value="selected_month"
-                    checked={dateFilterMode === 'selected_month'}
-                    onChange={() => setDateFilterMode('selected_month')}
-                    className="w-4 h-4 text-blue-600"
-                  />
-                  <span className="text-sm text-gray-700 dark:text-gray-300">חודש מסוים</span>
-                </label>
-                <label className="flex items-center gap-2">
-                  <input
-                    type="radio"
-                    name="dateFilter"
-                    value="date_range"
-                    checked={dateFilterMode === 'date_range'}
-                    onChange={() => setDateFilterMode('date_range')}
-                    className="w-4 h-4 text-blue-600"
-                  />
-                  <span className="text-sm text-gray-700 dark:text-gray-300">טווח תאריכים</span>
-                </label>
-              </div>
-            </div>
-
-            {dateFilterMode === 'selected_month' && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  בחר חודש
-                </label>
-                <input
-                  type="month"
-                  value={selectedMonth}
-                  onChange={(e) => setSelectedMonth(e.target.value)}
-                  className="px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-            )}
-
-            {dateFilterMode === 'date_range' && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    מתאריך
-                  </label>
-                  <input
-                    type="date"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                    className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    עד תאריך
-                  </label>
-                  <input
-                    type="date"
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                    min={startDate}
-                    className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {loading ? (
-          <div className="text-center py-8 text-gray-500 dark:text-gray-400">טוען...</div>
-        ) : filtered.length === 0 ? (
-          <div className="text-center py-8 space-y-3">
-            <div className="text-gray-500 dark:text-gray-400 font-medium">אין עסקאות להצגה</div>
-            {txs.length > 0 && (
-              <div className="text-sm text-gray-400 dark:text-gray-500 space-y-2">
-                {categoryFilter !== 'all' && (
-                  <>
-                    <div>הסינון לפי קטגוריה "{categoryFilter}" לא מצא תוצאות</div>
-                    {transactionsMatchingCategory > 0 && dateFilterMode === 'current_month' && (
-                      <div className="mt-2 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                        <div className="font-medium text-blue-800 dark:text-blue-200 mb-1">
-                          נמצאו {transactionsMatchingCategory} עסקאות עם הקטגוריה "{categoryFilter}"
+                            </span>
+                            <span className="text-xs text-gray-500 dark:text-gray-400">
+                              {tx.category ? (CATEGORY_LABELS[tx.category] || tx.category) : 'קופה'}
+                            </span>
+                          </div>
                         </div>
-                        <div className="text-blue-700 dark:text-blue-300 text-xs mb-2">
-                          אבל הן לא בחודש הנוכחי. שנה את סינון התאריך לראות אותן.
-                        </div>
-                        <button
-                          onClick={() => setDateFilterMode('date_range')}
-                          className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-                        >
-                          הצג את כל העסקאות עם הקטגוריה הזו
-                        </button>
-                      </div>
-                    )}
-                    {transactionsMatchingCategory === 0 && (
-                      <div className="text-xs text-gray-500 dark:text-gray-400">
-                        אין עסקאות עם הקטגוריה "{categoryFilter}" במערכת
-                      </div>
-                    )}
-                  </>
-                )}
-                {categoryFilter === 'all' && dateFilterMode === 'current_month' && (
-                  <div className="mt-1">התצוגה מוגבלת לחודש הנוכחי - נסה לשנות את סינון התאריך לראות עסקאות מחודשים קודמים</div>
-                )}
-                <div className="mt-2 text-xs">
-                  סך הכל {txs.length} עסקאות במערכת
-                  {categoryFilter !== 'all' && transactionsMatchingCategory > 0 && (
-                    <span> • {transactionsMatchingCategory} עם הקטגוריה "{categoryFilter}"</span>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div id="transactions-list" className="space-y-3">
-            {filtered.map(tx => {
-              const expanded = transactionsExpandedId === tx.id
-              return (
-                <div key={tx.id} className="border border-gray-200 dark:border-gray-700 rounded-xl">
-                  <button
-                    className="w-full px-4 py-3 text-right flex items-center gap-4 justify-between"
-                    onClick={() => setTransactionsExpandedId(expanded ? null : tx.id)}
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${tx.type === 'Income' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                        {tx.type === 'Income' ? 'הכנסה' : 'הוצאה'}
-                      </span>
-                      <span className="text-sm text-gray-600 dark:text-gray-300">{tx.category || '-'}</span>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <span className="text-sm text-gray-500 dark:text-gray-400">{new Date(tx.tx_date).toLocaleDateString('he-IL')}</span>
-                      <span className={`text-lg font-semibold ${tx.type === 'Income' ? 'text-green-600' : 'text-red-600'}`}>
-                        {formatCurrency(tx.amount)} ₪
-                      </span>
-                      <ChevronDown className={`w-5 h-5 text-gray-400 transition-transform ${expanded ? 'rotate-180' : ''}`} />
-                    </div>
-                  </button>
-                  {expanded && (
-                    <div className="px-4 pb-4 border-t border-gray-100 dark:border-gray-700 text-sm text-gray-700 dark:text-gray-200 space-y-3">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400">אמצעי תשלום</div>
-                          <div>{tx.payment_method || '-'}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400">ספק</div>
-                          <div>{tx.supplier?.name || '-'}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400">נוצר על ידי</div>
-                          <div>{tx.created_by_user?.full_name || '-'}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400">חריגה</div>
-                          <div>{tx.is_exceptional ? 'כן' : 'לא'}</div>
+                        <div className="flex items-center gap-4">
+                          <span className="text-lg font-bold text-red-600 dark:text-red-400">
+                            -{tx.amount.toLocaleString('he-IL')} ₪
+                          </span>
                         </div>
                       </div>
-                      <div className="grid grid-cols-1 gap-3">
-                        <div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400">תיאור</div>
-                          <div>{tx.description || 'ללא'}</div>
+                      
+                      {tx.description && (
+                        <div className="mb-2">
+                          <span className="text-xs text-gray-500 dark:text-gray-400">תיאור: </span>
+                          <span className="text-sm text-gray-700 dark:text-gray-300">{tx.description}</span>
                         </div>
-                        <div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400">הערות</div>
-                          <div>{tx.notes || 'ללא'}</div>
+                      )}
+                      
+                      {tx.created_by_user && (
+                        <div className="mb-2 flex items-center gap-2">
+                          <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                          </svg>
+                          <span className="text-xs text-gray-500 dark:text-gray-400">
+                            בוצע על ידי: {tx.created_by_user.full_name}
+                          </span>
                         </div>
-                      </div>
+                      )}
+                      
+                      {tx.notes && (
+                        <div className="mb-2">
+                          <span className="text-xs text-gray-500 dark:text-gray-400">הערות: </span>
+                          <span className="text-sm text-gray-700 dark:text-gray-300">{tx.notes}</span>
+                        </div>
+                      )}
 
-                      <div className="flex flex-wrap items-center justify-end gap-3 pt-2 border-t border-gray-100 dark:border-gray-700">
+                      <div className="flex items-center justify-end gap-2 mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
                         <button
                           onClick={async () => {
                             setSelectedTransactionForDocuments(tx)
@@ -1517,76 +1416,8 @@ const formatDate = (value: string | null) => {
                             </span>
                           )}
                         </button>
-                        <label className="px-3 py-1.5 text-xs bg-green-600 text-white rounded hover:bg-green-700 cursor-pointer flex items-center gap-1">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                          </svg>
-                          העלה מסמכים
-                          <input
-                            type="file"
-                            multiple
-                            className="hidden"
-                            onChange={async (e) => {
-                              const files = Array.from(e.target.files || [])
-                              if (files.length === 0) return
-
-                              let successCount = 0
-                              let errorCount = 0
-                              const uploadedDocs: Array<{id: number, fileName: string, description: string}> = []
-                              
-                              for (let i = 0; i < files.length; i++) {
-                                const file = files[i]
-                                try {
-                                  const formData = new FormData()
-                                  formData.append('file', file)
-                                  const response = await api.post(`/transactions/${tx.id}/supplier-document`, formData, {
-                                    headers: { 'Content-Type': 'multipart/form-data' }
-                                  })
-                                  if (response.data && response.data.id) {
-                                    successCount++
-                                    uploadedDocs.push({
-                                      id: response.data.id,
-                                      fileName: file.name,
-                                      description: response.data.description || ''
-                                    })
-                                  }
-                                } catch (err: any) {
-                                  errorCount++
-                                }
-                              }
-
-                              if (successCount > 0 && uploadedDocs.length > 0) {
-                                setUploadedDocuments(uploadedDocs)
-                                setSelectedTransactionForDocuments(tx)
-                                setShowDescriptionModal(true)
-
-                                await loadFundData()
-                                if (showDocumentsModal && selectedTransactionForDocuments?.id === tx.id) {
-                                  const { data } = await api.get(`/transactions/${tx.id}/documents`)
-                                  setTransactionDocuments(data || [])
-                                }
-                              } else if (successCount > 0) {
-                                await loadFundData()
-                                if (showDocumentsModal && selectedTransactionForDocuments?.id === tx.id) {
-                                  const { data } = await api.get(`/transactions/${tx.id}/documents`)
-                                  setTransactionDocuments(data || [])
-                                }
-                              }
-
-                              if (errorCount > 0) {
-                                if (successCount > 0) {
-                                  alert(`הועלו ${successCount} מסמכים, ${errorCount} נכשלו`)
-                                } else {
-                                  alert(`שגיאה בהעלאת המסמכים`)
-                                }
-                              }
-
-                              e.target.value = ''
-                            }}
-                          />
-                        </label>
                         <button
-                          onClick={() => handleEditAnyTransaction(tx)}
+                          onClick={() => handleEditAnyTransaction(tx as Transaction)}
                           className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
                         >
                           ערוך
@@ -1599,14 +1430,13 @@ const formatDate = (value: string | null) => {
                         </button>
                       </div>
                     </div>
-                  )}
+                  ))}
                 </div>
-              )
-            })}
-          </div>
-        )}
-      </motion.div>
-
+              )}
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
 
       {/* Budget Cards and Charts */}
       <motion.div
@@ -1623,122 +1453,8 @@ const formatDate = (value: string | null) => {
               מעקב אחר התקציבים וההוצאות בכל קטגוריה ומגמות פיננסיות
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => {
-              setShowAddBudgetForm(prev => !prev)
-              setBudgetFormError(null)
-            }}
-            className="self-start md:self-auto px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
-          >
-            {showAddBudgetForm ? 'בטל הוספת תקציב' : '+ הוסף תקציב'}
-          </button>
         </div>
 
-        {showAddBudgetForm && (
-          <form
-            onSubmit={handleAddBudget}
-            className="mb-6 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl p-4 space-y-3"
-          >
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  קטגוריה *
-                </label>
-                <select
-                  value={newBudgetForm.category}
-                  onChange={(e) => setNewBudgetForm(prev => ({ ...prev, category: e.target.value }))}
-                  className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500"
-                >
-                  {expenseCategoryOptions.map(option => (
-                    <option key={option} value={option}>{option}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  סכום (₪) *
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={newBudgetForm.amount}
-                  onChange={(e) => setNewBudgetForm(prev => ({ ...prev, amount: e.target.value }))}
-                  className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  סוג תקופה *
-                </label>
-                <select
-                  value={newBudgetForm.period_type}
-                  onChange={(e) => setNewBudgetForm(prev => ({ ...prev, period_type: e.target.value as 'Annual' | 'Monthly' }))}
-                  className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500"
-                >
-                  <option value="Annual">שנתי</option>
-                  <option value="Monthly">חודשי</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  תאריך התחלה *
-                </label>
-                <input
-                  type="date"
-                  value={newBudgetForm.start_date}
-                  onChange={(e) => setNewBudgetForm(prev => ({ ...prev, start_date: e.target.value }))}
-                  className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500"
-                  required
-                />
-              </div>
-
-              {newBudgetForm.period_type === 'Annual' && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    תאריך סיום (אופציונלי)
-                  </label>
-                  <input
-                    type="date"
-                    value={newBudgetForm.end_date}
-                    onChange={(e) => setNewBudgetForm(prev => ({ ...prev, end_date: e.target.value }))}
-                    className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500"
-                  />
-                </div>
-              )}
-            </div>
-
-            {budgetFormError && (
-              <div className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md p-2">
-                {budgetFormError}
-              </div>
-            )}
-
-            <div className="flex items-center gap-3">
-              <button
-                type="submit"
-                disabled={budgetSaving}
-                className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50"
-              >
-                {budgetSaving ? 'שומר...' : 'שמור תקציב'}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowAddBudgetForm(false)
-                  setBudgetFormError(null)
-                }}
-                className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-md hover:bg-gray-300 dark:hover:bg-gray-600"
-              >
-                ביטול
-              </button>
-            </div>
-          </form>
-        )}
         
         {chartsLoading ? (
           <>
@@ -2543,6 +2259,166 @@ const formatDate = (value: string | null) => {
                   )
                 }
               })()}
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+
+      {/* Create Budget Modal */}
+      {showAddBudgetForm && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          onClick={() => {
+            setShowAddBudgetForm(false)
+            setBudgetFormError(null)
+          }}
+        >
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+                יצירת תקציב חדש
+              </h2>
+              <button
+                onClick={() => {
+                  setShowAddBudgetForm(false)
+                  setBudgetFormError(null)
+                }}
+                className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
+              <form
+                onSubmit={handleAddBudget}
+                className="space-y-4"
+              >
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      קטגוריה *
+                    </label>
+                    <select
+                      value={newBudgetForm.category}
+                      onChange={(e) => setNewBudgetForm(prev => ({ ...prev, category: e.target.value }))}
+                      className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500"
+                    >
+                      {expenseCategoryOptions
+                        .filter(option => {
+                          // Filter out categories that already have a budget
+                          const hasBudget = projectBudgets.some(budget => budget.category === option)
+                          return !hasBudget
+                        })
+                        .map(option => (
+                          <option key={option} value={option}>{option}</option>
+                        ))}
+                    </select>
+                    {expenseCategoryOptions.filter(option => {
+                      const hasBudget = projectBudgets.some(budget => budget.category === option)
+                      return !hasBudget
+                    }).length === 0 && (
+                      <p className="text-sm text-amber-600 dark:text-amber-400 mt-1">
+                        כל הקטגוריות כבר יש להן תקציב
+                      </p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      סכום (₪) *
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={newBudgetForm.amount}
+                      onChange={(e) => setNewBudgetForm(prev => ({ ...prev, amount: e.target.value }))}
+                      className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      סוג תקופה *
+                    </label>
+                    <select
+                      value={newBudgetForm.period_type}
+                      onChange={(e) => setNewBudgetForm(prev => ({ ...prev, period_type: e.target.value as 'Annual' | 'Monthly' }))}
+                      className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500"
+                    >
+                      <option value="Annual">שנתי</option>
+                      <option value="Monthly">חודשי</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      תאריך התחלה *
+                    </label>
+                    <input
+                      type="date"
+                      value={newBudgetForm.start_date}
+                      onChange={(e) => setNewBudgetForm(prev => ({ ...prev, start_date: e.target.value }))}
+                      className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500"
+                      required
+                    />
+                  </div>
+
+                  {newBudgetForm.period_type === 'Annual' && (
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        תאריך סיום (אופציונלי)
+                      </label>
+                      <input
+                        type="date"
+                        value={newBudgetForm.end_date}
+                        onChange={(e) => setNewBudgetForm(prev => ({ ...prev, end_date: e.target.value }))}
+                        className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {budgetFormError && (
+                  <div className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md p-3">
+                    {budgetFormError}
+                  </div>
+                )}
+
+                <div className="flex items-center justify-end gap-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAddBudgetForm(false)
+                      setBudgetFormError(null)
+                    }}
+                    className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+                  >
+                    ביטול
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={budgetSaving}
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {budgetSaving ? 'שומר...' : 'שמור תקציב'}
+                  </button>
+                </div>
+              </form>
             </div>
           </motion.div>
         </motion.div>

@@ -39,6 +39,9 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
   const [categoryBudgets, setCategoryBudgets] = useState<BudgetCreate[]>([])
   const [hasFund, setHasFund] = useState(false)
   const [monthlyFundAmount, setMonthlyFundAmount] = useState<number>(0)
+  const [nameError, setNameError] = useState<string | null>(null)
+  const [isCheckingName, setIsCheckingName] = useState(false)
+  const [nameValid, setNameValid] = useState<boolean | null>(null)
   
   // Available expense categories
   const expenseCategories = ['ניקיון', 'חשמל', 'ביטוח', 'גינון', 'אחר']
@@ -73,10 +76,72 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
       // Reset image states when editing
       setSelectedImage(null)
       setImagePreview(editingProject.image_url ? getImageUrl(editingProject.image_url) : null)
+      // Reset name validation when editing
+      setNameError(null)
+      setNameValid(null)
     } else {
       resetForm()
     }
   }, [editingProject])
+
+  // Check project name availability with debounce
+  useEffect(() => {
+    const checkName = async () => {
+      const name = formData.name.trim()
+      
+      // Reset validation if name is empty
+      if (!name) {
+        setNameError(null)
+        setNameValid(null)
+        setIsCheckingName(false)
+        return
+      }
+
+      // Don't check if we're editing and name hasn't changed
+      if (editingProject && name === editingProject.name) {
+        setNameError(null)
+        setNameValid(true)
+        setIsCheckingName(false)
+        return
+      }
+
+      // Set checking state but don't block input
+      setIsCheckingName(true)
+      setNameError(null)
+      setNameValid(null)
+
+      try {
+        const result = await ProjectAPI.checkProjectName(name, editingProject?.id)
+        // Only update if the name hasn't changed during the check
+        if (formData.name.trim() === name) {
+          if (result.exists) {
+            setNameError('שם זה כבר קיים. אנא בחר שם אחר')
+            setNameValid(false)
+          } else {
+            setNameError(null)
+            setNameValid(true)
+          }
+        }
+      } catch (err: any) {
+        // If there's an error, don't block the user but show a warning
+        console.error('Error checking name:', err)
+        // Only clear if name hasn't changed
+        if (formData.name.trim() === name) {
+          setNameError(null)
+          setNameValid(null)
+        }
+      } finally {
+        // Only clear checking state if name hasn't changed
+        if (formData.name.trim() === name) {
+          setIsCheckingName(false)
+        }
+      }
+    }
+
+    // Debounce: wait 300ms after user stops typing (reduced for faster feedback)
+    const timeoutId = setTimeout(checkName, 300)
+    return () => clearTimeout(timeoutId)
+  }, [formData.name, editingProject])
 
   const loadProjects = async () => {
     try {
@@ -107,6 +172,9 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
     setCategoryBudgets([])
     setHasFund(false)
     setMonthlyFundAmount(0)
+    setNameError(null)
+    setNameValid(null)
+    setIsCheckingName(false)
   }
 
   const getImageUrl = (imageUrl: string): string => {
@@ -185,6 +253,20 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
       // Validate that all required fields are present
       if (!projectData.name || projectData.name.trim() === '') {
         setError('שם הפרויקט נדרש')
+        setLoading(false)
+        return
+      }
+
+      // Check if name is valid (not duplicate)
+      if (nameValid === false) {
+        setError('לא ניתן לשמור: שם הפרויקט כבר קיים. אנא שנה את השם')
+        setLoading(false)
+        return
+      }
+
+      // If name is still being checked, wait a bit
+      if (isCheckingName) {
+        setError('בודק שם פרויקט... אנא המתן')
         setLoading(false)
         return
       }
@@ -299,13 +381,38 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 שם הפרויקט *
               </label>
-              <input
-                type="text"
-                required
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+              <div className="relative">
+                <input
+                  type="text"
+                  required
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  className={`w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 ${
+                    nameError 
+                      ? 'border-red-500 focus:ring-red-500' 
+                      : nameValid === true 
+                      ? 'border-green-500 focus:ring-green-500' 
+                      : 'border-gray-300 dark:border-gray-600 focus:ring-blue-500'
+                  }`}
+                />
+                {isCheckingName && (
+                  <div className="absolute left-3 top-1/2 transform -translate-y-1/2 pointer-events-none">
+                    <svg className="animate-spin h-4 w-4 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                  </div>
+                )}
+              </div>
+              {isCheckingName && formData.name.trim() && (
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">בודק שם...</p>
+              )}
+              {nameError && !isCheckingName && (
+                <p className="mt-1 text-sm text-red-600 dark:text-red-400">{nameError}</p>
+              )}
+              {nameValid === true && !nameError && !isCheckingName && formData.name.trim() && (
+                <p className="mt-1 text-sm text-green-600 dark:text-green-400">✓ שם זמין</p>
+              )}
             </div>
 
             <div>
