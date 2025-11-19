@@ -53,12 +53,14 @@ class BudgetService:
         if as_of_date is None:
             as_of_date = date.today()
         
-        # Calculate spending
-        spent_amount = await self.repository.calculate_spending_for_budget(budget, as_of_date)
-        remaining_amount = float(budget.amount) - spent_amount
+        # Calculate spending breakdown
+        total_expenses, total_income = await self.repository.calculate_spending_for_budget(budget, as_of_date)
+        base_amount = float(budget.amount)
+        effective_amount = base_amount + total_income
+        remaining_amount = effective_amount - total_expenses
         
         # Calculate percentages
-        spent_percentage = (spent_amount / float(budget.amount)) * 100 if budget.amount > 0 else 0
+        spent_percentage = (total_expenses / effective_amount * 100) if effective_amount > 0 else 0
         
         # Calculate expected spending based on time elapsed
         if budget.period_type == "Annual" and budget.end_date:
@@ -80,7 +82,7 @@ class BudgetService:
             expected_spent_percentage = 0
         
         # Check if over budget
-        is_over_budget = spent_amount > float(budget.amount)
+        is_over_budget = total_expenses > effective_amount
         
         # Check if spending too fast (spent more than expected based on time)
         # Allow 10% buffer before alerting
@@ -97,14 +99,17 @@ class BudgetService:
             "id": budget.id,
             "project_id": budget.project_id,
             "category": budget.category,
-            "amount": float(budget.amount),
+            "base_amount": base_amount,
+            "amount": effective_amount,
             "period_type": budget.period_type,
             "start_date": start_date_str,
             "end_date": end_date_str,
             "is_active": budget.is_active,
             "created_at": created_at_str,
             "updated_at": updated_at_str,
-            "spent_amount": spent_amount,
+            "spent_amount": total_expenses,
+            "expense_amount": total_expenses,
+            "income_amount": total_income,
             "remaining_amount": remaining_amount,
             "spent_percentage": round(spent_percentage, 2),
             "expected_spent_percentage": round(expected_spent_percentage, 2),

@@ -130,6 +130,7 @@ export interface BudgetWithSpending {
   project_id: number
   category: string
   amount: number
+  base_amount?: number
   period_type: 'Annual' | 'Monthly'
   start_date: string
   end_date?: string | null
@@ -137,6 +138,8 @@ export interface BudgetWithSpending {
   created_at: string
   updated_at: string
   spent_amount: number
+  expense_amount: number
+  income_amount: number
   remaining_amount: number
   spent_percentage: number
   expected_spent_percentage: number

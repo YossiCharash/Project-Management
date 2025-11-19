@@ -42,7 +42,10 @@ class BudgetOut(BudgetBase):
 
 class BudgetWithSpending(BudgetOut):
     """Budget with calculated spending information"""
+    base_amount: float = 0.0
     spent_amount: float = 0.0
+    expense_amount: float = 0.0
+    income_amount: float = 0.0
     remaining_amount: float = 0.0
     spent_percentage: float = 0.0
     expected_spent_percentage: float = 0.0  # Based on time elapsed

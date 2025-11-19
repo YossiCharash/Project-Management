@@ -19,6 +19,37 @@ def calculate_start_date(project_start_date: date | None) -> date:
         return one_year_ago
 
 
+def calculate_monthly_income_amount(monthly_income: float, income_start_date: date, current_date: date) -> float:
+    """
+    Calculate expected income based on a fixed monthly amount that accrues on the 1st of each month.
+    Income starts accruing on the later of:
+      - income_start_date (already adjusted to project start or start of year)
+      - the first day of the month following income_start_date if it isn't the 1st
+    """
+    if monthly_income <= 0:
+        return 0.0
+    if income_start_date > current_date:
+        return 0.0
+
+    # Income accrues on the 1st of each month. If the start date is mid-month,
+    # the first accrual happens on the next month.
+    if income_start_date.day == 1:
+        first_occurrence = income_start_date
+    else:
+        if income_start_date.month == 12:
+            first_occurrence = date(income_start_date.year + 1, 1, 1)
+        else:
+            first_occurrence = date(income_start_date.year, income_start_date.month + 1, 1)
+
+    if first_occurrence > current_date:
+        return 0.0
+
+    months_passed = (current_date.year - first_occurrence.year) * 12 + (current_date.month - first_occurrence.month)
+    occurrences = months_passed + 1  # Include the first occurrence
+
+    return monthly_income * occurrences
+
+
 async def calculate_recurring_transactions_amount(
     db: AsyncSession,
     project_id: int,
@@ -222,31 +253,22 @@ class ProjectService:
             self.db, project_id, calculation_start_date, current_date, "Expense"
         )
         
-        # Calculate income from project settings (monthly_price_per_apartment * num_residents)
-        # This is the expected monthly income that the user sets when creating/updating the project
+        # Calculate income from the monthly budget (treated as expected monthly income)
         # Calculate only for the current year, from project start date (or start of year if project started earlier)
         project_income = 0.0
-        if project.num_residents and project.monthly_price_per_apartment and calculation_start_date:
-            monthly_income = float(project.num_residents) * float(project.monthly_price_per_apartment)
-            
+        monthly_income = float(project.budget_monthly or 0)
+        if monthly_income > 0 and calculation_start_date:
+            # When using monthly budget as the income source, ignore actual/recurring income transactions
+            actual_income = 0.0
+            recurring_income = 0.0
             # Calculate start date for income calculation: use the later of project start date or start of current year
             current_year_start = date(current_date.year, 1, 1)  # January 1st of current year
             income_calculation_start = max(calculation_start_date, current_year_start)
-            
-            # Calculate how many months from income_calculation_start to now
-            months_diff = (current_date.year - income_calculation_start.year) * 12 + \
-                         (current_date.month - income_calculation_start.month)
-            
-            # Add partial month if we're past the start date
-            from calendar import monthrange
-            days_in_start_month = monthrange(income_calculation_start.year, income_calculation_start.month)[1]
-            days_passed_in_start_month = days_in_start_month - income_calculation_start.day + 1
-            partial_month_ratio = days_passed_in_start_month / days_in_start_month
-            
-            # Calculate total income for current year: full months + partial month
-            project_income = monthly_income * (months_diff + partial_month_ratio)
+            project_income = calculate_monthly_income_amount(monthly_income, income_calculation_start, current_date)
+        elif monthly_income <= 0:
+            project_income = 0.0
         
-        # Total income = actual transactions + recurring transactions + project income (from monthly_price_per_apartment * num_residents)
+        # Total income = actual transactions + recurring transactions + project income (from monthly budget)
         # Note: Recurring transactions that were already generated are included in actual_income/actual_expense
         # So we need to avoid double counting. The calculate_recurring_transactions_amount function
         # already handles this by checking if transactions exist.

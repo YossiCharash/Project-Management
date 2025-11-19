@@ -10,7 +10,7 @@ from backend.repositories.project_repository import ProjectRepository
 from backend.repositories.transaction_repository import TransactionRepository
 from backend.schemas.project import ProjectCreate, ProjectOut, ProjectUpdate
 from backend.schemas.recurring_transaction import RecurringTransactionTemplateCreate
-from backend.services.project_service import ProjectService
+from backend.services.project_service import ProjectService, calculate_monthly_income_amount
 from backend.services.recurring_transaction_service import RecurringTransactionService
 from backend.services.financial_aggregation_service import FinancialAggregationService
 from backend.services.budget_service import BudgetService
@@ -666,20 +666,15 @@ async def get_parent_project_financial_summary(
         parent_transaction_income = sum(t.amount for t in parent_transactions if t.type == 'Income' and not t.from_fund)
         parent_expense = sum(t.amount for t in parent_transactions if t.type == 'Expense' and not t.from_fund)
         
-        # Calculate income from parent project settings (monthly_price_per_apartment * num_residents)
-        # Calculate only for the current year, from project start date (or start of year if project started earlier)
+        # Calculate income from parent project's monthly budget (treated as expected monthly income)
         parent_project_income = 0.0
-        if parent_project.num_residents and parent_project.monthly_price_per_apartment and start_date:
-            monthly_income = float(parent_project.num_residents) * float(parent_project.monthly_price_per_apartment)
+        monthly_income = float(parent_project.budget_monthly or 0)
+        if monthly_income > 0 and start_date:
+            parent_transaction_income = 0.0
             # Calculate start date for income calculation: use the later of project start date or start of current year
             current_year_start = date_type(end_date.year, 1, 1)  # January 1st of current year
             income_calculation_start = max(start_date, current_year_start)
-            from calendar import monthrange
-            months_diff = (end_date.year - income_calculation_start.year) * 12 + (end_date.month - income_calculation_start.month)
-            days_in_start_month = monthrange(income_calculation_start.year, income_calculation_start.month)[1]
-            days_passed_in_start_month = days_in_start_month - income_calculation_start.day + 1
-            partial_month_ratio = days_passed_in_start_month / days_in_start_month
-            parent_project_income = monthly_income * (months_diff + partial_month_ratio)
+            parent_project_income = calculate_monthly_income_amount(monthly_income, income_calculation_start, end_date)
         
         parent_income = parent_transaction_income + parent_project_income
         parent_profit = parent_income - parent_expense
@@ -701,20 +696,15 @@ async def get_parent_project_financial_summary(
             subproject_transaction_income = sum(t.amount for t in subproject_transactions if t.type == 'Income' and not t.from_fund)
             subproject_expense = sum(t.amount for t in subproject_transactions if t.type == 'Expense' and not t.from_fund)
             
-            # Calculate income from subproject settings (monthly_price_per_apartment * num_residents)
-            # Calculate only for the current year, from project start date (or start of year if project started earlier)
+            # Calculate income from subproject monthly budget (treated as expected monthly income)
             subproject_project_income = 0.0
-            if subproject.num_residents and subproject.monthly_price_per_apartment and start_date:
-                monthly_income = float(subproject.num_residents) * float(subproject.monthly_price_per_apartment)
-                # Calculate start date for income calculation: use the later of project start date or start of current year
+            subproject_monthly_income = float(subproject.budget_monthly or 0)
+            if subproject_monthly_income > 0 and start_date:
+                subproject_transaction_income = 0.0
+                # Calculate start date for income calculation: use the later of project start date or start of year
                 current_year_start = date_type(end_date.year, 1, 1)  # January 1st of current year
                 income_calculation_start = max(start_date, current_year_start)
-                from calendar import monthrange
-                months_diff = (end_date.year - income_calculation_start.year) * 12 + (end_date.month - income_calculation_start.month)
-                days_in_start_month = monthrange(income_calculation_start.year, income_calculation_start.month)[1]
-                days_passed_in_start_month = days_in_start_month - income_calculation_start.day + 1
-                partial_month_ratio = days_passed_in_start_month / days_in_start_month
-                subproject_project_income = monthly_income * (months_diff + partial_month_ratio)
+                subproject_project_income = calculate_monthly_income_amount(subproject_monthly_income, income_calculation_start, end_date)
             
             subproject_income = subproject_transaction_income + subproject_project_income
             subproject_profit = subproject_income - subproject_expense

@@ -8,7 +8,7 @@ from backend.models.transaction import Transaction
 from backend.models.project import Project
 from backend.models.budget import Budget
 from backend.services.budget_service import BudgetService
-from backend.services.project_service import calculate_start_date
+from backend.services.project_service import calculate_start_date, calculate_monthly_income_amount
 
 
 class ReportService:
@@ -105,6 +105,13 @@ class ReportService:
             # Wrap each project's processing in error handling
             # If a query fails for this project, skip it and continue with others
             try:
+                # Ensure all scalar attributes are loaded to avoid lazy-loads outside greenlet
+                try:
+                    await self.db.refresh(project)
+                except Exception:
+                    # If refresh fails (e.g., detached instance), fetch a fresh copy
+                    project = (await self.db.get(Project, project.id)) or project
+
                 # Calculate start date: use project.start_date if available, otherwise use 1 year ago as fallback
                 # Budget is NOT income - only actual transactions count
                 if project.start_date:
@@ -173,31 +180,18 @@ class ReportService:
                 budget_annual = 0.0
                 budget_monthly = 0.0
             
-            # Calculate income from project settings (monthly_price_per_apartment * num_residents)
-            # This is the expected monthly income that the user sets when creating/updating the project
+            # Calculate income from the monthly budget (treated as expected monthly income)
             # Calculate only for the current year, from project start date (or start of year if project started earlier)
             project_income = 0.0
-            if project.num_residents and project.monthly_price_per_apartment and calculation_start_date:
-                monthly_income = float(project.num_residents) * float(project.monthly_price_per_apartment)
-                
+            monthly_income = float(project.budget_monthly or 0)
+            if monthly_income > 0 and calculation_start_date:
                 # Calculate start date for income calculation: use the later of project start date or start of current year
                 current_year_start = date(current_date.year, 1, 1)  # January 1st of current year
                 income_calculation_start = max(calculation_start_date, current_year_start)
-                
-                # Calculate how many months from income_calculation_start to now
-                months_diff = (current_date.year - income_calculation_start.year) * 12 + \
-                             (current_date.month - income_calculation_start.month)
-                
-                # Add partial month if we're past the start date
-                from calendar import monthrange
-                days_in_start_month = monthrange(income_calculation_start.year, income_calculation_start.month)[1]
-                days_passed_in_start_month = days_in_start_month - income_calculation_start.day + 1
-                partial_month_ratio = days_passed_in_start_month / days_in_start_month
-                
-                # Calculate total income for current year: full months + partial month
-                project_income = monthly_income * (months_diff + partial_month_ratio)
+                project_income = calculate_monthly_income_amount(monthly_income, income_calculation_start, current_date)
+                yearly_income = 0.0
             
-            # Income = actual transactions + project income (from monthly_price_per_apartment * num_residents)
+            # Income = actual transactions + project income (from monthly budget)
             # Budget is NOT included in income
             project_total_income = yearly_income + project_income
             

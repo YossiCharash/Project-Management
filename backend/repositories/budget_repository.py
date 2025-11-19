@@ -1,6 +1,7 @@
 from sqlalchemy import select, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import date
+from typing import Tuple
 from backend.models.budget import Budget
 from backend.models.transaction import Transaction
 
@@ -60,9 +61,9 @@ class BudgetRepository:
         self, 
         budget: Budget, 
         as_of_date: date | None = None
-    ) -> float:
-        """Calculate net spending for a budget's category within the budget period
-        Net spending = Expenses - Income (Income reduces the spending amount)
+    ) -> Tuple[float, float]:
+        """Calculate spending breakdown for a budget's category within the budget period.
+        Returns (total_expenses, total_income).
         """
         if as_of_date is None:
             as_of_date = date.today()
@@ -101,8 +102,5 @@ class BudgetRepository:
         total_expenses = float(expenses_result.scalar_one())
         total_income = float(income_result.scalar_one())
         
-        # Net spending = Expenses - Income (Income reduces spending)
-        net_spending = max(0, total_expenses - total_income)  # Don't allow negative spending
-        
-        return net_spending
+        return total_expenses, total_income
 
