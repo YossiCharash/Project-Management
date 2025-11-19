@@ -86,7 +86,7 @@ const ProjectTreeNode: React.FC<ProjectTreeNodeProps> = ({
           <div className="text-xs text-gray-500 truncate">
             {project.address && `${project.address}, `}
             {project.city}
-            {project.num_residents && ` • ${project.num_residents} דיירים`}
+            {/* Removed num_residents display */}
           </div>
         </div>
 

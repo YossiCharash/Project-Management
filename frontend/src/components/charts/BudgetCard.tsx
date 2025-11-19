@@ -9,7 +9,13 @@ interface BudgetCardProps {
 
 const BudgetCard: React.FC<BudgetCardProps> = ({ budget, onDelete, deleting }) => {
   // Calculate progress percentage
-  const progressPercent = Math.min((budget.spent_amount / budget.amount) * 100, 100)
+  const baseBudget = Number(budget.base_amount ?? budget.amount ?? 0)
+  const effectiveBudget = Number(budget.amount ?? baseBudget)
+  const expenseAmount = Number(budget.expense_amount ?? budget.spent_amount ?? 0)
+  const incomeAmount = Number(budget.income_amount ?? 0)
+  const netSpent = expenseAmount - incomeAmount
+  const remainingAmount = Number(budget.remaining_amount ?? (effectiveBudget - expenseAmount))
+  const progressPercent = effectiveBudget > 0 ? Math.min((Math.max(netSpent, 0) / effectiveBudget) * 100, 100) : 0
   
   // Determine status
   const isOverBudget = budget.is_over_budget
@@ -97,9 +103,9 @@ const BudgetCard: React.FC<BudgetCardProps> = ({ budget, onDelete, deleting }) =
           </div>
         </div>
         <div className="text-center bg-gray-50 dark:bg-gray-700 rounded-lg p-3">
-          <div className="text-xs text-gray-600 dark:text-gray-400 mb-1 font-medium">הוצא בפועל</div>
+          <div className="text-xs text-gray-600 dark:text-gray-400 mb-1 font-medium">הוצאה נטו</div>
           <div className="font-bold text-gray-900 dark:text-white text-lg">
-            {budget.spent_amount.toLocaleString()} ₪
+            {netSpent.toLocaleString()} ₪
           </div>
           <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
             {progressPercent.toFixed(1)}%
@@ -121,23 +127,35 @@ const BudgetCard: React.FC<BudgetCardProps> = ({ budget, onDelete, deleting }) =
       </div>
 
       {/* Summary Numbers */}
-      <div className="grid grid-cols-3 gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+      <div className="grid grid-cols-4 gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
         <div className="text-center">
-          <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">תקציב</div>
-          <div className="text-lg font-bold text-gray-900 dark:text-white">
-            {budget.amount.toLocaleString()} ₪
+        <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">תקציב בסיסי</div>
+        <div className="text-lg font-bold text-gray-900 dark:text-white">
+          {baseBudget.toLocaleString()} ₪
+        </div>
+        </div>
+        <div className="text-center">
+          <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">סה\"כ הוצאות</div>
+          <div className={`text-lg font-bold ${isOverBudget ? 'text-red-600' : 'text-blue-600'}`}>
+            {expenseAmount.toLocaleString()} ₪
           </div>
         </div>
         <div className="text-center">
-          <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">הוצא</div>
-          <div className={`text-lg font-bold ${isOverBudget ? 'text-red-600' : 'text-blue-600'}`}>
-            {budget.spent_amount.toLocaleString()} ₪
+          <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">סה\"כ הכנסות</div>
+          <div className="text-lg font-bold text-green-600">
+            {incomeAmount.toLocaleString()} ₪
+          </div>
+        </div>
+        <div className="text-center">
+          <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">תקציב נוכחי</div>
+          <div className="text-lg font-bold text-gray-900 dark:text-white">
+            {effectiveBudget.toLocaleString()} ₪
           </div>
         </div>
         <div className="text-center">
           <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">נותר</div>
-          <div className={`text-lg font-bold ${budget.remaining_amount < 0 ? 'text-red-600' : 'text-green-600'}`}>
-            {budget.remaining_amount.toLocaleString()} ₪
+          <div className={`text-lg font-bold ${remainingAmount < 0 ? 'text-red-600' : 'text-green-600'}`}>
+            {remainingAmount.toLocaleString()} ₪
           </div>
         </div>
       </div>

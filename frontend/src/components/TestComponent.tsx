@@ -24,8 +24,6 @@ const TestComponent: React.FC = () => {
         start_date: '2024-06-01',
         budget_monthly: 20000,
         budget_annual: 240000,
-        num_residents: 50,
-        monthly_price_per_apartment: 3500,
         address: 'רחוב הרצל 15',
         city: 'רמת גן',
         relation_project: 1, // Parent project ID

@@ -13,7 +13,7 @@ const CustomTooltip = ({ active, payload }: any) => {
     return (
       <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-4">
         <p className="font-semibold text-gray-900 dark:text-white mb-2">{data.category}</p>
-        <div className="space-y-1 text-sm">
+      <div className="space-y-1 text-sm">
           <div className="flex justify-between gap-4">
             <span className="text-gray-600 dark:text-gray-400">תקציב:</span>
             <span className="font-semibold text-gray-900 dark:text-white">{data.budget.toLocaleString()} ₪</span>
@@ -62,16 +62,20 @@ export default function BudgetProgressChart({ budgets, projectName }: BudgetProg
   }
 
   // Prepare data for the chart
-  const chartData = budgets.map(budget => ({
-    category: budget.category,
-    budget: budget.amount,
-    spent: budget.spent_amount,
-    remaining: budget.remaining_amount,
-    spentPercent: budget.spent_percentage,
-    expectedPercent: budget.expected_spent_percentage,
-    isOverBudget: budget.is_over_budget,
-    isSpendingTooFast: budget.is_spending_too_fast
-  }))
+  const chartData = budgets.map(budget => {
+    const spent = Number(budget.spent_amount ?? 0)
+    const remaining = Number(budget.remaining_amount ?? (budget.amount - spent))
+    return {
+      category: budget.category,
+      budget: budget.amount,
+      spent,
+      remaining,
+      spentPercent: Math.max(budget.spent_percentage ?? (spent / budget.amount * 100), 0),
+      expectedPercent: budget.expected_spent_percentage,
+      isOverBudget: budget.is_over_budget,
+      isSpendingTooFast: budget.is_spending_too_fast
+    }
+  })
 
   // Color function based on budget status
   const getColor = (entry: any) => {
@@ -112,7 +116,7 @@ export default function BudgetProgressChart({ budgets, projectName }: BudgetProg
             formatter={(value) => {
               const labels: Record<string, string> = {
                 budget: 'תקציב',
-                spent: 'הוצא'
+                spent: 'הוצאה נטו'
               }
               return labels[value] || value
             }}

@@ -84,19 +84,7 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
             </div>
           )}
           
-          {project.num_residents && (
-            <div className="flex items-center gap-2">
-              <span className="text-gray-400">👥</span>
-              <span>{project.num_residents} דיירים</span>
-            </div>
-          )}
-
-          {project.monthly_price_per_apartment && (
-            <div className="flex items-center gap-2">
-              <span className="text-gray-400">💰</span>
-              <span>{project.monthly_price_per_apartment.toFixed(0)} ₪ לדירה</span>
-            </div>
-          )}
+          {/* Removed num_residents and monthly_price_per_apartment display */}
         </div>
 
         <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-600">

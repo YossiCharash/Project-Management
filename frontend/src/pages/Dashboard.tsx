@@ -31,8 +31,6 @@ export default function Dashboard() {
   const [endDate, setEndDate] = useState('')
   const [monthly, setMonthly] = useState<number>(0)
   const [annual, setAnnual] = useState<number>(0)
-  const [numResidents, setNumResidents] = useState<number | ''>('')
-  const [pricePerApt, setPricePerApt] = useState<number | ''>('')
   const [address, setAddress] = useState('')
   const [city, setCity] = useState('')
   const [creating, setCreating] = useState(false)
@@ -72,7 +70,7 @@ export default function Dashboard() {
   }, [items])
 
   const resetForm = () => {
-    setName(''); setDescription(''); setStartDate(''); setEndDate(''); setMonthly(0); setAnnual(0); setNumResidents(''); setPricePerApt(''); setAddress(''); setCity(''); setLocalError(null); setEditingId(null)
+    setName(''); setDescription(''); setStartDate(''); setEndDate(''); setMonthly(0); setAnnual(0); setAddress(''); setCity(''); setLocalError(null); setEditingId(null)
   }
 
   const onCreateOrUpdate = async (e: FormEvent) => {
@@ -87,8 +85,6 @@ export default function Dashboard() {
         description: description || undefined,
         start_date: startDate || undefined,
         end_date: endDate || undefined,
-        num_residents: numResidents === '' ? undefined : Number(numResidents),
-        monthly_price_per_apartment: pricePerApt === '' ? undefined : Number(pricePerApt),
         address: address || undefined,
         city: city || undefined,
       }
@@ -120,8 +116,6 @@ export default function Dashboard() {
     setEndDate(p.end_date || '')
     setMonthly(p.budget_monthly ?? 0)
     setAnnual(p.budget_annual ?? 0)
-    setNumResidents((p as any).num_residents ?? '')
-    setPricePerApt((p as any).monthly_price_per_apartment ?? '')
     setAddress((p as any).address ?? '')
     setCity((p as any).city ?? '')
     setOpenCreate(true)
@@ -186,16 +180,6 @@ export default function Dashboard() {
             <div>
               <label className="block text-xs text-gray-600 mb-1">תאריך סיום</label>
               <input className="border rounded p-2 w-full" type="date" value={endDate} onChange={e=>setEndDate(e.target.value)} />
-            </div>
-          </div>
-          <div className="grid md:grid-cols-2 gap-2">
-            <div>
-              <label className="block text-xs text-gray-600 mb-1">מספר דיירים</label>
-              <input className="border rounded p-2 w-full" type="number" value={numResidents} onChange={e=>setNumResidents(e.target.value === '' ? '' : Number(e.target.value))} />
-            </div>
-            <div>
-              <label className="block text-xs text-gray-600 mb-1">מחיר חודשי לדירה</label>
-              <input className="border rounded p-2 w-full" type="number" value={pricePerApt} onChange={e=>setPricePerApt(e.target.value === '' ? '' : Number(e.target.value))} />
             </div>
           </div>
           <div className="grid md:grid-cols-2 gap-2">

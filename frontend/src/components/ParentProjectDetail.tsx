@@ -1361,25 +1361,7 @@ export default function ParentProjectDetail() {
             </div>
           )}
           
-          {parentProject.num_residents && (
-            <div className="flex items-center gap-2">
-              <Users className="w-4 h-4 text-gray-400" />
-              <div>
-                <div className="text-sm font-medium text-gray-700 dark:text-gray-300">{HebrewText.property.residents}</div>
-                <div className="text-gray-900 dark:text-white">{parentProject.num_residents}</div>
-              </div>
-            </div>
-          )}
-          
-          {parentProject.monthly_price_per_apartment && (
-            <div className="flex items-center gap-2">
-              <DollarSign className="w-4 h-4 text-gray-400" />
-              <div>
-                <div className="text-sm font-medium text-gray-700 dark:text-gray-300">{HebrewText.projects.monthlyBudget} {HebrewText.property.apartment}</div>
-                <div className="text-gray-900 dark:text-white">{parentProject.monthly_price_per_apartment.toFixed(0)} ₪</div>
-              </div>
-            </div>
-          )}
+          {/* Removed num_residents and monthly_price_per_apartment display */}
           
           {parentProject.budget_monthly > 0 && (
             <div className="flex items-center gap-2">

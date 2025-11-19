@@ -98,11 +98,11 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
     >
       <div className="p-6">
         {imageUrl && (
-          <div className="mb-4 rounded-lg overflow-hidden">
+          <div className="mb-3 rounded-lg overflow-hidden">
             <img
               src={imageUrl}
               alt={project.name}
-              className="w-full h-48 object-cover"
+              className="w-full h-36 object-cover"
               onError={(e) => {
                 e.currentTarget.style.display = 'none'
               }}
@@ -111,35 +111,35 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
         )}
         <div className="flex justify-between items-start mb-4">
           <div className="flex-1">
-            <div className="flex items-center gap-2 mb-2">
-              <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
+            <div className="flex items-center gap-2 mb-1.5">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
                 {project.name}
               </h3>
               {hasSubprojects && (
-                <span className="px-2 py-1 bg-blue-100 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 text-xs font-medium rounded-full">
+                <span className="px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 text-[11px] font-medium rounded-full">
                   יש תת-פרויקטים
                 </span>
               )}
             </div>
             {project.description && (
-              <p className="text-gray-600 dark:text-gray-400 text-sm mb-3">
+              <p className="text-gray-600 dark:text-gray-400 text-xs mb-2 line-clamp-2">
                 {project.description}
               </p>
             )}
           </div>
           <div className="flex flex-col items-end gap-1">
-            <span className={`px-3 py-1 rounded-full text-sm font-medium border ${getStatusColor(project.status_color)}`}>
+            <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium border ${getStatusColor(project.status_color)}`}>
               {getStatusText(project.status_color)}
             </span>
             {project.is_active === false && (
-              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400">
+              <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400">
                 מאורכב
               </span>
             )}
           </div>
         </div>
 
-        <div className="space-y-3 text-sm text-gray-600 dark:text-gray-400">
+        <div className="space-y-2 text-xs text-gray-600 dark:text-gray-400">
           {project.address && (
             <div className="flex items-center gap-2">
               <span className="text-gray-400">📍</span>
@@ -147,57 +147,45 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
             </div>
           )}
           
-          {project.num_residents && (
-            <div className="flex items-center gap-2">
-              <span className="text-gray-400">👥</span>
-              <span>{project.num_residents} דיירים</span>
-            </div>
-          )}
-
-          {project.monthly_price_per_apartment && (
-            <div className="flex items-center gap-2">
-              <span className="text-gray-400">💰</span>
-              <span>{project.monthly_price_per_apartment.toFixed(0)} ₪ לדירה</span>
-            </div>
-          )}
+          {/* Removed num_residents and monthly_price_per_apartment display */}
         </div>
 
-        <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-600">
+        <div className="mt-4 pt-3 border-t border-gray-200 dark:border-gray-600">
           {/* Profitability Status - Prominent Display */}
-          <div className="mb-4 p-3 rounded-lg bg-gray-50 dark:bg-gray-700">
+          <div className="mb-3 p-2.5 rounded-lg bg-gray-50 dark:bg-gray-700">
             <div className="flex justify-between items-center mb-2">
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">סטטוס רווחיות</span>
-              <span className={`px-2 py-1 rounded-full text-xs font-bold ${getStatusColor(project.status_color || 'yellow')}`}>
+              <span className="text-xs font-medium text-gray-700 dark:text-gray-300">סטטוס רווחיות</span>
+              <span className={`px-1.5 py-0.5 rounded-full text-[11px] font-bold ${getStatusColor(project.status_color || 'yellow')}`}>
                 {getStatusText(project.status_color || 'yellow')}
               </span>
             </div>
             <div className="text-center">
-              <div className={`text-2xl font-bold ${(Number(project.profit_percent) || 0) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+              <div className={`text-xl font-bold ${(Number(project.profit_percent) || 0) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                 {(Number(project.profit_percent) || 0) >= 0 ? '+' : ''}{Number(project.profit_percent || 0).toFixed(1)}%
               </div>
-              <div className="text-xs text-gray-500 dark:text-gray-400">רווח/הפסד שנתי</div>
+              <div className="text-[11px] text-gray-500 dark:text-gray-400">רווח/הפסד שנתי</div>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4 text-sm">
+          <div className="grid grid-cols-2 gap-3 text-xs">
             <div>
-              <div className="text-gray-500 dark:text-gray-400 text-xs">הכנסות השנה</div>
-              <div className="font-semibold text-green-600 dark:text-green-400">
+              <div className="text-gray-500 dark:text-gray-400 text-[11px]">הכנסות השנה</div>
+              <div className="font-semibold text-green-600 dark:text-green-400 text-sm">
                 {Number(project.income_month_to_date || 0).toLocaleString('he-IL')} ₪
               </div>
             </div>
             <div>
-              <div className="text-gray-500 dark:text-gray-400 text-xs">הוצאות השנה</div>
-              <div className="font-semibold text-red-600 dark:text-red-400">
+              <div className="text-gray-500 dark:text-gray-400 text-[11px]">הוצאות השנה</div>
+              <div className="font-semibold text-red-600 dark:text-red-400 text-sm">
                 {Number(project.expense_month_to_date || 0).toLocaleString('he-IL')} ₪
               </div>
             </div>
           </div>
 
-          <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
+          <div className="mt-2.5 pt-2.5 border-t border-gray-100 dark:border-gray-700">
             <div className="flex justify-between items-center">
-              <span className="text-gray-500 dark:text-gray-400 text-xs">רווח/הפסד נטו</span>
-              <span className={`font-bold ${((Number(project.income_month_to_date) || 0) - (Number(project.expense_month_to_date) || 0)) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+              <span className="text-gray-500 dark:text-gray-400 text-[11px]">רווח/הפסד נטו</span>
+              <span className={`text-sm font-semibold ${((Number(project.income_month_to_date) || 0) - (Number(project.expense_month_to_date) || 0)) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                 {((Number(project.income_month_to_date) || 0) - (Number(project.expense_month_to_date) || 0)) >= 0 ? '+' : ''}{((Number(project.income_month_to_date) || 0) - (Number(project.expense_month_to_date) || 0)).toLocaleString('he-IL')} ₪
               </span>
             </div>
@@ -205,11 +193,11 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
         </div>
 
 
-        <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
-          <div className="flex gap-2">
+        <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-600">
+          <div className="flex gap-1.5">
             <button
               onClick={() => onProjectClick?.(project)}
-              className="flex-1 px-3 py-2 text-sm bg-blue-100 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded-lg hover:bg-blue-200 dark:hover:bg-blue-900/40 transition-colors flex items-center justify-center gap-2"
+              className="flex-1 px-2.5 py-1.5 text-xs bg-blue-100 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded-lg hover:bg-blue-200 dark:hover:bg-blue-900/40 transition-colors flex items-center justify-center gap-1.5"
             >
               <Eye className="w-4 h-4" />
               {hasSubprojects ? 'צפה בתת-פרויקטים' : 'צפה'}
@@ -217,7 +205,7 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
             {onProjectEdit && project.is_active !== false && (
               <button
                 onClick={() => onProjectEdit(project)}
-                className="px-3 py-2 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                className="px-2.5 py-1.5 text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
               >
                 <Edit className="w-4 h-4" />
               </button>
@@ -225,7 +213,7 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
             {onProjectArchive && project.is_active !== false && (
               <button
                 onClick={() => onProjectArchive(project)}
-                className="px-3 py-2 text-sm bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-300 rounded-lg hover:bg-red-200 dark:hover:bg-red-900/40 transition-colors"
+                className="px-2.5 py-1.5 text-xs bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-300 rounded-lg hover:bg-red-200 dark:hover:bg-red-900/40 transition-colors"
                 title="ארכב פרויקט"
               >
                 <Archive className="w-4 h-4" />
@@ -234,7 +222,7 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
             {onProjectRestore && project.is_active === false && (
               <button
                 onClick={() => onProjectRestore(project)}
-                className="px-3 py-2 text-sm bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300 rounded-lg hover:bg-green-200 dark:hover:bg-green-900/40 transition-colors"
+                className="px-2.5 py-1.5 text-xs bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300 rounded-lg hover:bg-green-200 dark:hover:bg-green-900/40 transition-colors"
                 title="שחזר פרויקט"
               >
                 <RotateCcw className="w-4 h-4" />
@@ -632,9 +620,9 @@ export default function Projects() {
           </div>
         </div>
       ) : (
-        <div className={`grid gap-6 ${
+        <div className={`grid gap-4 max-w-6xl mx-auto ${
           viewMode === 'grid' 
-            ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' 
+            ? 'grid-cols-1 sm:grid-cols-2 xl:grid-cols-3' 
             : 'grid-cols-1'
         }`}>
           {filteredProjects.map((project: any) => {

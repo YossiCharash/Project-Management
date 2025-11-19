@@ -511,6 +511,8 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
             </div>
           </div>
 
+          {/* Removed num_residents and monthly_price_per_apartment inputs */}
+
           {/* Fund Section */}
           <div className="space-y-4 border-t border-gray-200 dark:border-gray-700 pt-4">
             <div className="flex items-center gap-2 mb-2">
