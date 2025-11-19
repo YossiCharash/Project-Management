@@ -32,7 +32,6 @@ export const login = createAsyncThunk(
   'auth/login',
   async (payload: { email: string; password: string }, { rejectWithValue }) => {
     try {
-      console.log('API URL:', import.meta.env.VITE_API_URL);
       const { data } = await api.post('/auth/login', {
         email: payload.email,
         password: payload.password

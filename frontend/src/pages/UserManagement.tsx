@@ -113,12 +113,10 @@ export default function UserManagement() {
     setError(null)
     setLoading(true)
     try {
-      const response = await api.delete(`/users/${userId}`)
-      console.log('Delete response:', response)
+      await api.delete(`/users/${userId}`)
       await fetchUsers() // Refresh the list
       alert('משתמש נמחק בהצלחה')
     } catch (err: any) {
-      console.error('Delete error:', err)
       const errorMessage = err.response?.data?.detail || err.message || 'Failed to delete user'
       setError(errorMessage)
       alert(`שגיאה במחיקת המשתמש: ${errorMessage}`)
@@ -143,19 +141,17 @@ export default function UserManagement() {
     setError(null)
     setLoading(true)
     try {
-      const response = await api.put(`/users/${editingUser.id}`, {
+      await api.put(`/users/${editingUser.id}`, {
         full_name: editUser.full_name,
         role: editUser.role,
         is_active: editUser.is_active
       })
       
-      console.log('Update response:', response)
       setEditingUser(null)
       setEditUser({ full_name: '', role: 'Member', is_active: true })
       await fetchUsers() // Refresh the list
       alert('משתמש עודכן בהצלחה')
     } catch (err: any) {
-      console.error('Update error:', err)
       const errorMessage = err.response?.data?.detail || err.message || 'Failed to update user'
       setError(errorMessage)
       alert(`שגיאה בעדכון המשתמש: ${errorMessage}`)

@@ -16,6 +16,33 @@ import api from '../lib/api'
 import ProjectExpensePieChart from './charts/ProjectExpensePieChart'
 import ProjectTrendsChart from './charts/ProjectTrendsChart'
 
+// Reverse mapping: Hebrew to English (for filtering)
+const CATEGORY_REVERSE_MAP: Record<string, string> = {
+  'ניקיון': 'CLEANING',
+  'חשמל': 'ELECTRICITY',
+  'ביטוח': 'INSURANCE',
+  'גינון': 'GARDENING',
+  'אחר': 'OTHER',
+  'תחזוקה': 'MAINTENANCE'
+}
+
+// Normalize category for comparison (handles both Hebrew and English)
+const normalizeCategoryForFilter = (category: string | null | undefined): string | null => {
+  if (!category) return null
+  const trimmed = String(category).trim()
+  if (trimmed.length === 0) return null
+  // If it's already in English (uppercase), return as is
+  if (trimmed === trimmed.toUpperCase()) {
+    return trimmed
+  }
+  // If it's in Hebrew, try to convert to English
+  if (CATEGORY_REVERSE_MAP[trimmed]) {
+    return CATEGORY_REVERSE_MAP[trimmed]
+  }
+  // Otherwise return as is (might be a custom category)
+  return trimmed
+}
+
 interface DateRange {
   start: string
   end: string
@@ -387,9 +414,9 @@ const SubprojectCardsList: React.FC<{
         try {
           const { data } = await api.get(`/projects/${subproject.id}`)
           if (data.image_url) {
-            const apiUrl = import.meta.env.VITE_API_URL
+            const apiUrl = import.meta.env.VITE_API_URL || ''
             // @ts-ignore
-            const baseUrl = apiUrl.replace('/api/v1', '')
+            const baseUrl = apiUrl ? apiUrl.replace('/api/v1', '') : ''
             images[subproject.id] = `${baseUrl}/uploads/${data.image_url}`
           } else {
             images[subproject.id] = null
@@ -540,10 +567,23 @@ const ConsolidatedTransactionsTable: React.FC<{
     const typeMatch = filters.type === 'all' || transaction.type === filters.type
     const monthMatch = !filters.month || transactionMonth === filters.month
     const yearMatch = !filters.year || transactionYear === filters.year
-    const categoryMatch = !filters.category || transaction.category?.toLowerCase().includes(filters.category.toLowerCase())
+    
+    // Category filter: exact match (consistent with ProjectDetail.tsx)
+    // Handle both Hebrew and English categories
+    let categoryMatch = true
+    if (filters.category) {
+      const txCategory = normalizeCategoryForFilter(transaction.category)
+      const filterCategory = normalizeCategoryForFilter(filters.category)
+      // Match if normalized categories are equal, or if original categories match
+      const normalizedMatch: boolean = txCategory !== null && filterCategory !== null && txCategory === filterCategory
+      const directMatch: boolean = !!(transaction.category && String(transaction.category).trim() === String(filters.category).trim())
+      categoryMatch = normalizedMatch || directMatch
+    }
+    
+    // Exceptional filter: handle null/undefined explicitly
     const exceptionalMatch = filters.exceptional === 'all' || 
-      (filters.exceptional === 'only' && transaction.is_exceptional) ||
-      (filters.exceptional === 'none' && !transaction.is_exceptional)
+      (filters.exceptional === 'only' && transaction.is_exceptional === true) ||
+      (filters.exceptional === 'none' && transaction.is_exceptional !== true)
     
     return typeMatch && monthMatch && yearMatch && categoryMatch && exceptionalMatch
   })
@@ -1285,9 +1325,9 @@ export default function ParentProjectDetail() {
                   />
                 )
               }
-              const apiUrl = import.meta.env.VITE_API_URL
+              const apiUrl = import.meta.env.VITE_API_URL || ''
               // @ts-ignore
-              const baseUrl = apiUrl.replace('/api/v1', '')
+              const baseUrl = apiUrl ? apiUrl.replace('/api/v1', '') : ''
               const imageUrl = `${baseUrl}/uploads/${rawUrl}`
               return (
                 <img

@@ -104,9 +104,9 @@ export default function SupplierDocuments() {
       return filePath
     }
     // Backward compatibility for old local /uploads paths
-    const apiUrl = import.meta.env.VITE_API_URL
+    const apiUrl = import.meta.env.VITE_API_URL || ''
     // @ts-ignore
-    const baseUrl = apiUrl.replace('/api/v1', '')
+    const baseUrl = apiUrl ? apiUrl.replace('/api/v1', '') : ''
     let normalizedPath = filePath.startsWith('/') ? filePath : `/${filePath}`
     normalizedPath = normalizedPath.replace(/([^:]\/)\/+/g, '$1')
     return `${baseUrl}${normalizedPath}`

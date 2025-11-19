@@ -70,10 +70,6 @@ async def list_transactions(project_id: int, db: DBSessionDep, user = Depends(ge
     
     result = []
     for tx in transactions:
-        # Debug: Check if created_by_user_id exists
-        if not hasattr(tx, 'created_by_user_id'):
-            print(f"DEBUG: Transaction {tx.id} does not have created_by_user_id attribute")
-        
         # Get is_generated value - check both attribute and recurring_template_id
         is_generated_value = getattr(tx, 'is_generated', False)
         recurring_template_id = getattr(tx, 'recurring_template_id', None)
@@ -81,7 +77,6 @@ async def list_transactions(project_id: int, db: DBSessionDep, user = Depends(ge
         # If transaction has recurring_template_id but is_generated is False, set it to True
         if recurring_template_id and not is_generated_value:
             is_generated_value = True
-            print(f"⚠️  Transaction {tx.id} has recurring_template_id={recurring_template_id} but is_generated=False, fixing to True")
         
         tx_dict = {
             'id': tx.id,
@@ -102,9 +97,6 @@ async def list_transactions(project_id: int, db: DBSessionDep, user = Depends(ge
             'created_by_user': None,
             'from_fund': tx.from_fund if hasattr(tx, 'from_fund') else False
         }
-        
-        # Debug: Print transaction info
-        print(f"DEBUG: Transaction {tx.id} - created_by_user_id={tx_dict['created_by_user_id']}, is_generated={tx_dict['is_generated']}, recurring_template_id={recurring_template_id}")
         
         # Load user info if exists
         if tx_dict['created_by_user_id']:
@@ -132,15 +124,15 @@ async def create_transaction(db: DBSessionDep, data: TransactionCreate, user = D
         raise HTTPException(status_code=404, detail="Project not found")
     
     # Validate supplier if provided
-    # Supplier is required only for Expense transactions (not for Income or fund transactions)
+    # Supplier is required only for Expense transactions (not for Income or fund transactions or when category is "אחר")
     if data.supplier_id is not None:
         supplier = await SupplierRepository(db).get(data.supplier_id)
         if not supplier:
             raise HTTPException(status_code=404, detail="Supplier not found")
         if not supplier.is_active:
             raise HTTPException(status_code=400, detail="Cannot create transaction with inactive supplier")
-    elif data.type == 'Expense' and not data.from_fund:
-        # Supplier is required for Expense transactions (not for Income or fund transactions)
+    elif data.type == 'Expense' and not data.from_fund and data.category != 'אחר':
+        # Supplier is required for Expense transactions (not for Income, fund transactions, or when category is "אחר")
         raise HTTPException(status_code=400, detail="Supplier is required for expense transactions")
     
     # Add user_id to transaction data

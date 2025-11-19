@@ -168,6 +168,15 @@ async def get_project(project_id: int, db: DBSessionDep, user = Depends(get_curr
     fund_service = FundService(db)
     fund = await fund_service.get_fund_by_project(project_id)
     
+    # Debug: Log project data being sent
+    print(f"📥 [Backend] Project {project_id} data:", {
+        "start_date": str(project.start_date),
+        "num_residents": project.num_residents,
+        "monthly_price_per_apartment": project.monthly_price_per_apartment,
+        "budget_monthly": project.budget_monthly,
+        "budget_annual": project.budget_annual
+    })
+    
     # Convert to dict to modify
     project_dict = {
         "id": project.id,
@@ -625,9 +634,14 @@ async def get_parent_project_financial_summary(
         )
         subprojects = subprojects_result.scalars().all()
         
-        # If no start_date provided, use project start_date or 1 year back (whichever is later)
+        # If no start_date provided, use project start_date (or 1 year back as fallback if no start_date)
         if not start_date:
-            start_date = calculate_start_date(parent_project.start_date)
+            if parent_project.start_date:
+                start_date = parent_project.start_date
+            else:
+                # Fallback: use 1 year ago if no project start date
+                from dateutil.relativedelta import relativedelta
+                start_date = date_type.today() - relativedelta(years=1)
         
         # If no end_date provided, use today
         if not end_date:
@@ -649,8 +663,25 @@ async def get_parent_project_financial_summary(
         parent_transactions = parent_transactions_result.scalars().all()
         
         # Calculate parent project financials
-        parent_income = sum(t.amount for t in parent_transactions if t.type == 'Income')
-        parent_expense = sum(t.amount for t in parent_transactions if t.type == 'Expense')
+        parent_transaction_income = sum(t.amount for t in parent_transactions if t.type == 'Income' and not t.from_fund)
+        parent_expense = sum(t.amount for t in parent_transactions if t.type == 'Expense' and not t.from_fund)
+        
+        # Calculate income from parent project settings (monthly_price_per_apartment * num_residents)
+        # Calculate only for the current year, from project start date (or start of year if project started earlier)
+        parent_project_income = 0.0
+        if parent_project.num_residents and parent_project.monthly_price_per_apartment and start_date:
+            monthly_income = float(parent_project.num_residents) * float(parent_project.monthly_price_per_apartment)
+            # Calculate start date for income calculation: use the later of project start date or start of current year
+            current_year_start = date_type(end_date.year, 1, 1)  # January 1st of current year
+            income_calculation_start = max(start_date, current_year_start)
+            from calendar import monthrange
+            months_diff = (end_date.year - income_calculation_start.year) * 12 + (end_date.month - income_calculation_start.month)
+            days_in_start_month = monthrange(income_calculation_start.year, income_calculation_start.month)[1]
+            days_passed_in_start_month = days_in_start_month - income_calculation_start.day + 1
+            partial_month_ratio = days_passed_in_start_month / days_in_start_month
+            parent_project_income = monthly_income * (months_diff + partial_month_ratio)
+        
+        parent_income = parent_transaction_income + parent_project_income
         parent_profit = parent_income - parent_expense
         parent_profit_margin = (parent_profit / parent_income * 100) if parent_income > 0 else 0
         
@@ -667,8 +698,25 @@ async def get_parent_project_financial_summary(
             subproject_transactions_result = await db.execute(subproject_transactions_query)
             subproject_transactions = subproject_transactions_result.scalars().all()
             
-            subproject_income = sum(t.amount for t in subproject_transactions if t.type == 'Income')
-            subproject_expense = sum(t.amount for t in subproject_transactions if t.type == 'Expense')
+            subproject_transaction_income = sum(t.amount for t in subproject_transactions if t.type == 'Income' and not t.from_fund)
+            subproject_expense = sum(t.amount for t in subproject_transactions if t.type == 'Expense' and not t.from_fund)
+            
+            # Calculate income from subproject settings (monthly_price_per_apartment * num_residents)
+            # Calculate only for the current year, from project start date (or start of year if project started earlier)
+            subproject_project_income = 0.0
+            if subproject.num_residents and subproject.monthly_price_per_apartment and start_date:
+                monthly_income = float(subproject.num_residents) * float(subproject.monthly_price_per_apartment)
+                # Calculate start date for income calculation: use the later of project start date or start of current year
+                current_year_start = date_type(end_date.year, 1, 1)  # January 1st of current year
+                income_calculation_start = max(start_date, current_year_start)
+                from calendar import monthrange
+                months_diff = (end_date.year - income_calculation_start.year) * 12 + (end_date.month - income_calculation_start.month)
+                days_in_start_month = monthrange(income_calculation_start.year, income_calculation_start.month)[1]
+                days_passed_in_start_month = days_in_start_month - income_calculation_start.day + 1
+                partial_month_ratio = days_passed_in_start_month / days_in_start_month
+                subproject_project_income = monthly_income * (months_diff + partial_month_ratio)
+            
+            subproject_income = subproject_transaction_income + subproject_project_income
             subproject_profit = subproject_income - subproject_expense
             subproject_profit_margin = (subproject_profit / subproject_income * 100) if subproject_income > 0 else 0
             

@@ -98,7 +98,6 @@ class ReportService:
         category_budget_alerts = []  # Store category budget alerts
 
         for project in projects:
-            print(f"🔄 Processing project {project.id}: {project.name}")
             # Initialize default values
             yearly_income = 0.0
             yearly_expense = 0.0
@@ -106,10 +105,16 @@ class ReportService:
             # Wrap each project's processing in error handling
             # If a query fails for this project, skip it and continue with others
             try:
-                # Calculate start date: max(project.start_date, 1 year ago)
-                calculation_start_date = calculate_start_date(project.start_date)
+                # Calculate start date: use project.start_date if available, otherwise use 1 year ago as fallback
+                # Budget is NOT income - only actual transactions count
+                if project.start_date:
+                    calculation_start_date = project.start_date
+                else:
+                    # Fallback: use 1 year ago if no project start date
+                    calculation_start_date = current_date - relativedelta(years=1)
                 
                 # Get transactions from calculation_start_date to now (exclude fund transactions)
+                # Only actual transactions are counted - budget is NOT included
                 yearly_income_query = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
                     and_(
                         Transaction.project_id == project.id,
@@ -157,155 +162,44 @@ class ReportService:
                     pass
                 continue  # Skip this project and continue with the next one
 
-            # Calculate budget income
+            # Budget is NOT income - only actual transactions count
+            # Calculate budget separately for budget overrun warnings (not for income calculation)
             # Access budget fields directly - they should already be loaded
             try:
                 budget_annual = float(project.budget_annual if project.budget_annual is not None else 0)
                 budget_monthly = float(project.budget_monthly if project.budget_monthly is not None else 0)
             except (AttributeError, ValueError) as e:
                 # If there's an issue accessing budget fields, use defaults
-                print(f"⚠️ Warning: Could not access budget fields for project {project.id}: {e}")
                 budget_annual = 0.0
                 budget_monthly = 0.0
             
-            # Calculate budget income from calculation_start_date to now
-            budget_income = 0.0
-            print(f"🔍 Project {project.id}: Checking budget - budget_annual={budget_annual}, budget_monthly={budget_monthly}")
-            # Prioritize monthly budget if both are set
-            if budget_monthly > 0:
-                print(f"📊 Project {project.id}: Using MONTHLY budget calculation")
-                # If monthly budget, calculate how many months from project start_date to now
-                # Each month's budget is added on the 1st of that month
-                # ALWAYS use project.start_date if available, NOT calculation_start_date
-                if project.start_date:
-                    # Use the 1st of the project's start month
-                    start_month = date(project.start_date.year, project.start_date.month, 1)
-                    print(f"📅 Project {project.id}: Using project.start_date {project.start_date} -> start_month {start_month}")
-                else:
-                    # If no project start date, use calculation_start_date
-                    start_month = date(calculation_start_date.year, calculation_start_date.month, 1)
-                    print(f"⚠️ Project {project.id}: No start_date, using calculation_start_date {calculation_start_date} -> start_month {start_month}")
+            # Calculate income from project settings (monthly_price_per_apartment * num_residents)
+            # This is the expected monthly income that the user sets when creating/updating the project
+            # Calculate only for the current year, from project start date (or start of year if project started earlier)
+            project_income = 0.0
+            if project.num_residents and project.monthly_price_per_apartment and calculation_start_date:
+                monthly_income = float(project.num_residents) * float(project.monthly_price_per_apartment)
                 
-                # Always include current month (since we're past the 1st of it)
-                end_month = date(current_date.year, current_date.month, 1)
-                print(f"📅 Project {project.id}: end_month {end_month}, current_date {current_date}")
+                # Calculate start date for income calculation: use the later of project start date or start of current year
+                current_year_start = date(current_date.year, 1, 1)  # January 1st of current year
+                income_calculation_start = max(calculation_start_date, current_year_start)
                 
-                # Count months from start_month to end_month (inclusive)
-                month_count = 0
-                temp_month = start_month
-                while temp_month <= end_month:
-                    month_count += 1
-                    print(f"  Month {month_count}: {temp_month}")
-                    if temp_month.month == 12:
-                        temp_month = date(temp_month.year + 1, 1, 1)
-                    else:
-                        temp_month = date(temp_month.year, temp_month.month + 1, 1)
+                # Calculate how many months from income_calculation_start to now
+                months_diff = (current_date.year - income_calculation_start.year) * 12 + \
+                             (current_date.month - income_calculation_start.month)
                 
-                budget_income = budget_monthly * month_count
-                print(f"📊 Project {project.id}: budget_monthly={budget_monthly}, month_count={month_count}, budget_income={budget_income}")
-            elif budget_annual > 0:
-                # If only annual budget is set (and no monthly), calculate proportionally from start_date to now
-                # Calculate how many days from calculation_start_date to now
-                days_in_period = (current_date - calculation_start_date).days + 1
-                days_in_year = 365
-                budget_income = (budget_annual / days_in_year) * days_in_period
-                print(f"📊 Project {project.id}: Using ANNUAL budget calculation: {budget_annual} / {days_in_year} * {days_in_period} = {budget_income}")
+                # Add partial month if we're past the start date
+                from calendar import monthrange
+                days_in_start_month = monthrange(income_calculation_start.year, income_calculation_start.month)[1]
+                days_passed_in_start_month = days_in_start_month - income_calculation_start.day + 1
+                partial_month_ratio = days_passed_in_start_month / days_in_start_month
+                
+                # Calculate total income for current year: full months + partial month
+                project_income = monthly_income * (months_diff + partial_month_ratio)
             
-            # Calculate category budgets income
-            category_budgets_income = 0.0
-            try:
-                # Load category budgets for this project
-                category_budgets_query = select(Budget).where(
-                    and_(
-                        Budget.project_id == project.id,
-                        Budget.is_active == True
-                    )
-                )
-                category_budgets_result = await self.db.execute(category_budgets_query)
-                category_budgets = list(category_budgets_result.scalars().all())
-                
-                print(f"📊 Project {project.id}: Found {len(category_budgets)} active category budgets")
-                
-                for budget in category_budgets:
-                    budget_amount = 0.0
-                    
-                    if budget.period_type == "Monthly":
-                        # For monthly budgets, calculate how many months from budget start_date (or project start_date) to now
-                        if budget.start_date:
-                            budget_start_month = date(budget.start_date.year, budget.start_date.month, 1)
-                        elif project.start_date:
-                            budget_start_month = date(project.start_date.year, project.start_date.month, 1)
-                        else:
-                            budget_start_month = date(calculation_start_date.year, calculation_start_date.month, 1)
-                        
-                        # Check if budget has end_date and if we're past it
-                        if budget.end_date and current_date > budget.end_date:
-                            effective_end_month = date(budget.end_date.year, budget.end_date.month, 1)
-                        else:
-                            effective_end_month = date(current_date.year, current_date.month, 1)
-                        
-                        # Count months from budget_start_month to effective_end_month (inclusive)
-                        month_count = 0
-                        temp_month = budget_start_month
-                        while temp_month <= effective_end_month:
-                            month_count += 1
-                            if temp_month.month == 12:
-                                temp_month = date(temp_month.year + 1, 1, 1)
-                            else:
-                                temp_month = date(temp_month.year, temp_month.month + 1, 1)
-                        
-                        budget_amount = float(budget.amount) * month_count
-                        print(f"📊 Budget {budget.id} ({budget.category}): Monthly, monthCount={month_count}, amount={budget_amount}")
-                    elif budget.period_type == "Annual":
-                        # For annual budgets, calculate by full months (not proportional)
-                        # Annual budget / 12 = monthly amount
-                        monthly_amount = float(budget.amount) / 12
-                        
-                        if budget.start_date:
-                            budget_start_month = date(budget.start_date.year, budget.start_date.month, 1)
-                        elif project.start_date:
-                            budget_start_month = date(project.start_date.year, project.start_date.month, 1)
-                        else:
-                            budget_start_month = date(calculation_start_date.year, calculation_start_date.month, 1)
-                        
-                        # Check if budget has end_date and if we're past it
-                        if budget.end_date and current_date > budget.end_date:
-                            effective_end_month = date(budget.end_date.year, budget.end_date.month, 1)
-                        else:
-                            effective_end_month = date(current_date.year, current_date.month, 1)
-                        
-                        # Count months from budget_start_month to effective_end_month (inclusive)
-                        month_count = 0
-                        temp_month = budget_start_month
-                        while temp_month <= effective_end_month:
-                            month_count += 1
-                            if temp_month.month == 12:
-                                temp_month = date(temp_month.year + 1, 1, 1)
-                            else:
-                                temp_month = date(temp_month.year, temp_month.month + 1, 1)
-                        
-                        budget_amount = monthly_amount * month_count
-                        print(f"📊 Budget {budget.id} ({budget.category}): Annual ({budget.amount}/year = {monthly_amount}/month), monthCount={month_count}, amount={budget_amount}")
-                    
-                    category_budgets_income += budget_amount
-                
-                print(f"📊 Project {project.id}: Category budgets total income: {category_budgets_income}")
-            except Exception as e:
-                # If category budgets calculation fails, rollback and continue without them
-                try:
-                    await self.db.rollback()
-                except Exception:
-                    pass
-                print(f"⚠️ Warning: Could not calculate category budgets for project {project.id}: {e}")
-                category_budgets_income = 0.0
-            
-            # Include all budgets (project budget + category budgets) in income
-            project_total_income = yearly_income + budget_income + category_budgets_income
-            print(
-                f"💰 Project {project.id}: yearly_income={yearly_income}, "
-                f"budget_income={budget_income}, category_budgets_income={category_budgets_income}, "
-                f"project_total_income={project_total_income}"
-            )
+            # Income = actual transactions + project income (from monthly_price_per_apartment * num_residents)
+            # Budget is NOT included in income
+            project_total_income = yearly_income + project_income
             
             profit = project_total_income - yearly_expense
             
@@ -348,29 +242,12 @@ class ReportService:
                 days_in_period = (current_date - calculation_start_date).days + 1
                 days_in_year = 365
                 yearly_budget = (budget_annual / days_in_year) * days_in_period
-            print(f"🔍 Project {project.id} ({project.name}):")
-            print(f"  - budget_annual: {project.budget_annual}")
-            print(f"  - budget_monthly: {project.budget_monthly}")
-            print(f"  - yearly_budget: {yearly_budget}")
-            print(f"  - yearly_expense: {yearly_expense}")
-            
             if yearly_budget > 0:  # Only check if there's a budget
                 budget_percentage = (yearly_expense / yearly_budget) * 100
-                print(f"  - budget_percentage: {budget_percentage:.2f}%")
-                print(f"  - Comparison: yearly_expense ({yearly_expense}) > yearly_budget ({yearly_budget})? {yearly_expense > yearly_budget}")
                 if yearly_expense > yearly_budget:
-                    print(f"  ✅ Adding to budget_overrun: {project.id}")
                     budget_overrun_projects.append(project.id)
                 elif budget_percentage >= 70:  # Approaching budget (70% or more)
-                    print(f"  ⚠️ Adding to budget_warning: {project.id} (budget_percentage={budget_percentage:.2f}%)")
                     budget_warning_projects.append(project.id)
-                else:
-                    print(f"  ℹ️ Not adding to alerts (budget_percentage={budget_percentage:.2f}% < 70%)")
-            else:
-                print(f"  ℹ️ No budget set (yearly_budget={yearly_budget})")
-                # Check if there's expense even without budget
-                if yearly_expense > 0:
-                    print(f"  ⚠️ Project has expenses ({yearly_expense}) but no budget set!")
 
             # Check for missing proof (transactions without file_path, excluding fund transactions)
             missing_proof_query = select(func.count(Transaction.id)).where(
@@ -458,7 +335,6 @@ class ReportService:
                 "children": []
             }
 
-            print(f"📤 Project {project.id} final data: income_month_to_date={project_total_income}")
             projects_with_finance.append(project_data)
             total_income += project_total_income  # project_total_income includes budgets
             total_expense += yearly_expense
@@ -514,13 +390,6 @@ class ReportService:
             except Exception:
                 pass
 
-        print(f"📊 Final alerts summary:")
-        print(f"  budget_overrun: {budget_overrun_projects}")
-        print(f"  budget_warning: {budget_warning_projects}")
-        print(f"  missing_proof: {missing_proof_projects}")
-        print(f"  unpaid_recurring: {unpaid_recurring_projects}")
-        print(f"  category_budget_alerts: {len(category_budget_alerts)} alerts")
-        
         return {
             "projects": projects_with_finance,  # Return all projects, not just root ones
             "alerts": {

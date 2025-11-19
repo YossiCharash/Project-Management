@@ -23,9 +23,7 @@ async def get_dashboard_snapshot(db: DBSessionDep, user = Depends(get_current_us
 async def get_project_expense_categories(project_id: int, db: DBSessionDep, user = Depends(get_current_user)):
     """Get expense categories breakdown for a specific project"""
     try:
-        print(f"📊 [Report API] Getting expense categories for project {project_id}, user: {user.email} (role: {user.role})")
         result = await ReportService(db).get_project_expense_categories(project_id)
-        print(f"📊 [Report API] Found {len(result)} expense categories for project {project_id}")
         return result
     except Exception as e:
         import traceback
@@ -38,7 +36,6 @@ async def get_project_expense_categories(project_id: int, db: DBSessionDep, user
 async def get_project_transactions(project_id: int, db: DBSessionDep, user = Depends(get_current_user)):
     """Get all transactions for a specific project (including recurring ones)"""
     try:
-        print(f"📊 [Report API] Getting transactions for project {project_id}, user: {user.email} (role: {user.role})")
         # Use raw SQL query to avoid SQLAlchemy model issues when columns are missing
         from sqlalchemy import text
         from datetime import datetime
@@ -54,6 +51,7 @@ async def get_project_transactions(project_id: int, db: DBSessionDep, user = Dep
                         t.is_exceptional, t.file_path, t.created_at,
                         t.recurring_template_id, t.is_generated,
                         t.payment_method, t.supplier_id, t.created_by_user_id,
+                        COALESCE(t.from_fund, false) as from_fund,
                         CASE WHEN u.id IS NOT NULL THEN json_build_object(
                             'id', u.id,
                             'full_name', u.full_name,
@@ -74,6 +72,7 @@ async def get_project_transactions(project_id: int, db: DBSessionDep, user = Dep
                         t.id, t.project_id, t.tx_date, t.type, t.amount, t.description, t.category, t.notes,
                         t.is_exceptional, t.file_path, t.created_at,
                         t.payment_method, t.supplier_id, t.created_by_user_id,
+                        COALESCE(t.from_fund, false) as from_fund,
                         CASE WHEN u.id IS NOT NULL THEN json_build_object(
                             'id', u.id,
                             'full_name', u.full_name,
@@ -123,7 +122,6 @@ async def get_project_transactions(project_id: int, db: DBSessionDep, user = Dep
                     # If transaction has recurring_template_id but is_generated is False, set it to True
                     if recurring_template_id and not is_generated_value:
                         is_generated_value = True
-                        print(f"⚠️  Transaction {row_dict.get('id')} has recurring_template_id={recurring_template_id} but is_generated=False, fixing to True")
                     
                     tx_dict = {
                         "id": row_dict.get('id'),
@@ -141,6 +139,7 @@ async def get_project_transactions(project_id: int, db: DBSessionDep, user = Dep
                         "payment_method": row_dict.get('payment_method'),
                         "supplier_id": row_dict.get('supplier_id'),
                         "created_by_user_id": row_dict.get('created_by_user_id'),
+                        "from_fund": row_dict.get('from_fund', False),
                         "created_by_user": created_by_user
                     }
                     transactions.append(tx_dict)
@@ -150,11 +149,8 @@ async def get_project_transactions(project_id: int, db: DBSessionDep, user = Dep
             # Convert to TransactionOut schemas
             from backend.schemas.transaction import TransactionOut
             result = [TransactionOut.model_validate(tx) for tx in transactions]
-            print(f"📊 [Report API] Found {len(result)} transactions for project {project_id}")
             return result
-        except Exception as e:
-            import traceback
-            print(f"❌ [Report API] Error in raw SQL query, trying fallback: {str(e)}")
+        except Exception:
             # If raw SQL fails (e.g., columns don't exist), try fallback method
             try:
                 from backend.repositories.transaction_repository import TransactionRepository
@@ -190,15 +186,14 @@ async def get_project_transactions(project_id: int, db: DBSessionDep, user = Dep
                             "payment_method": getattr(tx, 'payment_method', None),
                             "supplier_id": getattr(tx, 'supplier_id', None),
                             "created_by_user_id": getattr(tx, 'created_by_user_id', None),
+                            "from_fund": getattr(tx, 'from_fund', False),
                             "created_by_user": created_by_user
                         }
                         result.append(TransactionOut.model_validate(tx_dict))
                     except Exception:
                         continue
-                print(f"📊 [Report API] Fallback method found {len(result)} transactions for project {project_id}")
                 return result
             except Exception as e2:
-                print(f"❌ [Report API] Fallback method also failed: {str(e2)}")
                 traceback.print_exc()
                 return []
     except Exception as e:

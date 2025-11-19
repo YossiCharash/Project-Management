@@ -164,9 +164,11 @@ class ProjectService:
         return project_data
 
     async def get_project_financial_data(self, project_id: int) -> dict:
-        """Get real-time financial calculations for a project - from project start date or 1 year back (whichever is later)"""
+        """Get real-time financial calculations for a project - from project start date until now
+        Only actual transactions are counted - budget is NOT included in income"""
         from sqlalchemy import func, select, and_
         from backend.models.transaction import Transaction
+        from dateutil.relativedelta import relativedelta
         
         # Get project to access start_date
         project = await self.projects.get_by_id(project_id)
@@ -180,9 +182,16 @@ class ProjectService:
             }
         
         current_date = date.today()
-        calculation_start_date = calculate_start_date(project.start_date)
+        
+        # Calculate start date: use project.start_date if available, otherwise use 1 year ago as fallback
+        if project.start_date:
+            calculation_start_date = project.start_date
+        else:
+            # Fallback: use 1 year ago if no project start date
+            calculation_start_date = current_date - relativedelta(years=1)
         
         # Get actual transactions from calculation_start_date to now (exclude fund transactions)
+        # Only actual transactions are counted - budget is NOT included
         actual_income_query = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
             and_(
                 Transaction.project_id == project_id,
@@ -213,54 +222,36 @@ class ProjectService:
             self.db, project_id, calculation_start_date, current_date, "Expense"
         )
         
-        # Calculate budget income from calculation_start_date to now
-        budget_income = 0.0
-        budget_annual = float(project.budget_annual or 0)
-        budget_monthly = float(project.budget_monthly or 0)
+        # Calculate income from project settings (monthly_price_per_apartment * num_residents)
+        # This is the expected monthly income that the user sets when creating/updating the project
+        # Calculate only for the current year, from project start date (or start of year if project started earlier)
+        project_income = 0.0
+        if project.num_residents and project.monthly_price_per_apartment and calculation_start_date:
+            monthly_income = float(project.num_residents) * float(project.monthly_price_per_apartment)
+            
+            # Calculate start date for income calculation: use the later of project start date or start of current year
+            current_year_start = date(current_date.year, 1, 1)  # January 1st of current year
+            income_calculation_start = max(calculation_start_date, current_year_start)
+            
+            # Calculate how many months from income_calculation_start to now
+            months_diff = (current_date.year - income_calculation_start.year) * 12 + \
+                         (current_date.month - income_calculation_start.month)
+            
+            # Add partial month if we're past the start date
+            from calendar import monthrange
+            days_in_start_month = monthrange(income_calculation_start.year, income_calculation_start.month)[1]
+            days_passed_in_start_month = days_in_start_month - income_calculation_start.day + 1
+            partial_month_ratio = days_passed_in_start_month / days_in_start_month
+            
+            # Calculate total income for current year: full months + partial month
+            project_income = monthly_income * (months_diff + partial_month_ratio)
         
-        # Prioritize monthly budget if both are set
-        if budget_monthly > 0:
-            # If monthly budget, calculate how many months from project start_date to now
-            # Each month's budget is added on the 1st of that month
-            # ALWAYS use project.start_date if available, NOT calculation_start_date
-            if project.start_date:
-                # Use the 1st of the project's start month
-                start_month = date(project.start_date.year, project.start_date.month, 1)
-                print(f"📅 Project {project_id}: Using project.start_date {project.start_date} -> start_month {start_month}")
-            else:
-                # If no project start date, use calculation_start_date
-                start_month = date(calculation_start_date.year, calculation_start_date.month, 1)
-                print(f"⚠️ Project {project_id}: No start_date, using calculation_start_date {calculation_start_date} -> start_month {start_month}")
-            
-            # Always include current month (since we're past the 1st of it)
-            end_month = date(current_date.year, current_date.month, 1)
-            print(f"📅 Project {project_id}: end_month {end_month}, current_date {current_date}")
-            
-            # Count months from start_month to end_month (inclusive)
-            month_count = 0
-            temp_month = start_month
-            while temp_month <= end_month:
-                month_count += 1
-                print(f"  Month {month_count}: {temp_month}")
-                if temp_month.month == 12:
-                    temp_month = date(temp_month.year + 1, 1, 1)
-                else:
-                    temp_month = date(temp_month.year, temp_month.month + 1, 1)
-            
-            budget_income = budget_monthly * month_count
-            print(f"📊 Project {project_id}: budget_monthly={budget_monthly}, month_count={month_count}, budget_income={budget_income}")
-        elif budget_annual > 0:
-            # If only annual budget is set (and no monthly), calculate proportionally from start_date to now
-            days_in_period = (current_date - calculation_start_date).days + 1
-            days_in_year = 365
-            budget_income = (budget_annual / days_in_year) * days_in_period
-            print(f"📊 Project {project_id}: Using ANNUAL budget calculation: {budget_annual} / {days_in_year} * {days_in_period} = {budget_income}")
-        
-        # Total income and expense = actual transactions + recurring transactions + budget income
+        # Total income = actual transactions + recurring transactions + project income (from monthly_price_per_apartment * num_residents)
         # Note: Recurring transactions that were already generated are included in actual_income/actual_expense
         # So we need to avoid double counting. The calculate_recurring_transactions_amount function
         # already handles this by checking if transactions exist.
-        total_income = actual_income + recurring_income + budget_income
+        # Budget is NOT included in income - only actual transactions and project income count
+        total_income = actual_income + recurring_income + project_income
         total_expense = actual_expense + recurring_expense
         
         # Calculate profit and percentage
@@ -277,8 +268,8 @@ class ProjectService:
         
         return {
             "total_value": profit,
-            "income_month_to_date": total_income,  # From project start or 1 year back
-            "expense_month_to_date": total_expense,  # From project start or 1 year back
+            "income_month_to_date": total_income,  # From project start to now, only actual transactions
+            "expense_month_to_date": total_expense,  # From project start to now
             "profit_percent": round(profit_percent, 1),
             "status_color": status_color
         }

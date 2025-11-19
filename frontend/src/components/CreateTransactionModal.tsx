@@ -165,8 +165,8 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
       return
     }
 
-    // Supplier is required only if not from fund
-    if (!fromFund && type === 'Expense' && (supplierId === '' || !supplierId)) {
+    // Supplier is required only if not from fund and category is not "אחר"
+    if (!fromFund && type === 'Expense' && category !== 'אחר' && (supplierId === '' || !supplierId)) {
       setError('יש לבחור ספק (חובה)')
       return
     }
@@ -267,7 +267,7 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
       return
     }
 
-    if (!recurringFormData.supplier_id || recurringFormData.supplier_id === 0) {
+    if (recurringFormData.type === 'Expense' && recurringFormData.category !== 'אחר' && (!recurringFormData.supplier_id || recurringFormData.supplier_id === 0)) {
       setError('יש לבחור ספק (חובה)')
       return
     }
@@ -590,16 +590,16 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
                   {!fromFund && type === 'Expense' && (
                     <div>
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        ספק <span className="text-red-500">* (חובה)</span>
+                        ספק {category !== 'אחר' && <span className="text-red-500">* (חובה)</span>}
                       </label>
                       <select
                         className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                         value={supplierId}
                         onChange={e => setSupplierId(e.target.value === '' ? '' : Number(e.target.value))}
-                        required
+                        required={category !== 'אחר'}
                       >
                         <option value="">
-                          {category ? 'בחר ספק' : 'בחר קודם קטגוריה'}
+                          {category ? (category === 'אחר' ? 'בחר ספק (אופציונלי)' : 'בחר ספק') : 'בחר קודם קטגוריה'}
                         </option>
                         {suppliers
                           .filter(s => s.is_active && !!category && s.category === category)
@@ -799,16 +799,16 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      ספק * <span className="text-red-500">(חובה)</span>
+                      ספק {recurringFormData.category !== 'אחר' && <span className="text-red-500">* (חובה)</span>}
                     </label>
                     <select
-                      required
+                      required={recurringFormData.category !== 'אחר'}
                       value={recurringFormData.supplier_id || 0}
                       onChange={(e) => setRecurringFormData({ ...recurringFormData, supplier_id: parseInt(e.target.value) || 0 })}
                       className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                     >
                       <option value="0">
-                        {recurringFormData.category ? 'בחר ספק' : 'בחר קודם קטגוריה'}
+                        {recurringFormData.category ? (recurringFormData.category === 'אחר' ? 'בחר ספק (אופציונלי)' : 'בחר ספק') : 'בחר קודם קטגוריה'}
                       </option>
                       {suppliers
                         .filter(

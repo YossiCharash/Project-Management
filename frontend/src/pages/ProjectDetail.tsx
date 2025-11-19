@@ -1,4 +1,4 @@
-import { useEffect, useState, ChangeEvent } from 'react'
+import { useEffect, useState, ChangeEvent, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import api from '../lib/api'
@@ -23,6 +23,37 @@ const CATEGORY_LABELS: Record<string, string> = {
   'גינון': 'גינון',
   OTHER: 'אחר',
   'אחר': 'אחר'
+}
+
+// Reverse mapping: Hebrew to English (for filtering)
+const CATEGORY_REVERSE_MAP: Record<string, string> = {
+  'ניקיון': 'CLEANING',
+  'חשמל': 'ELECTRICITY',
+  'ביטוח': 'INSURANCE',
+  'גינון': 'GARDENING',
+  'אחר': 'OTHER',
+  'תחזוקה': 'MAINTENANCE'
+}
+
+// Normalize category for comparison (handles both Hebrew and English)
+const normalizeCategoryForFilter = (category: string | null | undefined): string | null => {
+  if (!category) return null
+  const trimmed = String(category).trim()
+  if (trimmed.length === 0) return null
+  
+  // If it's already in English (uppercase), return as is
+  // Check if all characters are uppercase letters (English enum values)
+  if (trimmed === trimmed.toUpperCase() && /^[A-Z_]+$/.test(trimmed)) {
+    return trimmed
+  }
+  
+  // If it's in Hebrew, try to convert to English
+  if (CATEGORY_REVERSE_MAP[trimmed]) {
+    return CATEGORY_REVERSE_MAP[trimmed]
+  }
+  
+  // Otherwise return as is (might be a custom category)
+  return trimmed
 }
 
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
@@ -61,9 +92,7 @@ interface Transaction {
 }
 
 export default function ProjectDetail() {
-  console.log('🚀🚀🚀 ProjectDetail component RENDERED 🚀🚀🚀')
   const { id } = useParams()
-  console.log('📋 ProjectDetail - id from params:', id)
   const navigate = useNavigate()
   const dispatch = useAppDispatch()
   const { items: suppliers } = useAppSelector(s => s.suppliers)
@@ -76,13 +105,8 @@ export default function ProjectDetail() {
   const [projectImageUrl, setProjectImageUrl] = useState<string | null>(null)
   const [projectBudget, setProjectBudget] = useState<{ budget_monthly: number; budget_annual: number }>({ budget_monthly: 0, budget_annual: 0 })
   const [projectStartDate, setProjectStartDate] = useState<string | null>(null)
-  
-  console.log('📊 ProjectDetail state:', {
-    id,
-    projectStartDate,
-    projectBudget,
-    txsCount: txs.length
-  })
+  const [numResidents, setNumResidents] = useState<number | null>(null)
+  const [monthlyPricePerApartment, setMonthlyPricePerApartment] = useState<number | null>(null)
 
 
   const [filterType, setFilterType] = useState<'all' | 'Income' | 'Expense'>('all')
@@ -117,7 +141,19 @@ export default function ProjectDetail() {
     start_date: new Date().toISOString().split('T')[0],
     end_date: ''
   })
-  const expenseCategoryOptions = ['ניקיון', 'חשמל', 'ביטוח', 'גינון', 'אחר']
+  const expenseCategoryOptions = ['ניקיון', 'חשמל', 'ביטוח', 'גינון', 'תחזוקה', 'אחר']
+  
+  // Get all unique categories from transactions (in addition to standard options)
+  const allCategoriesFromTransactions = Array.from(new Set(
+    txs
+      .map(t => t.category)
+      .filter((cat): cat is string => cat !== null && cat !== undefined && cat !== '')
+      .map(cat => cat.trim())
+  ))
+  
+  // Combine standard options with categories found in transactions (avoid duplicates)
+  const allCategoryOptions = Array.from(new Set([...expenseCategoryOptions, ...allCategoriesFromTransactions]))
+  
   
   // Fund state
   const [fundData, setFundData] = useState<{
@@ -155,17 +191,8 @@ export default function ProjectDetail() {
     setLoading(true)
     try {
       const { data } = await api.get(`/transactions/project/${id}`)
-      console.log('📊 Loaded transactions from /transactions/project:', data?.length || 0)
-      if (data && data.length > 0) {
-        const withIsGenerated = data.filter((t: any) => t.is_generated === true)
-        console.log('🔄 Transactions with is_generated=true:', withIsGenerated.length)
-        if (withIsGenerated.length > 0) {
-          console.log('🔄 Sample recurring transaction:', withIsGenerated[0])
-        }
-      }
       setTxs(data || [])
     } catch (err: any) {
-      console.error('Error loading transactions:', err)
       setTxs([])
     } finally {
       setLoading(false)
@@ -181,45 +208,16 @@ export default function ProjectDetail() {
       const [categoriesData, transactionsData, budgetsData] = await Promise.all([
         ReportAPI.getProjectExpenseCategories(parseInt(id)),
         ReportAPI.getProjectTransactions(parseInt(id)),
-        BudgetAPI.getProjectBudgets(parseInt(id)).catch((err) => {
-          console.error('❌ Error loading budgets:', err)
-          console.error('Budget error details:', {
-            status: err?.response?.status,
-            statusText: err?.response?.statusText,
-            data: err?.response?.data,
-            message: err?.message
-          })
+        BudgetAPI.getProjectBudgets(parseInt(id)).catch(() => {
           return []
         }) // Don't fail if no budgets
       ])
       
-      console.log('✅ Charts data loaded:', {
-        categoriesCount: categoriesData?.length || 0,
-        transactionsCount: transactionsData?.length || 0,
-        budgetsCount: budgetsData?.length || 0
-      })
-      
       setExpenseCategories(categoriesData || [])
-      console.log('📊 Loaded transactions from ReportAPI:', transactionsData?.length || 0)
-      if (transactionsData && transactionsData.length > 0) {
-        const withIsGenerated = transactionsData.filter((t: any) => t.is_generated === true)
-        console.log('🔄 Transactions with is_generated=true:', withIsGenerated.length)
-        if (withIsGenerated.length > 0) {
-          console.log('🔄 Sample recurring transaction:', withIsGenerated[0])
-        }
-      }
       setTxs(transactionsData || [])
       setProjectBudgets(budgetsData || [])
     } catch (err: any) {
-      console.error('❌ Error loading charts data:', err)
-      console.error('Charts error details:', {
-        status: err?.response?.status,
-        statusText: err?.response?.statusText,
-        data: err?.response?.data,
-        message: err?.message,
-        url: err?.config?.url,
-        baseURL: err?.config?.baseURL
-      })
+      // Error loading charts data
     } finally {
       setChartsLoading(false)
     }
@@ -229,12 +227,14 @@ export default function ProjectDetail() {
     if (!id) return
 
     try {
-      console.log('🔍🔍🔍 loadProjectInfo CALLED for project:', id)
       const { data } = await api.get(`/projects/${id}`)
-      console.log('📥📥📥 Project data loaded:', {
-        id: data.id,
+      
+      console.log('📥 DEBUG - Project data loaded:', {
+        id,
         name: data.name,
         start_date: data.start_date,
+        num_residents: data.num_residents,
+        monthly_price_per_apartment: data.monthly_price_per_apartment,
         budget_monthly: data.budget_monthly,
         budget_annual: data.budget_annual
       })
@@ -245,20 +245,24 @@ export default function ProjectDetail() {
         budget_annual: data.budget_annual || 0
       })
       setProjectStartDate(data.start_date || null)
+      setNumResidents(data.num_residents || null)
+      setMonthlyPricePerApartment(data.monthly_price_per_apartment || null)
       
-      console.log('✅ State updated:', {
-        projectStartDate: data.start_date,
-        projectBudget: { budget_monthly: data.budget_monthly || 0, budget_annual: data.budget_annual || 0 }
+      console.log('📥 DEBUG - State set:', {
+        projectStartDate: data.start_date || null,
+        numResidents: data.num_residents || null,
+        monthlyPricePerApartment: data.monthly_price_per_apartment || null
       })
+      
       if (data.image_url) {
         // Backend now returns full S3 URL in image_url for new uploads.
         // For backward compatibility, if it's a relative path we still prefix with /uploads.
         if (data.image_url.startsWith('http')) {
           setProjectImageUrl(data.image_url)
         } else {
-          const apiUrl = import.meta.env.VITE_API_URL
+          const apiUrl = import.meta.env.VITE_API_URL || ''
           // @ts-ignore
-          const baseUrl = apiUrl.replace('/api/v1', '')
+          const baseUrl = apiUrl ? apiUrl.replace('/api/v1', '') : ''
           setProjectImageUrl(`${baseUrl}/uploads/${data.image_url}`)
         }
       }
@@ -298,11 +302,7 @@ export default function ProjectDetail() {
         setFundData(null)
       }
     } catch (err: any) {
-      console.error('Error loading fund data:', err)
       // If fund doesn't exist (404), that's OK - project might not have fund yet
-      if (err?.response?.status !== 404) {
-        console.error('Unexpected error loading fund data:', err)
-      }
       setFundData(null)
     } finally {
       setFundLoading(false)
@@ -425,13 +425,44 @@ export default function ProjectDetail() {
       } else {
         dateMatches = true // Show all if dates not set
       }
+    } else {
+      dateMatches = true // Show all if no date filter mode
     }
     
-    return dateMatches &&
-      (filterType === 'all' || t.type === filterType) &&
-      (filterExceptional === 'all' || t.is_exceptional) &&
-      (categoryFilter === 'all' || t.category === categoryFilter)
+    // Category filter: if 'all', show all transactions
+    // Otherwise, match by category (handle both Hebrew and English categories)
+    let categoryMatches = true
+    if (categoryFilter && categoryFilter !== 'all') {
+      const txCategory = normalizeCategoryForFilter(t.category)
+      const filterCategory = normalizeCategoryForFilter(categoryFilter)
+      // Match if normalized categories are equal, or if original categories match
+      const normalizedMatch: boolean = txCategory !== null && filterCategory !== null && txCategory === filterCategory
+      const directMatch: boolean = !!(t.category && String(t.category).trim() === String(categoryFilter).trim())
+      categoryMatches = normalizedMatch || directMatch
+    }
+    
+    // Exceptional filter: if 'all', show all; if 'only', show only exceptional
+    const exceptionalMatches = filterExceptional === 'all' || 
+      (filterExceptional === 'only' && t.is_exceptional === true)
+    
+    // Type filter
+    const typeMatches = filterType === 'all' || t.type === filterType
+    
+    const result = dateMatches && typeMatches && exceptionalMatches && categoryMatches
+    
+    return result
   })
+  
+  // Calculate how many transactions match category (regardless of date filter)
+  const transactionsMatchingCategory = categoryFilter === 'all' 
+    ? txs.length 
+    : txs.filter(t => {
+        const txCategory = normalizeCategoryForFilter(t.category)
+        const filterCategory = normalizeCategoryForFilter(categoryFilter)
+        return (txCategory !== null && filterCategory !== null && txCategory === filterCategory) ||
+               (t.category && String(t.category).trim() === String(categoryFilter).trim())
+      }).length
+
 
   const handleDeleteTransaction = async (transactionId: number) => {
     if (!confirm('האם אתה בטוח שברצונך למחוק את העסקה?')) {
@@ -450,240 +481,159 @@ export default function ProjectDetail() {
     }
   }
 
-  // Calculate income and expense from project start_date or 1 year back (whichever is later) until now
+  // Calculate income and expense from project start_date until now
+  // Only actual transactions are counted - budget is NOT included in income
   // This is separate from the filtered transactions which are used for the transactions list
   const calculateFinancialSummary = () => {
-    // Force console log to appear
-    console.log('🔍🔍🔍 calculateFinancialSummary CALLED 🔍🔍🔍')
-    console.log('🔍 calculateFinancialSummary called with:', {
-      projectStartDate,
-      projectBudget,
-      projectBudgetsCount: projectBudgets.length,
-      txsCount: txs.length
-    })
-    
     const now = new Date()
-    const oneYearAgo = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate())
     
-    // Calculate start date: max(project.start_date, 1 year ago)
+    // Calculate start date: use project.start_date if available, otherwise use 1 year ago as fallback
     let calculationStartDate: Date
     if (projectStartDate) {
-      const projectStart = new Date(projectStartDate)
-      calculationStartDate = projectStart > oneYearAgo ? projectStart : oneYearAgo
-      console.log('📅 Project start date found:', projectStartDate, '-> calculationStartDate:', calculationStartDate)
+      calculationStartDate = new Date(projectStartDate)
     } else {
+      // Fallback: use 1 year ago if no project start date
+      const oneYearAgo = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate())
       calculationStartDate = oneYearAgo
-      console.log('⚠️ No project start date, using oneYearAgo:', oneYearAgo)
     }
+    
+    // Debug: Check all transactions
+    console.log('🔍 DEBUG - All transactions:', {
+      totalTxs: txs.length,
+      incomeTxs: txs.filter(t => t.type === 'Income').length,
+      expenseTxs: txs.filter(t => t.type === 'Expense').length,
+      incomeTxsList: txs.filter(t => t.type === 'Income').map(t => ({ id: t.id, amount: t.amount, date: t.tx_date, from_fund: t.from_fund })),
+      projectStartDate,
+      calculationStartDate: calculationStartDate.toISOString()
+    })
     
     // Filter transactions from calculationStartDate to now
     // Exclude fund transactions (from_fund == true) - only include regular transactions
     const summaryTransactions = txs.filter(t => {
       const txDate = new Date(t.tx_date)
       const isInDateRange = txDate >= calculationStartDate && txDate <= now
-      const isNotFromFund = !t.from_fund  // Exclude fund transactions
-      return isInDateRange && isNotFromFund
+      const isNotFromFund = !(t.from_fund === true)  // Exclude fund transactions
+      const passes = isInDateRange && isNotFromFund
+      
+      // Debug income transactions
+      if (t.type === 'Income') {
+        console.log('🔍 Income transaction:', {
+          id: t.id,
+          amount: t.amount,
+          date: t.tx_date,
+          txDate: txDate.toISOString(),
+          calculationStartDate: calculationStartDate.toISOString(),
+          isInDateRange,
+          from_fund: t.from_fund,
+          isNotFromFund,
+          passes
+        })
+      }
+      
+      return passes
     })
     
     // Calculate actual transaction income and expense (excluding fund transactions)
-    const transactionIncome = summaryTransactions
-      .filter(t => t.type === 'Income')
-      .reduce((s, t) => s + Number(t.amount || 0), 0)
+    // Only actual transactions are counted - budget is NOT included
+    const incomeTransactions = summaryTransactions.filter(t => t.type === 'Income')
+    const expenseTransactions = summaryTransactions.filter(t => t.type === 'Expense')
     
-    const transactionExpense = summaryTransactions
-      .filter(t => t.type === 'Expense')
-      .reduce((s, t) => s + Number(t.amount || 0), 0)
+    console.log('🔍 DEBUG - Filtered transactions:', {
+      summaryTransactionsCount: summaryTransactions.length,
+      incomeTransactionsCount: incomeTransactions.length,
+      expenseTransactionsCount: expenseTransactions.length,
+      incomeTransactions: incomeTransactions.map(t => ({ id: t.id, amount: t.amount }))
+    })
     
-    // Calculate project budget income from project start_date to now
-    // Prioritize monthly budget if both are set
-    let projectBudgetIncome = 0
-    if (projectBudget.budget_monthly > 0) {
-      // If monthly budget, calculate how many months from project start_date to now
-      // Each month's budget is added on the 1st of that month
-      // ALWAYS use project.start_date if available, NOT calculationStartDate
-      let startMonth: Date
-      if (projectStartDate) {
-        const projectStart = new Date(projectStartDate)
-        // Use the 1st of the project's start month
-        startMonth = new Date(projectStart.getFullYear(), projectStart.getMonth(), 1)
-        console.log('📅 Using project start date:', projectStartDate, '-> startMonth:', startMonth)
-      } else {
-        // Only use calculationStartDate if no project start date
-        startMonth = new Date(calculationStartDate.getFullYear(), calculationStartDate.getMonth(), 1)
-        console.log('⚠️ No project start date, using calculationStartDate:', calculationStartDate, '-> startMonth:', startMonth)
-      }
+    const transactionIncome = incomeTransactions.reduce((s, t) => s + Number(t.amount || 0), 0)
+    const transactionExpense = expenseTransactions.reduce((s, t) => s + Number(t.amount || 0), 0)
+    
+    // Calculate income from project settings (monthly_price_per_apartment * num_residents)
+    // This is the expected monthly income that the user sets when creating/updating the project
+    // Calculate only for the current year, from project start date (or start of year if project started earlier)
+    let projectIncome = 0
+    
+    console.log('🔍 DEBUG - Checking project income conditions:', {
+      numResidents,
+      monthlyPricePerApartment,
+      calculationStartDate: calculationStartDate?.toISOString(),
+      hasNumResidents: !!numResidents,
+      hasMonthlyPrice: !!monthlyPricePerApartment,
+      hasStartDate: !!calculationStartDate,
+      allConditionsMet: !!(numResidents && monthlyPricePerApartment && calculationStartDate)
+    })
+    
+    if (numResidents && monthlyPricePerApartment && calculationStartDate) {
+      const monthlyIncome = numResidents * monthlyPricePerApartment
       
-      // Always include current month (since we're past the 1st of it)
-      const endMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-      console.log('📅 endMonth:', endMonth, 'now:', now)
+      // Calculate start date for income calculation: use the later of project start date or start of current year
+      const currentYearStart = new Date(now.getFullYear(), 0, 1) // January 1st of current year
+      const incomeCalculationStart = calculationStartDate > currentYearStart ? calculationStartDate : currentYearStart
       
-      // Count months from startMonth to endMonth (inclusive)
-      let monthCount = 0
-      let tempMonth = new Date(startMonth)
-      while (tempMonth <= endMonth) {
-        monthCount++
-        tempMonth = new Date(tempMonth.getFullYear(), tempMonth.getMonth() + 1, 1)
-      }
+      // Calculate how many months from incomeCalculationStart to now
+      const monthsDiff = (now.getFullYear() - incomeCalculationStart.getFullYear()) * 12 + 
+                        (now.getMonth() - incomeCalculationStart.getMonth())
       
-      console.log('📊 Monthly budget calculation:', {
-        budget_monthly: projectBudget.budget_monthly,
-        monthCount,
-        startMonth,
-        endMonth,
-        calculatedIncome: projectBudget.budget_monthly * monthCount
+      // Add partial month if we're past the start date
+      const daysInStartMonth = new Date(incomeCalculationStart.getFullYear(), incomeCalculationStart.getMonth() + 1, 0).getDate()
+      const daysPassedInStartMonth = daysInStartMonth - incomeCalculationStart.getDate() + 1
+      const partialMonthRatio = daysPassedInStartMonth / daysInStartMonth
+      
+      // Calculate total income for current year: full months + partial month
+      projectIncome = monthlyIncome * (monthsDiff + partialMonthRatio)
+      
+      console.log('✅ DEBUG - Project income calculation (current year):', {
+        numResidents,
+        monthlyPricePerApartment,
+        monthlyIncome,
+        calculationStartDate: calculationStartDate.toISOString(),
+        currentYearStart: currentYearStart.toISOString(),
+        incomeCalculationStart: incomeCalculationStart.toISOString(),
+        monthsDiff,
+        partialMonthRatio,
+        projectIncome,
+        formula: `${monthlyIncome} * (${monthsDiff} + ${partialMonthRatio}) = ${projectIncome}`
       })
-      
-      projectBudgetIncome = projectBudget.budget_monthly * monthCount
-    } else if (projectBudget.budget_annual > 0) {
-      // If only annual budget is set (and no monthly), calculate proportionally
-      const daysInPeriod = Math.floor((now.getTime() - calculationStartDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
-      const daysInYear = 365
-      projectBudgetIncome = (projectBudget.budget_annual / daysInYear) * daysInPeriod
+    } else {
+      console.log('❌ DEBUG - Project income NOT calculated because:', {
+        missingNumResidents: !numResidents,
+        missingMonthlyPrice: !monthlyPricePerApartment,
+        missingStartDate: !calculationStartDate
+      })
     }
     
-    // Calculate category budgets income
-    // Include all active category budgets (Monthly or Annual)
-    let categoryBudgetsIncome = 0
-    console.log('📊 Calculating category budgets income from', projectBudgets.length, 'budgets')
+    // Total income = transaction income + project income (from monthly_price_per_apartment * num_residents)
+    const totalIncome = transactionIncome + projectIncome
     
-    for (const budget of projectBudgets) {
-      if (!budget.is_active) {
-        console.log(`⏭️ Skipping inactive budget ${budget.id} (${budget.category})`)
-        continue
-      }
-      
-      let budgetAmount = 0
-      
-      if (budget.period_type === 'Monthly') {
-        // For monthly budgets, calculate how many months from budget start_date (or project start_date) to now
-        let budgetStartMonth: Date
-        if (budget.start_date) {
-          const budgetStart = new Date(budget.start_date)
-          budgetStartMonth = new Date(budgetStart.getFullYear(), budgetStart.getMonth(), 1)
-          console.log(`📅 Budget ${budget.id} (${budget.category}): Using budget start_date ${budget.start_date} -> startMonth:`, budgetStartMonth)
-        } else if (projectStartDate) {
-          const projectStart = new Date(projectStartDate)
-          budgetStartMonth = new Date(projectStart.getFullYear(), projectStart.getMonth(), 1)
-          console.log(`📅 Budget ${budget.id} (${budget.category}): No budget start_date, using project start_date ${projectStartDate} -> startMonth:`, budgetStartMonth)
-        } else {
-          budgetStartMonth = new Date(calculationStartDate.getFullYear(), calculationStartDate.getMonth(), 1)
-          console.log(`📅 Budget ${budget.id} (${budget.category}): No dates, using calculationStartDate -> startMonth:`, budgetStartMonth)
-        }
-        
-        // Check if budget has end_date and if we're past it
-        if (budget.end_date) {
-          const budgetEnd = new Date(budget.end_date)
-          if (now > budgetEnd) {
-            // Budget has ended, calculate up to end_date
-            const endMonth = new Date(budgetEnd.getFullYear(), budgetEnd.getMonth(), 1)
-            let monthCount = 0
-            let tempMonth = new Date(budgetStartMonth)
-            while (tempMonth <= endMonth) {
-              monthCount++
-              tempMonth = new Date(tempMonth.getFullYear(), tempMonth.getMonth() + 1, 1)
-            }
-            budgetAmount = budget.amount * monthCount
-            console.log(`📊 Budget ${budget.id} (${budget.category}): Monthly, ended, monthCount=${monthCount}, amount=${budgetAmount}`)
-          } else {
-            // Budget is still active, calculate up to now
-            const endMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-            let monthCount = 0
-            let tempMonth = new Date(budgetStartMonth)
-            while (tempMonth <= endMonth) {
-              monthCount++
-              tempMonth = new Date(tempMonth.getFullYear(), tempMonth.getMonth() + 1, 1)
-            }
-            budgetAmount = budget.amount * monthCount
-            console.log(`📊 Budget ${budget.id} (${budget.category}): Monthly, active, monthCount=${monthCount}, amount=${budgetAmount}`)
-          }
-        } else {
-          // No end_date, calculate up to now
-          const endMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-          let monthCount = 0
-          let tempMonth = new Date(budgetStartMonth)
-          while (tempMonth <= endMonth) {
-            monthCount++
-            tempMonth = new Date(tempMonth.getFullYear(), tempMonth.getMonth() + 1, 1)
-          }
-          budgetAmount = budget.amount * monthCount
-          console.log(`📊 Budget ${budget.id} (${budget.category}): Monthly, no end_date, monthCount=${monthCount}, amount=${budgetAmount}`)
-        }
-      } else if (budget.period_type === 'Annual') {
-        // For annual budgets, calculate by full months (not proportional)
-        // Each month's portion is added on the 1st of that month
-        // Annual budget / 12 = monthly amount
-        const monthlyAmount = budget.amount / 12
-        
-        let budgetStartMonth: Date
-        if (budget.start_date) {
-          const budgetStart = new Date(budget.start_date)
-          budgetStartMonth = new Date(budgetStart.getFullYear(), budgetStart.getMonth(), 1)
-          console.log(`📅 Budget ${budget.id} (${budget.category}): Using budget start_date ${budget.start_date} -> startMonth:`, budgetStartMonth)
-        } else if (projectStartDate) {
-          const projectStart = new Date(projectStartDate)
-          budgetStartMonth = new Date(projectStart.getFullYear(), projectStart.getMonth(), 1)
-          console.log(`📅 Budget ${budget.id} (${budget.category}): No budget start_date, using project start_date ${projectStartDate} -> startMonth:`, budgetStartMonth)
-        } else {
-          budgetStartMonth = new Date(calculationStartDate.getFullYear(), calculationStartDate.getMonth(), 1)
-          console.log(`📅 Budget ${budget.id} (${budget.category}): No dates, using calculationStartDate -> startMonth:`, budgetStartMonth)
-        }
-        
-        // Check if budget has end_date and if we're past it
-        let effectiveEndMonth: Date
-        if (budget.end_date) {
-          const budgetEnd = new Date(budget.end_date)
-          if (now > budgetEnd) {
-            // Budget has ended, calculate up to end_date
-            effectiveEndMonth = new Date(budgetEnd.getFullYear(), budgetEnd.getMonth(), 1)
-            console.log(`📅 Budget ${budget.id} (${budget.category}): Budget ended, using end_date ${budget.end_date} -> endMonth:`, effectiveEndMonth)
-          } else {
-            // Budget is still active, calculate up to now
-            effectiveEndMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-            console.log(`📅 Budget ${budget.id} (${budget.category}): Budget active, using now -> endMonth:`, effectiveEndMonth)
-          }
-        } else {
-          // No end_date, calculate up to now
-          effectiveEndMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-          console.log(`📅 Budget ${budget.id} (${budget.category}): No end_date, using now -> endMonth:`, effectiveEndMonth)
-        }
-        
-        // Count months from budgetStartMonth to effectiveEndMonth (inclusive)
-        let monthCount = 0
-        let tempMonth = new Date(budgetStartMonth)
-        while (tempMonth <= effectiveEndMonth) {
-          monthCount++
-          tempMonth = new Date(tempMonth.getFullYear(), tempMonth.getMonth() + 1, 1)
-        }
-        
-        budgetAmount = monthlyAmount * monthCount
-        console.log(`📊 Budget ${budget.id} (${budget.category}): Annual (${budget.amount}/year = ${monthlyAmount}/month), monthCount=${monthCount}, amount=${budgetAmount}`)
-      }
-      
-      categoryBudgetsIncome += budgetAmount
-    }
-    
-    console.log('📊 Category budgets total income:', categoryBudgetsIncome)
-    
-    const finalIncome = transactionIncome + projectBudgetIncome + categoryBudgetsIncome
-    console.log('💰 Final calculation:', {
+    console.log('🔍 DEBUG - Final calculation:', {
       transactionIncome,
-      projectBudgetIncome,
-      categoryBudgetsIncome,
-      finalIncome,
-      expense: transactionExpense
+      projectIncome,
+      totalIncome,
+      transactionExpense
     })
     
     return {
-      income: finalIncome,
+      income: totalIncome,
       expense: transactionExpense
     }
   }
   
-  const financialSummary = calculateFinancialSummary()
+  // Use useMemo to recalculate only when txs, projectStartDate, projectBudget, numResidents, or monthlyPricePerApartment change
+  const financialSummary = useMemo(() => {
+    console.log('🔄 useMemo triggered - recalculating financial summary', {
+      txsCount: txs.length,
+      projectStartDate,
+      projectBudget,
+      numResidents,
+      monthlyPricePerApartment
+    })
+    return calculateFinancialSummary()
+  }, [txs, projectStartDate, projectBudget, numResidents, monthlyPricePerApartment])
+  
   const income = financialSummary.income
   const expense = financialSummary.expense
   
-  console.log('📊 Financial Summary Result:', { income, expense })
+  console.log('💰 Final values displayed:', { income, expense, txsCount: txs.length })
 
   if (!id) {
     return (
@@ -1381,7 +1331,7 @@ export default function ProjectDetail() {
                     onChange={(e) => setCategoryFilter(e.target.value)}
                   >
                     <option value="all">כל הקטגוריות</option>
-                    {expenseCategoryOptions.map(option => (
+                    {allCategoryOptions.map(option => (
                       <option key={option} value={option}>{option}</option>
                     ))}
                   </select>
@@ -1480,7 +1430,48 @@ export default function ProjectDetail() {
         {loading ? (
           <div className="text-center py-8 text-gray-500 dark:text-gray-400">טוען...</div>
         ) : filtered.length === 0 ? (
-          <div className="text-center py-8 text-gray-500 dark:text-gray-400">אין עסקאות להצגה</div>
+          <div className="text-center py-8 space-y-3">
+            <div className="text-gray-500 dark:text-gray-400 font-medium">אין עסקאות להצגה</div>
+            {txs.length > 0 && (
+              <div className="text-sm text-gray-400 dark:text-gray-500 space-y-2">
+                {categoryFilter !== 'all' && (
+                  <>
+                    <div>הסינון לפי קטגוריה "{categoryFilter}" לא מצא תוצאות</div>
+                    {transactionsMatchingCategory > 0 && dateFilterMode === 'current_month' && (
+                      <div className="mt-2 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                        <div className="font-medium text-blue-800 dark:text-blue-200 mb-1">
+                          נמצאו {transactionsMatchingCategory} עסקאות עם הקטגוריה "{categoryFilter}"
+                        </div>
+                        <div className="text-blue-700 dark:text-blue-300 text-xs mb-2">
+                          אבל הן לא בחודש הנוכחי. שנה את סינון התאריך לראות אותן.
+                        </div>
+                        <button
+                          onClick={() => setDateFilterMode('date_range')}
+                          className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                        >
+                          הצג את כל העסקאות עם הקטגוריה הזו
+                        </button>
+                      </div>
+                    )}
+                    {transactionsMatchingCategory === 0 && (
+                      <div className="text-xs text-gray-500 dark:text-gray-400">
+                        אין עסקאות עם הקטגוריה "{categoryFilter}" במערכת
+                      </div>
+                    )}
+                  </>
+                )}
+                {categoryFilter === 'all' && dateFilterMode === 'current_month' && (
+                  <div className="mt-1">התצוגה מוגבלת לחודש הנוכחי - נסה לשנות את סינון התאריך לראות עסקאות מחודשים קודמים</div>
+                )}
+                <div className="mt-2 text-xs">
+                  סך הכל {txs.length} עסקאות במערכת
+                  {categoryFilter !== 'all' && transactionsMatchingCategory > 0 && (
+                    <span> • {transactionsMatchingCategory} עם הקטגוריה "{categoryFilter}"</span>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -1796,9 +1787,9 @@ export default function ProjectDetail() {
                     }
                     const getFileUrl = (filePath: string): string => {
                       if (filePath.startsWith('http')) return filePath
-                      const apiUrl = import.meta.env.VITE_API_URL
+                      const apiUrl = import.meta.env.VITE_API_URL || ''
                       // @ts-ignore
-                      const baseUrl = apiUrl.replace('/api/v1', '')
+                      const baseUrl = apiUrl ? apiUrl.replace('/api/v1', '') : ''
                       let normalizedPath = filePath.startsWith('/') ? filePath : `/${filePath}`
                       normalizedPath = normalizedPath.replace(/([^:]\/)\/+/g, '$1')
                       return `${baseUrl}${normalizedPath}`
@@ -1937,9 +1928,9 @@ export default function ProjectDetail() {
                 }
                 const getFileUrl = (filePath: string): string => {
                   if (filePath.startsWith('http')) return filePath
-                  const apiUrl = import.meta.env.VITE_API_URL
+                  const apiUrl = import.meta.env.VITE_API_URL || ''
                   // @ts-ignore
-                  const baseUrl = apiUrl.replace('/api/v1', '')
+                  const baseUrl = apiUrl ? apiUrl.replace('/api/v1', '') : ''
                   let normalizedPath = filePath.startsWith('/') ? filePath : `/${filePath}`
                   normalizedPath = normalizedPath.replace(/([^:]\/)\/+/g, '$1')
                   return `${baseUrl}${normalizedPath}`

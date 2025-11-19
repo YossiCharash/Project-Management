@@ -114,9 +114,9 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
     if (imageUrl.startsWith('http')) {
       return imageUrl
     }
-    const apiUrl = import.meta.env.VITE_API_URL
+    const apiUrl = import.meta.env.VITE_API_URL || ''
     // @ts-ignore
-    const baseUrl = apiUrl.replace('/api/v1', '')
+    const baseUrl = apiUrl ? apiUrl.replace('/api/v1', '') : ''
     return `${baseUrl}/uploads/${imageUrl}`
   }
 

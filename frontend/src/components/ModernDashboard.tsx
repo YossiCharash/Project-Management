@@ -48,31 +48,15 @@ const AlertsStrip: React.FC<AlertsStripProps> = ({ alerts, projects }) => {
 
   const allProjectsFlat = getAllProjectsFlat(projects)
 
-  // Debug: Log what we have
-  console.log('🔍 AlertsStrip - Input data:', {
-    projectsCount: projects.length,
-    allProjectsFlatCount: allProjectsFlat.length,
-    alerts: alerts,
-    dismissedProjects: Array.from(dismissedProjects),
-    allProjectIds: allProjectsFlat.map(p => p.id),
-    budgetWarningIds: alerts.budget_warning || []
-  })
-
   // Filter out dismissed projects
   const budgetOverrunProjects = allProjectsFlat.filter(p => {
     const isInOverrun = alerts.budget_overrun.includes(p.id)
     const isDismissed = dismissedProjects.has(p.id)
-    if (isInOverrun) {
-      console.log(`🔴 Budget overrun project found: ${p.id} (${p.name}), dismissed: ${isDismissed}`)
-    }
     return isInOverrun && !isDismissed
   })
   const budgetWarningProjects = allProjectsFlat.filter(p => {
     const isInWarning = (alerts.budget_warning || []).includes(p.id)
     const isDismissed = dismissedProjects.has(p.id)
-    if (isInWarning && !isDismissed) {
-      console.log(`✅ Found budget warning project: ${p.id} (${p.name})`)
-    }
     return isInWarning && !isDismissed
   })
   const missingProofProjects = allProjectsFlat.filter(p => 
@@ -89,18 +73,6 @@ const AlertsStrip: React.FC<AlertsStripProps> = ({ alerts, projects }) => {
   const unprofitableProjects = allProjectsFlat.filter(p => 
     p.status_color === 'red' && p.profit_percent < 0 && !dismissedProjects.has(p.id)
   )
-
-  // Debug: Log filtered results
-  console.log('🔍 AlertsStrip - Filtered results:', {
-    budgetOverrunProjects: budgetOverrunProjects.length,
-    budgetWarningProjects: budgetWarningProjects.length,
-    missingProofProjects: missingProofProjects.length,
-    unpaidRecurringProjects: unpaidRecurringProjects.length,
-    categoryBudgetAlerts: categoryBudgetAlerts.length,
-    unprofitableProjects: unprofitableProjects.length,
-    budgetWarningProjectsList: budgetWarningProjects.map(p => ({ id: p.id, name: p.name })),
-    budgetOverrunProjectsList: budgetOverrunProjects.map(p => ({ id: p.id, name: p.name }))
-  })
 
   // Group category budget alerts by project
   const categoryAlertsByProject = categoryBudgetAlerts.reduce((acc, alert) => {
@@ -583,12 +555,8 @@ export default function ModernDashboard({ onProjectClick, onProjectEdit }: Moder
     setError(null)
     try {
       const data = await DashboardAPI.getDashboardSnapshot()
-      console.log('📊 Dashboard Data:', data)
-      console.log('📊 Alerts:', data.alerts)
-      console.log('📊 Budget Warning Projects:', data.alerts.budget_warning)
       setDashboardData(data)
     } catch (err: any) {
-      console.error('❌ Error loading dashboard:', err)
       setError(err.message || 'שגיאה בטעינת הנתונים')
     } finally {
       setLoading(false)
