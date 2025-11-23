@@ -5,16 +5,18 @@ import {
   ArrowLeft, 
   Calendar, 
   DollarSign,
-  Users,
   MapPin,
-  Building,
-  RefreshCw
+  RefreshCw,
+  Plus,
+  Edit
 } from 'lucide-react'
-import { ProjectWithFinance } from '../types/api'
+import { ProjectWithFinance, Project } from '../types/api'
 import { DashboardAPI } from '../lib/apiClient'
 import api from '../lib/api'
 import ProjectExpensePieChart from './charts/ProjectExpensePieChart'
 import ProjectTrendsChart from './charts/ProjectTrendsChart'
+import CreateProjectModal from './CreateProjectModal'
+import AddTransactionModal from './AddTransactionModal'
 
 // Reverse mapping: Hebrew to English (for filtering)
 const CATEGORY_REVERSE_MAP: Record<string, string> = {
@@ -93,9 +95,7 @@ const HebrewText = {
     subprojects: 'תת-פרויקטים',
     projectDetails: 'פרטי הפרויקט',
     projectDescription: 'תיאור הפרויקט',
-    projectAddress: 'כתובת הפרויקט',
-    monthlyBudget: 'תקציב חודשי',
-    annualBudget: 'תקציב שנתי'
+    projectAddress: 'כתובת הפרויקט'
   },
   financial: {
     totalIncome: 'סה"כ הכנסות',
@@ -450,91 +450,166 @@ const SubprojectCardsList: React.FC<{
 const ConsolidatedFinancialSummary: React.FC<{
   summary: FinancialSummary
   subprojects: SubprojectFinancial[]
-}> = ({ summary, subprojects }) => {
+  onAddTransaction?: (subprojectId: number) => void
+}> = ({ summary, subprojects, onAddTransaction }) => {
+  // Filter out parent project from subprojects (if it's included with "(ראשי)" in the name)
+  const actualSubprojects = subprojects.filter(sp => !sp.name.includes('(ראשי)'))
+  
+  // Calculate totals only from subprojects
+  const subprojectsTotalIncome = actualSubprojects.reduce((sum, sp) => sum + sp.income, 0)
+  const subprojectsTotalExpense = actualSubprojects.reduce((sum, sp) => sum + sp.expense, 0)
+  const subprojectsNetProfit = subprojectsTotalIncome - subprojectsTotalExpense
+  const subprojectsProfitMargin = subprojectsTotalIncome > 0 ? (subprojectsNetProfit / subprojectsTotalIncome) * 100 : 0
+
   return (
     <div className="space-y-6">
-      {/* Main Financial Summary */}
-      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-2xl p-6 border border-blue-200 dark:border-blue-800">
-        <div className="flex items-center gap-2 mb-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
           <DollarSign className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-          <h3 className="text-xl font-semibold text-gray-900 dark:text-white">סיכום פיננסי מאוחד</h3>
+          <h3 className="text-2xl font-bold text-gray-900 dark:text-white">דאשבורד פיננסי - תתי פרויקטים</h3>
+        </div>
+        <div className="text-sm text-gray-600 dark:text-gray-400">
+          סה"כ תתי פרויקטים: {actualSubprojects.length}
+        </div>
+      </div>
+
+      {/* Main Financial Summary - Subprojects Only */}
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-2xl p-8 border border-blue-200 dark:border-blue-800">
+        <div className="mb-6">
+          <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">סיכום פיננסי כולל - תתי פרויקטים</h4>
+          <p className="text-sm text-gray-600 dark:text-gray-400">סיכום כל התתי פרויקטים בלבד</p>
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <div className="text-center">
-            <div className="text-3xl font-bold text-green-600 dark:text-green-400 mb-1">
-              {formatCurrency(summary.totalIncome)}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm">
+            <div className="text-center">
+              <div className="text-3xl font-bold text-green-600 dark:text-green-400 mb-2">
+                {formatCurrency(subprojectsTotalIncome)}
+              </div>
+              <div className="text-sm font-medium text-gray-600 dark:text-gray-400">{HebrewText.financial.totalIncome}</div>
             </div>
-            <div className="text-sm text-gray-600 dark:text-gray-400">{HebrewText.financial.totalIncome}</div>
           </div>
           
-          <div className="text-center">
-            <div className="text-3xl font-bold text-red-600 dark:text-red-400 mb-1">
-              {formatCurrency(summary.totalExpense)}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm">
+            <div className="text-center">
+              <div className="text-3xl font-bold text-red-600 dark:text-red-400 mb-2">
+                {formatCurrency(subprojectsTotalExpense)}
+              </div>
+              <div className="text-sm font-medium text-gray-600 dark:text-gray-400">{HebrewText.financial.totalExpense}</div>
             </div>
-            <div className="text-sm text-gray-600 dark:text-gray-400">{HebrewText.financial.totalExpense}</div>
           </div>
           
-          <div className="text-center">
-            <div className={`text-3xl font-bold mb-1 ${
-              summary.netProfit >= 0 
-                ? 'text-green-600 dark:text-green-400' 
-                : 'text-red-600 dark:text-red-400'
-            }`}>
-              {summary.netProfit >= 0 ? '+' : ''}{formatCurrency(summary.netProfit)}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm">
+            <div className="text-center">
+              <div className={`text-3xl font-bold mb-2 ${
+                subprojectsNetProfit >= 0 
+                  ? 'text-green-600 dark:text-green-400' 
+                  : 'text-red-600 dark:text-red-400'
+              }`}>
+                {subprojectsNetProfit >= 0 ? '+' : ''}{formatCurrency(subprojectsNetProfit)}
+              </div>
+              <div className="text-sm font-medium text-gray-600 dark:text-gray-400">{HebrewText.financial.netProfit}</div>
             </div>
-            <div className="text-sm text-gray-600 dark:text-gray-400">{HebrewText.financial.netProfit}</div>
           </div>
           
-          <div className="text-center">
-            <div className={`text-3xl font-bold mb-1 ${
-              summary.profitMargin >= 0 
-                ? 'text-green-600 dark:text-green-400' 
-                : 'text-red-600 dark:text-red-400'
-            }`}>
-              {summary.profitMargin >= 0 ? '+' : ''}{formatPercentage(summary.profitMargin)}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm">
+            <div className="text-center">
+              <div className={`text-3xl font-bold mb-2 ${
+                subprojectsProfitMargin >= 0 
+                  ? 'text-green-600 dark:text-green-400' 
+                  : 'text-red-600 dark:text-red-400'
+              }`}>
+                {subprojectsProfitMargin >= 0 ? '+' : ''}{formatPercentage(subprojectsProfitMargin)}
+              </div>
+              <div className="text-sm font-medium text-gray-600 dark:text-gray-400">{HebrewText.financial.profitMargin}</div>
             </div>
-            <div className="text-sm text-gray-600 dark:text-gray-400">{HebrewText.financial.profitMargin}</div>
           </div>
         </div>
       </div>
 
-      {/* Subprojects Breakdown */}
+      {/* Subprojects Financial Breakdown */}
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h4 className="text-lg font-semibold text-gray-900 dark:text-white">
-            {HebrewText.projects.subprojects} ({summary.subprojectCount})
+        <div className="flex items-center justify-between mb-6">
+          <h4 className="text-xl font-semibold text-gray-900 dark:text-white">
+            פירוט פיננסי לפי תת-פרויקט
           </h4>
           <div className="text-sm text-gray-600 dark:text-gray-400">
-            {summary.activeSubprojects} {HebrewText.status.active}
+            {actualSubprojects.length} תתי פרויקטים
           </div>
         </div>
         
-        <div className="space-y-3">
-          {subprojects.map((subproject) => (
-            <div key={subproject.id} className="flex items-center justify-between p-4 rounded-lg border border-gray-200 dark:border-gray-600">
-              <div className="flex-1">
-                <div className="font-medium text-gray-900 dark:text-white">{subproject.name}</div>
-                <div className="text-sm text-gray-600 dark:text-gray-400">
-                  {HebrewText.financial.income}: {formatCurrency(subproject.income)} | {HebrewText.financial.expense}: {formatCurrency(subproject.expense)}
+        {actualSubprojects.length === 0 ? (
+          <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+            אין תתי פרויקטים להצגה
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {actualSubprojects.map((subproject) => (
+              <div key={subproject.id} className="bg-gradient-to-br from-gray-50 to-white dark:from-gray-700 dark:to-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 p-5 hover:shadow-md transition-shadow">
+                <div className="flex items-start justify-between mb-4">
+                  <h5 className="font-semibold text-gray-900 dark:text-white text-lg flex-1">
+                    {subproject.name}
+                  </h5>
+                  <div className="flex items-center gap-2">
+                    {onAddTransaction && (
+                      <button
+                        onClick={() => onAddTransaction(subproject.id)}
+                        className="px-3 py-1.5 text-xs bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors flex items-center gap-1.5"
+                        title="הוסף עסקה לתת-פרויקט"
+                      >
+                        <Plus className="w-3 h-3" />
+                        הוסף עסקה
+                      </button>
+                    )}
+                    <div className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusBgClass(subproject.status)} ${getStatusColorClass(subproject.status)}`}>
+                      {getStatusText(subproject.status)}
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600 dark:text-gray-400">{HebrewText.financial.income}</span>
+                    <span className="font-semibold text-green-600 dark:text-green-400">
+                      {formatCurrency(subproject.income)}
+                    </span>
+                  </div>
+                  
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600 dark:text-gray-400">{HebrewText.financial.expense}</span>
+                    <span className="font-semibold text-red-600 dark:text-red-400">
+                      {formatCurrency(subproject.expense)}
+                    </span>
+                  </div>
+                  
+                  <div className="border-t border-gray-200 dark:border-gray-600 pt-3 mt-3">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{HebrewText.financial.netProfit}</span>
+                      <span className={`font-bold text-lg ${
+                        subproject.profit >= 0 
+                          ? 'text-green-600 dark:text-green-400' 
+                          : 'text-red-600 dark:text-red-400'
+                      }`}>
+                        {subproject.profit >= 0 ? '+' : ''}{formatCurrency(subproject.profit)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-gray-500 dark:text-gray-400">{HebrewText.financial.profitMargin}</span>
+                      <span className={`text-sm font-medium ${
+                        subproject.profitMargin >= 0 
+                          ? 'text-green-600 dark:text-green-400' 
+                          : 'text-red-600 dark:text-red-400'
+                      }`}>
+                        {subproject.profitMargin >= 0 ? '+' : ''}{formatPercentage(subproject.profitMargin)}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
-              
-              <div className="text-right">
-                <div className={`font-semibold ${getStatusColorClass(subproject.status)}`}>
-                  {subproject.profit >= 0 ? '+' : ''}{formatCurrency(subproject.profit)}
-                </div>
-                <div className={`text-sm ${getStatusColorClass(subproject.status)}`}>
-                  {subproject.profitMargin >= 0 ? '+' : ''}{formatPercentage(subproject.profitMargin)}
-                </div>
-              </div>
-              
-              <div className={`ml-4 px-3 py-1 rounded-full text-xs font-medium ${getStatusBgClass(subproject.status)} ${getStatusColorClass(subproject.status)}`}>
-                {getStatusText(subproject.status)}
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -829,6 +904,10 @@ export default function ParentProjectDetail() {
   const [chartsLoading, setChartsLoading] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [showCreateSubprojectModal, setShowCreateSubprojectModal] = useState(false)
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [showAddTransactionModal, setShowAddTransactionModal] = useState(false)
+  const [selectedSubprojectForTransaction, setSelectedSubprojectForTransaction] = useState<number | null>(null)
   
   // Transaction filters
   const [transactionFilters, setTransactionFilters] = useState({
@@ -1272,7 +1351,7 @@ export default function ParentProjectDetail() {
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="flex items-center justify-between"
+        className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4"
       >
         <div className="flex items-center gap-4">
           <button
@@ -1291,7 +1370,21 @@ export default function ParentProjectDetail() {
           </div>
         </div>
         
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+          <button
+            onClick={() => setShowCreateSubprojectModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-lg hover:from-blue-600 hover:to-purple-700 transition-colors shadow-md"
+          >
+            <Plus className="w-4 h-4" />
+            <span>צור תת-פרויקט</span>
+          </button>
+          <button
+            onClick={() => setShowEditModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors shadow-md"
+          >
+            <Edit className="w-4 h-4" />
+            <span>ערוך פרויקט</span>
+          </button>
           <button
             onClick={loadParentProjectData}
             className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
@@ -1361,27 +1454,7 @@ export default function ParentProjectDetail() {
             </div>
           )}
           
-          {/* Removed num_residents and monthly_price_per_apartment display */}
-          
-          {parentProject.budget_monthly > 0 && (
-            <div className="flex items-center gap-2">
-              <Building className="w-4 h-4 text-gray-400" />
-              <div>
-                <div className="text-sm font-medium text-gray-700 dark:text-gray-300">{HebrewText.projects.monthlyBudget}</div>
-                <div className="text-gray-900 dark:text-white">{parentProject.budget_monthly.toFixed(0)} ₪</div>
-              </div>
-            </div>
-          )}
-          
-          {parentProject.budget_annual > 0 && (
-            <div className="flex items-center gap-2">
-              <Building className="w-4 h-4 text-gray-400" />
-              <div>
-                <div className="text-sm font-medium text-gray-700 dark:text-gray-300">{HebrewText.projects.annualBudget}</div>
-                <div className="text-gray-900 dark:text-white">{parentProject.budget_annual.toFixed(0)} ₪</div>
-              </div>
-            </div>
-          )}
+          {/* Removed num_residents, monthly_price_per_apartment, and budget display - dashboard is financial only */}
         </div>
       </motion.div>
 
@@ -1397,20 +1470,23 @@ export default function ParentProjectDetail() {
         onCustomRangeChange={setCustomRange}
       />
 
-      {/* Subprojects Cards */}
+      {/* Subprojects Financial Dashboard */}
       {subprojects.length > 0 ? (
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
-              תת-פרויקטים ({subprojects.length})
-            </h3>
-            <div className="text-sm text-gray-600 dark:text-gray-400">
-              סה"כ פרויקטים: {subprojects.length}
-            </div>
-          </div>
-
-          <SubprojectCardsList subprojects={subprojects} onNavigate={navigate} />
-        </div>
+        <ConsolidatedFinancialSummary
+          summary={financialSummary || {
+            totalIncome: 0,
+            totalExpense: 0,
+            netProfit: 0,
+            profitMargin: 0,
+            subprojectCount: subprojects.length,
+            activeSubprojects: subprojects.length
+          }}
+          subprojects={subprojects}
+          onAddTransaction={(subprojectId) => {
+            setSelectedSubprojectForTransaction(subprojectId)
+            setShowAddTransactionModal(true)
+          }}
+        />
       ) : (
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-8">
           <div className="text-center">
@@ -1433,14 +1509,6 @@ export default function ParentProjectDetail() {
             </button>
           </div>
         </div>
-      )}
-
-      {/* Consolidated Financial Summary */}
-      {financialSummary && (
-        <ConsolidatedFinancialSummary
-          summary={financialSummary}
-          subprojects={subprojects}
-        />
       )}
 
       {/* Charts Section */}
@@ -1489,6 +1557,47 @@ export default function ParentProjectDetail() {
         loading={transactionsLoading}
         onFilterChange={setTransactionFilters}
         filters={transactionFilters}
+      />
+
+      {/* Create Subproject Modal */}
+      <CreateProjectModal
+        isOpen={showCreateSubprojectModal}
+        onClose={() => setShowCreateSubprojectModal(false)}
+        onSuccess={(project: Project) => {
+          setShowCreateSubprojectModal(false)
+          loadParentProjectData()
+        }}
+        parentProjectId={id ? parseInt(id) : undefined}
+      />
+
+      {/* Edit Parent Project Modal */}
+      {parentProject && (
+        <CreateProjectModal
+          isOpen={showEditModal}
+          onClose={() => setShowEditModal(false)}
+          onSuccess={(project: Project) => {
+            setShowEditModal(false)
+            loadParentProjectData()
+          }}
+          editingProject={parentProject}
+        />
+      )}
+
+      {/* Add Transaction Modal */}
+      <AddTransactionModal
+        isOpen={showAddTransactionModal}
+        onClose={() => {
+          setShowAddTransactionModal(false)
+          setSelectedSubprojectForTransaction(null)
+        }}
+        onSuccess={() => {
+          setShowAddTransactionModal(false)
+          setSelectedSubprojectForTransaction(null)
+          loadParentProjectData()
+          loadTransactions()
+          loadAdvancedFinancialSummary(parseInt(id || '0'))
+        }}
+        selectedProjectId={selectedSubprojectForTransaction || undefined}
       />
     </div>
   )
