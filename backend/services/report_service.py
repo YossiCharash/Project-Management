@@ -181,13 +181,18 @@ class ReportService:
                 budget_monthly = 0.0
             
             # Calculate income from the monthly budget (treated as expected monthly income)
-            # Calculate only for the current year, from project start date (or start of year if project started earlier)
+            # Calculate from project start date (or created_at if start_date not available)
             project_income = 0.0
             monthly_income = float(project.budget_monthly or 0)
-            if monthly_income > 0 and calculation_start_date:
-                # Calculate start date for income calculation: use the later of project start date or start of current year
-                current_year_start = date(current_date.year, 1, 1)  # January 1st of current year
-                income_calculation_start = max(calculation_start_date, current_year_start)
+            if monthly_income > 0:
+                # Use project start_date if available, otherwise use created_at date
+                if project.start_date:
+                    income_calculation_start = project.start_date
+                elif hasattr(project, 'created_at') and project.created_at:
+                    income_calculation_start = project.created_at.date() if hasattr(project.created_at, 'date') else project.created_at
+                else:
+                    # Fallback: use calculation_start_date (which is already 1 year ago if no start_date)
+                    income_calculation_start = calculation_start_date
                 project_income = calculate_monthly_income_amount(monthly_income, income_calculation_start, current_date)
                 yearly_income = 0.0
             
@@ -316,6 +321,7 @@ class ReportService:
                 "address": project.address,
                 "city": project.city,
                 "relation_project": project.relation_project,
+                "is_parent_project": project.is_parent_project,  # Add is_parent_project field
                 "image_url": project.image_url,
                 "is_active": project.is_active,
                 "manager_id": project.manager_id,

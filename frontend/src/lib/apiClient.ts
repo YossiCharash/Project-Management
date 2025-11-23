@@ -250,3 +250,110 @@ export class RecurringTransactionAPI {
     await api.delete(`/recurring-transactions/transactions/${transactionId}`)
   }
 }
+
+export interface Category {
+  id: number
+  name: string
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface CategoryCreate {
+  name: string
+}
+
+export interface CategoryUpdate {
+  name?: string
+  is_active?: boolean
+}
+
+export class CategoryAPI {
+  // Get all categories
+  static async getCategories(includeInactive: boolean = false): Promise<Category[]> {
+    const { data } = await api.get<Category[]>(`/categories?include_inactive=${includeInactive}`)
+    return data
+  }
+
+  // Get category by ID
+  static async getCategory(categoryId: number): Promise<Category> {
+    const { data } = await api.get<Category>(`/categories/${categoryId}`)
+    return data
+  }
+
+  // Create a new category
+  static async createCategory(category: CategoryCreate): Promise<Category> {
+    const { data } = await api.post<Category>('/categories', category)
+    return data
+  }
+
+  // Update a category
+  static async updateCategory(categoryId: number, updates: CategoryUpdate): Promise<Category> {
+    const { data } = await api.put<Category>(`/categories/${categoryId}`, updates)
+    return data
+  }
+
+  // Delete a category (soft delete)
+  static async deleteCategory(categoryId: number): Promise<void> {
+    await api.delete(`/categories/${categoryId}`)
+  }
+}
+
+export interface Supplier {
+  id: number
+  name: string
+  contact_email?: string | null
+  phone?: string | null
+  category?: string | null
+  annual_budget?: number | null
+  is_active?: boolean
+  created_at?: string
+}
+
+export interface SupplierCreate {
+  name: string
+  contact_email?: string | null
+  phone?: string | null
+  category?: string | null
+  annual_budget?: number | null
+}
+
+export interface SupplierUpdate {
+  name?: string
+  contact_email?: string | null
+  phone?: string | null
+  category?: string | null
+  annual_budget?: number | null
+  is_active?: boolean
+}
+
+export class SupplierAPI {
+  // Get all suppliers
+  static async getSuppliers(): Promise<Supplier[]> {
+    const { data } = await api.get<Supplier[]>('/suppliers')
+    return data
+  }
+
+  // Get supplier by ID
+  static async getSupplier(supplierId: number): Promise<Supplier> {
+    const { data } = await api.get<Supplier>(`/suppliers/${supplierId}`)
+    return data
+  }
+
+  // Create a new supplier
+  static async createSupplier(supplier: SupplierCreate): Promise<Supplier> {
+    const { data } = await api.post<Supplier>('/suppliers/', supplier)
+    return data
+  }
+
+  // Update a supplier
+  static async updateSupplier(supplierId: number, updates: SupplierUpdate): Promise<Supplier> {
+    const { data } = await api.put<Supplier>(`/suppliers/${supplierId}`, updates)
+    return data
+  }
+
+  // Delete a supplier
+  static async deleteSupplier(supplierId: number): Promise<void> {
+    await api.delete(`/suppliers/${supplierId}`)
+  }
+}

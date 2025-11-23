@@ -28,6 +28,7 @@ interface ProjectCardProps {
   onProjectEdit?: (project: ProjectWithFinance) => void
   onProjectArchive?: (project: ProjectWithFinance) => void
   onProjectRestore?: (project: ProjectWithFinance) => void
+  onCreateSubproject?: (project: ProjectWithFinance) => void
   hasSubprojects?: boolean
 }
 
@@ -38,8 +39,11 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
   onProjectEdit, 
   onProjectArchive,
   onProjectRestore,
+  onCreateSubproject,
   hasSubprojects = false
 }) => {
+  // Check if this is a parent project using the is_parent_project field
+  const isParentProject = project.is_parent_project === true
   const getStatusColor = (status: 'green' | 'yellow' | 'red') => {
     switch (status) {
       case 'green': return 'bg-green-100 dark:bg-green-900/20 text-green-800 dark:text-green-300 border-green-200 dark:border-green-800'
@@ -150,82 +154,54 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
           {/* Removed num_residents and monthly_price_per_apartment display */}
         </div>
 
-        <div className="mt-4 pt-3 border-t border-gray-200 dark:border-gray-600">
-          {/* Profitability Status - Prominent Display */}
-          <div className="mb-3 p-2.5 rounded-lg bg-gray-50 dark:bg-gray-700">
-            <div className="flex justify-between items-center mb-2">
-              <span className="text-xs font-medium text-gray-700 dark:text-gray-300">סטטוס רווחיות</span>
-              <span className={`px-1.5 py-0.5 rounded-full text-[11px] font-bold ${getStatusColor(project.status_color || 'yellow')}`}>
-                {getStatusText(project.status_color || 'yellow')}
-              </span>
-            </div>
-            <div className="text-center">
-              <div className={`text-xl font-bold ${(Number(project.profit_percent) || 0) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                {(Number(project.profit_percent) || 0) >= 0 ? '+' : ''}{Number(project.profit_percent || 0).toFixed(1)}%
-              </div>
-              <div className="text-[11px] text-gray-500 dark:text-gray-400">רווח/הפסד שנתי</div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3 text-xs">
-            <div>
-              <div className="text-gray-500 dark:text-gray-400 text-[11px]">הכנסות השנה</div>
-              <div className="font-semibold text-green-600 dark:text-green-400 text-sm">
-                {Number(project.income_month_to_date || 0).toLocaleString('he-IL')} ₪
-              </div>
-            </div>
-            <div>
-              <div className="text-gray-500 dark:text-gray-400 text-[11px]">הוצאות השנה</div>
-              <div className="font-semibold text-red-600 dark:text-red-400 text-sm">
-                {Number(project.expense_month_to_date || 0).toLocaleString('he-IL')} ₪
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-2.5 pt-2.5 border-t border-gray-100 dark:border-gray-700">
-            <div className="flex justify-between items-center">
-              <span className="text-gray-500 dark:text-gray-400 text-[11px]">רווח/הפסד נטו</span>
-              <span className={`text-sm font-semibold ${((Number(project.income_month_to_date) || 0) - (Number(project.expense_month_to_date) || 0)) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                {((Number(project.income_month_to_date) || 0) - (Number(project.expense_month_to_date) || 0)) >= 0 ? '+' : ''}{((Number(project.income_month_to_date) || 0) - (Number(project.expense_month_to_date) || 0)).toLocaleString('he-IL')} ₪
-              </span>
-            </div>
-          </div>
-        </div>
+        {/* Removed all financial numbers - only showing name and image */}
 
 
         <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-600">
-          <div className="flex gap-1.5">
-            <button
-              onClick={() => onProjectClick?.(project)}
-              className="flex-1 px-2.5 py-1.5 text-xs bg-blue-100 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded-lg hover:bg-blue-200 dark:hover:bg-blue-900/40 transition-colors flex items-center justify-center gap-1.5"
-            >
-              <Eye className="w-4 h-4" />
-              {hasSubprojects ? 'צפה בתת-פרויקטים' : 'צפה'}
-            </button>
-            {onProjectEdit && project.is_active !== false && (
+          <div className="flex flex-col gap-2">
+            <div className="flex gap-1.5">
               <button
-                onClick={() => onProjectEdit(project)}
-                className="px-2.5 py-1.5 text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                onClick={() => onProjectClick?.(project)}
+                className="flex-1 px-2.5 py-1.5 text-xs bg-blue-100 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded-lg hover:bg-blue-200 dark:hover:bg-blue-900/40 transition-colors flex items-center justify-center gap-1.5"
               >
-                <Edit className="w-4 h-4" />
+                <Eye className="w-4 h-4" />
+                {hasSubprojects ? 'צפה בתת-פרויקטים' : 'צפה'}
               </button>
-            )}
-            {onProjectArchive && project.is_active !== false && (
+              {onProjectEdit && project.is_active !== false && (
+                <button
+                  onClick={() => onProjectEdit(project)}
+                  className="px-2.5 py-1.5 text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                >
+                  <Edit className="w-4 h-4" />
+                </button>
+              )}
+              {onProjectArchive && project.is_active !== false && (
+                <button
+                  onClick={() => onProjectArchive(project)}
+                  className="px-2.5 py-1.5 text-xs bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-300 rounded-lg hover:bg-red-200 dark:hover:bg-red-900/40 transition-colors"
+                  title="ארכב פרויקט"
+                >
+                  <Archive className="w-4 h-4" />
+                </button>
+              )}
+              {onProjectRestore && project.is_active === false && (
+                <button
+                  onClick={() => onProjectRestore(project)}
+                  className="px-2.5 py-1.5 text-xs bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300 rounded-lg hover:bg-green-200 dark:hover:bg-green-900/40 transition-colors"
+                  title="שחזר פרויקט"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+            {/* Show "Create Subproject" button for parent projects */}
+            {isParentProject && onCreateSubproject && project.is_active !== false && (
               <button
-                onClick={() => onProjectArchive(project)}
-                className="px-2.5 py-1.5 text-xs bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-300 rounded-lg hover:bg-red-200 dark:hover:bg-red-900/40 transition-colors"
-                title="ארכב פרויקט"
+                onClick={() => onCreateSubproject(project)}
+                className="w-full px-2.5 py-1.5 text-xs bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-lg hover:from-blue-600 hover:to-purple-700 transition-colors flex items-center justify-center gap-1.5"
               >
-                <Archive className="w-4 h-4" />
-              </button>
-            )}
-            {onProjectRestore && project.is_active === false && (
-              <button
-                onClick={() => onProjectRestore(project)}
-                className="px-2.5 py-1.5 text-xs bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300 rounded-lg hover:bg-green-200 dark:hover:bg-green-900/40 transition-colors"
-                title="שחזר פרויקט"
-              >
-                <RotateCcw className="w-4 h-4" />
+                <Plus className="w-4 h-4" />
+                צור תת-פרויקט
               </button>
             )}
           </div>
@@ -254,6 +230,7 @@ export default function Projects() {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [editingProject, setEditingProject] = useState<ProjectWithFinance | null>(null)
+  const [selectedParentProject, setSelectedParentProject] = useState<ProjectWithFinance | null>(null)
   const [archivingProject, setArchivingProject] = useState<number | null>(null)
   const archiveFilterRef = useRef(archiveFilter)
   const lastLocationKeyRef = useRef(location.key)
@@ -374,14 +351,13 @@ export default function Projects() {
   }
 
   const handleProjectClick = (project: ProjectWithFinance) => {
-    // Check if project has subprojects
-    const hasSubprojects = dashboardData?.projects?.some((p: any) => p.relation_project === project.id)
-    
-    if (hasSubprojects) {
-      // Navigate to parent project detail page with consolidated view
+    // Check if project is a parent project
+    // If it's a parent project, always navigate to dashboard (even if no subprojects yet)
+    if (project.is_parent_project === true) {
+      // Navigate to parent project detail page with consolidated view (dashboard)
       navigate(`/projects/${project.id}/parent`)
     } else {
-      // Navigate to project detail page
+      // Navigate to regular project detail page
       navigate(`/projects/${project.id}`)
     }
   }
@@ -419,15 +395,28 @@ export default function Projects() {
     }
   }
 
-  const handleCreateProject = () => {
+  const [projectTypeToCreate, setProjectTypeToCreate] = useState<'regular' | 'parent'>('regular')
+
+  const handleCreateProject = (type: 'regular' | 'parent' = 'regular') => {
     setEditingProject(null)
+    setSelectedParentProject(null)
+    setProjectTypeToCreate(type)
     setShowCreateModal(true)
   }
 
-  const handleProjectSuccess = () => {
+  const handleCreateSubproject = (parentProject: ProjectWithFinance) => {
+    setEditingProject(null)
+    setSelectedParentProject(parentProject)
+    setShowCreateModal(true)
+  }
+
+  const handleProjectSuccess = (project?: any) => {
     setShowCreateModal(false)
     setEditingProject(null)
-    loadProjectsData()
+    // Reload projects data without causing page reload
+    loadProjectsData(archiveFilter !== 'active').catch(err => {
+      console.error('Error reloading projects:', err)
+    })
   }
 
   const filteredProjects = dashboardData?.projects?.filter((project: any) => {
@@ -478,15 +467,26 @@ export default function Projects() {
           </p>
         </div>
         {isAdmin && (
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={handleCreateProject}
-            className="px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 flex items-center gap-2"
-          >
-            <Plus className="w-5 h-5" />
-            <span>צור פרויקט חדש</span>
-          </motion.button>
+          <div className="flex items-center gap-3">
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => handleCreateProject('regular')}
+              className="px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 flex items-center gap-2"
+            >
+              <Plus className="w-5 h-5" />
+              <span>צור פרויקט</span>
+            </motion.button>
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => handleCreateProject('parent')}
+              className="px-6 py-3 bg-gradient-to-r from-green-500 to-teal-600 text-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 flex items-center gap-2"
+            >
+              <Plus className="w-5 h-5" />
+              <span>צור פרויקט על</span>
+            </motion.button>
+          </div>
         )}
       </div>
 
@@ -636,6 +636,7 @@ export default function Projects() {
                 onProjectEdit={isAdmin ? handleProjectEdit : undefined}
                 onProjectArchive={isAdmin ? handleProjectArchive : undefined}
                 onProjectRestore={isAdmin ? handleProjectRestore : undefined}
+                onCreateSubproject={isAdmin ? handleCreateSubproject : undefined}
                 hasSubprojects={hasSubprojects}
               />
             )
@@ -646,9 +647,14 @@ export default function Projects() {
       {/* Create Project Modal */}
       <CreateProjectModal
         isOpen={showCreateModal}
-        onClose={() => setShowCreateModal(false)}
+        onClose={() => {
+          setShowCreateModal(false)
+          setSelectedParentProject(null)
+        }}
         onSuccess={handleProjectSuccess}
         editingProject={editingProject}
+        projectType={projectTypeToCreate}
+        parentProjectId={selectedParentProject?.id}
       />
     </div>
   )

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { Project, ProjectCreate, BudgetCreate } from '../types/api'
-import { ProjectAPI, BudgetAPI } from '../lib/apiClient'
+import { ProjectAPI, BudgetAPI, CategoryAPI } from '../lib/apiClient'
 
 interface CreateProjectModalProps {
   isOpen: boolean
@@ -8,6 +8,7 @@ interface CreateProjectModalProps {
   onSuccess: (project: Project) => void
   editingProject?: Project | null
   parentProjectId?: number
+  projectType?: 'parent' | 'regular' // 'parent' = רק תאריכים, 'regular' = כל השדות
 }
 
 const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
@@ -15,7 +16,8 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
   onClose,
   onSuccess,
   editingProject,
-  parentProjectId
+  parentProjectId,
+  projectType = 'regular' // Default to regular project
 }) => {
   const [formData, setFormData] = useState<ProjectCreate>({
     name: '',
@@ -42,16 +44,66 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
   const [nameError, setNameError] = useState<string | null>(null)
   const [isCheckingName, setIsCheckingName] = useState(false)
   const [nameValid, setNameValid] = useState<boolean | null>(null)
+  // Default to 'regular' if no projectType is provided, but allow override
+  const [selectedProjectType, setSelectedProjectType] = useState<'parent' | 'regular'>(
+    projectType || 'regular'
+  )
   
-  // Available expense categories
-  const expenseCategories = ['ניקיון', 'חשמל', 'ביטוח', 'גינון', 'אחר']
+  // Available expense categories - loaded from API (only categories defined in settings)
+  const [expenseCategories, setExpenseCategories] = useState<string[]>([])
+  
+  // Determine if we should show minimal fields (parent project without parentProjectId)
+  // A project is a parent project if:
+  // 1. Creating a new parent project (selectedProjectType === 'parent' and no parentProjectId)
+  // 2. Editing a project that has is_parent_project === true
+  const isParentProject = editingProject 
+    ? (editingProject.is_parent_project === true)
+    : (!parentProjectId && selectedProjectType === 'parent')
+  const isParentProjectCreation = !parentProjectId && !editingProject && selectedProjectType === 'parent'
+  const isRegularProjectCreation = !parentProjectId && !editingProject && selectedProjectType === 'regular'
+  
+  // Reset project type when modal opens based on projectType prop
+  useEffect(() => {
+    if (isOpen && !parentProjectId && !editingProject) {
+      // Set project type based on prop (from button clicked)
+      setSelectedProjectType(projectType || 'regular')
+    }
+  }, [isOpen, parentProjectId, editingProject, projectType])
 
-  // Load available projects for parent selection
+  // Load available projects for parent selection and set parent project if provided
   useEffect(() => {
     if (isOpen) {
       loadProjects()
+      loadCategories()
+      // Set parent project automatically when creating subproject
+      if (parentProjectId && !editingProject) {
+        setFormData(prev => ({
+          ...prev,
+          relation_project: parentProjectId
+        }))
+      } else if (!parentProjectId && !editingProject) {
+        // Clear relation_project when creating parent project
+        setFormData(prev => ({
+          ...prev,
+          relation_project: undefined
+        }))
+      }
     }
-  }, [isOpen])
+  }, [isOpen, parentProjectId, editingProject])
+
+  // Load categories from API (only categories defined in settings)
+  const loadCategories = async () => {
+    try {
+      const categories = await CategoryAPI.getCategories()
+      // Extract only active category names from settings
+      const categoryNames = categories.filter(cat => cat.is_active).map(cat => cat.name)
+      setExpenseCategories(categoryNames)
+    } catch (err) {
+      // If loading fails, set empty array (no categories available)
+      console.error('Error loading categories:', err)
+      setExpenseCategories([])
+    }
+  }
 
   // Populate form when editing
   useEffect(() => {
@@ -73,6 +125,8 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
         setHasFund((editingProject as any).has_fund || false)
         setMonthlyFundAmount((editingProject as any).monthly_fund_amount || 0)
       }
+      // Load existing budgets
+      loadExistingBudgets(editingProject.id)
       // Reset image states when editing
       setSelectedImage(null)
       setImagePreview(editingProject.image_url ? getImageUrl(editingProject.image_url) : null)
@@ -83,6 +137,27 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
       resetForm()
     }
   }, [editingProject])
+
+  // Load existing budgets for editing
+  const loadExistingBudgets = async (projectId: number) => {
+    try {
+      const budgets = await BudgetAPI.getProjectBudgets(projectId)
+      const budgetCreates: BudgetCreate[] = budgets.map(b => ({
+        category: b.category,
+        amount: b.amount,
+        period_type: b.period_type || 'Annual',
+        start_date: b.start_date,
+        end_date: b.end_date || null
+      }))
+      setCategoryBudgets(budgetCreates)
+      
+      // Note: We don't add budget categories to the list - only use categories from settings
+      // If a budget has a category not in settings, it will still work but won't appear in dropdown
+    } catch (err) {
+      // If loading fails, continue without budgets
+      console.error('Error loading existing budgets:', err)
+    }
+  }
 
   // Check project name availability with debounce
   useEffect(() => {
@@ -123,8 +198,12 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
           }
         }
       } catch (err: any) {
-        // If there's an error, don't block the user but show a warning
-        console.error('Error checking name:', err)
+        // If there's an error (like 422 validation error), don't block the user
+        // This can happen if the name is empty or has invalid characters
+        // Only log if it's not a validation error (422)
+        if (err?.response?.status !== 422) {
+          console.error('Error checking name:', err)
+        }
         // Only clear if name hasn't changed
         if (formData.name.trim() === name) {
           setNameError(null)
@@ -175,6 +254,7 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
     setNameError(null)
     setNameValid(null)
     setIsCheckingName(false)
+    setSelectedProjectType(projectType) // Reset to default project type
   }
 
   const getImageUrl = (imageUrl: string): string => {
@@ -222,6 +302,82 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
     setError(null)
 
     try {
+      // Validate required fields based on project type BEFORE creating projectData
+      if (parentProjectId) {
+        // For subprojects: name is required
+        if (!formData.name || formData.name.trim() === '') {
+          setError('שם הפרויקט נדרש')
+          setLoading(false)
+          return
+        }
+
+        // Check if name is valid (not duplicate) for subprojects
+        if (nameValid === false) {
+          setError('לא ניתן לשמור: שם הפרויקט כבר קיים. אנא שנה את השם')
+          setLoading(false)
+          return
+        }
+
+        // If name is still being checked, wait a bit
+        if (isCheckingName) {
+          setError('בודק שם פרויקט... אנא המתן')
+          setLoading(false)
+          return
+        }
+      } else if (!editingProject && isParentProjectCreation) {
+        // For parent projects (minimal): name and dates are required
+        if (!formData.name || formData.name.trim() === '') {
+          setError('שם הפרויקט נדרש')
+          setLoading(false)
+          return
+        }
+        if (!formData.start_date || !formData.end_date) {
+          setError('תאריך התחלה ותאריך סיום נדרשים')
+          setLoading(false)
+          return
+        }
+      } else if (!editingProject && isRegularProjectCreation) {
+        // For regular projects: name and dates are required
+        if (!formData.name || formData.name.trim() === '') {
+          setError('שם הפרויקט נדרש')
+          setLoading(false)
+          return
+        }
+        
+        if (!formData.start_date || !formData.end_date) {
+          setError('תאריך התחלה ותאריך סיום נדרשים')
+          setLoading(false)
+          return
+        }
+
+        // Check if name is valid (not duplicate) for regular projects
+        if (nameValid === false) {
+          setError('לא ניתן לשמור: שם הפרויקט כבר קיים. אנא שנה את השם')
+          setLoading(false)
+          return
+        }
+
+        // If name is still being checked, wait a bit
+        if (isCheckingName) {
+          setError('בודק שם פרויקט... אנא המתן')
+          setLoading(false)
+          return
+        }
+      } else {
+        // For editing: name is required, dates required for parent projects
+        if (!formData.name || formData.name.trim() === '') {
+          setError('שם הפרויקט נדרש')
+          setLoading(false)
+          return
+        }
+        // For parent projects, dates are required
+        if (isParentProject && (!formData.start_date || !formData.end_date)) {
+          setError('תאריך התחלה ותאריך סיום נדרשים לפרויקט על')
+          setLoading(false)
+          return
+        }
+      }
+
       // Filter and validate budgets - remove project_id if present (not needed for project creation)
       const validBudgets = categoryBudgets
         .filter(b => b.amount > 0 && b.category && b.start_date)
@@ -236,37 +392,33 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
         })
 
       const projectData: ProjectCreate = {
-        ...formData,
+        // Name is always required by backend (min_length=1), ensure it exists
+        name: formData.name.trim(),
         description: formData.description || undefined,
         start_date: formData.start_date || undefined,
         end_date: formData.end_date || undefined,
+        // Budget fields are required with default 0
+        budget_monthly: formData.budget_monthly || 0,
+        budget_annual: formData.budget_annual || 0,
         address: formData.address || undefined,
         city: formData.city || undefined,
-        relation_project: formData.relation_project || undefined,
+        // Automatically set parent project when creating subproject
+        relation_project: parentProjectId || formData.relation_project || undefined,
+        // Set is_parent_project based on project type
+        // - If creating parent project: true
+        // - If creating subproject (has parentProjectId): false
+        // - If creating regular project: false (explicitly set to false)
+        is_parent_project: isParentProjectCreation ? true : false,
         manager_id: formData.manager_id || undefined,
-        budgets: validBudgets.length > 0 ? validBudgets : undefined,
-        has_fund: hasFund || false,
-        monthly_fund_amount: hasFund ? (monthlyFundAmount || 0) : undefined
+        // Only include budgets for regular projects or subprojects (not for parent projects)
+        budgets: (isParentProject || isParentProjectCreation ? undefined : (validBudgets.length > 0 ? validBudgets : undefined)),
+        has_fund: (isParentProject || isParentProjectCreation) ? false : (hasFund || false),
+        monthly_fund_amount: (isParentProject || isParentProjectCreation) ? undefined : (hasFund ? (monthlyFundAmount || 0) : undefined)
       }
-
       
-      // Validate that all required fields are present
+      // Ensure name is not empty (backend requirement - min_length=1)
       if (!projectData.name || projectData.name.trim() === '') {
         setError('שם הפרויקט נדרש')
-        setLoading(false)
-        return
-      }
-
-      // Check if name is valid (not duplicate)
-      if (nameValid === false) {
-        setError('לא ניתן לשמור: שם הפרויקט כבר קיים. אנא שנה את השם')
-        setLoading(false)
-        return
-      }
-
-      // If name is still being checked, wait a bit
-      if (isCheckingName) {
-        setError('בודק שם פרויקט... אנא המתן')
         setLoading(false)
         return
       }
@@ -304,19 +456,18 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
         }
       }
 
-      onSuccess(result)
-      // Only close if there was no image upload error
-      if (!imageUploadError) {
-        // Dispatch custom event to notify other components (e.g., ProjectDetail) that project was updated
-        if (editingProject) {
-          window.dispatchEvent(new CustomEvent('projectUpdated', { detail: { projectId: result.id } }))
-        }
-        onClose()
-        resetForm()
+      // Dispatch custom event to notify other components (e.g., ProjectDetail) that project was updated
+      if (editingProject) {
+        window.dispatchEvent(new CustomEvent('projectUpdated', { detail: { projectId: result.id } }))
       }
+      
+      // Always close modal and call onSuccess, even if image upload failed
+      onClose()
+      resetForm()
+      onSuccess(result)
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'שמירה נכשלה')
-    } finally {
+      console.error('Error creating/updating project:', err)
+      setError(err.response?.data?.detail || err.message || 'שמירה נכשלה')
       setLoading(false)
     }
   }
@@ -327,6 +478,10 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
   }
 
   const addCategoryBudget = () => {
+    if (expenseCategories.length === 0) {
+      setError('אין קטגוריות זמינות. הוסף קטגוריות בהגדרות תחילה.')
+      return
+    }
     const today = new Date().toISOString().split('T')[0]
     const newBudget: BudgetCreate = {
       category: expenseCategories[0],
@@ -376,15 +531,31 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Show project type info when creating new project */}
+          {!parentProjectId && !editingProject && (
+            <div className={`rounded-lg p-3 border ${
+              selectedProjectType === 'parent' 
+                ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800' 
+                : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
+            }`}>
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                {selectedProjectType === 'parent' 
+                  ? 'יצירת פרויקט על - רק תאריכים נדרשים' 
+                  : 'יצירת פרויקט רגיל - כל השדות זמינים'}
+              </p>
+            </div>
+          )}
+
+          {/* Show name field for all project types (parent, regular, subproject, editing) */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                שם הפרויקט *
+                שם הפרויקט {(parentProjectId || editingProject || isRegularProjectCreation || isParentProjectCreation) ? '*' : ''}
               </label>
               <div className="relative">
                 <input
                   type="text"
-                  required
+                  required={!!(parentProjectId || editingProject || isRegularProjectCreation || isParentProjectCreation)}
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   className={`w-full border rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 ${
@@ -415,106 +586,110 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
               )}
             </div>
 
+            {/* Parent project selector removed - regular projects cannot become subprojects */}
+            {/* Show parent project info when creating subproject */}
+            {parentProjectId && !editingProject && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  פרויקט אב
+                </label>
+                <div className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-400">
+                  {availableProjects.find(p => p.id === parentProjectId)?.name || `פרויקט #${parentProjectId}`}
+                </div>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  תת-הפרויקט יקושר אוטומטית לפרויקט העל הזה
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Show description for subprojects, regular project creation, or editing non-parent projects */}
+          {(parentProjectId || (editingProject && !isParentProject) || isRegularProjectCreation) && (
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                פרויקט אב
+                תיאור
               </label>
-              <select
-                value={formData.relation_project || ''}
-                onChange={(e) => setFormData({ 
-                  ...formData, 
-                  relation_project: e.target.value ? parseInt(e.target.value) : undefined 
-                })}
+              <textarea
+                value={formData.description || ''}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                rows={3}
                 className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">ללא פרויקט אב</option>
-                {availableProjects.map((project) => (
-                  <option key={project.id} value={project.id}>
-                    {project.name}
-                  </option>
-                ))}
-              </select>
+              />
             </div>
-          </div>
+          )}
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              תיאור
-            </label>
-            <textarea
-              value={formData.description || ''}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              rows={3}
-              className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-
+          {/* Show image upload for all project types (parent, regular, subproject, editing) */}
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               תמונת הפרויקט
             </label>
-            <div className="space-y-2">
-              <input
-                type="file"
-                accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
-                onChange={handleImageChange}
-                className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-blue-900/20 dark:file:text-blue-300"
-              />
-              {imagePreview && (
-                <div className="mt-2">
-                  <img
-                    src={imagePreview}
-                    alt="תצוגה מקדימה"
-                    className="max-w-full h-48 object-cover rounded-md border border-gray-300 dark:border-gray-600"
+                <div className="space-y-2">
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+                    onChange={handleImageChange}
+                    className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-blue-900/20 dark:file:text-blue-300"
                   />
-                  {selectedImage && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedImage(null)
-                        setImagePreview(editingProject?.image_url ? getImageUrl(editingProject.image_url) : null)
-                      }}
-                      className="mt-2 text-sm text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300"
-                    >
-                      הסר תמונה
-                    </button>
+                  {imagePreview && (
+                    <div className="mt-2">
+                      <img
+                        src={imagePreview}
+                        alt="תצוגה מקדימה"
+                        className="max-w-full h-48 object-cover rounded-md border border-gray-300 dark:border-gray-600"
+                      />
+                      {selectedImage && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedImage(null)
+                            setImagePreview(editingProject?.image_url ? getImageUrl(editingProject.image_url) : null)
+                          }}
+                          className="mt-2 text-sm text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300"
+                        >
+                          הסר תמונה
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
-              )}
-            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                כתובת
-              </label>
-              <input
-                type="text"
-                value={formData.address || ''}
-                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
+          {/* Show address and city for subprojects, regular project creation, or editing non-parent projects */}
+          {(parentProjectId || (editingProject && !isParentProject) || isRegularProjectCreation) && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  כתובת
+                </label>
+                <input
+                  type="text"
+                  value={formData.address || ''}
+                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                  className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                עיר
-              </label>
-              <input
-                type="text"
-                value={formData.city || ''}
-                onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  עיר
+                </label>
+                <input
+                  type="text"
+                  value={formData.city || ''}
+                  onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                  className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
             </div>
-          </div>
+          )}
 
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                סוג הקלט לתקציב
-              </label>
+          {/* Show budget section for subprojects, regular project creation, or editing non-parent projects */}
+          {(parentProjectId || (editingProject && !isParentProject) || isRegularProjectCreation) && (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  סוג הקלט לתקציב
+                </label>
               <div className="flex gap-4">
                 <label className="flex items-center">
                   <input
@@ -548,7 +723,7 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                   type="number"
                   min="0"
                   step="0.01"
-                  required
+                  required={!!(parentProjectId || editingProject || isRegularProjectCreation)}
                   value={formData.budget_monthly}
                   onChange={(e) => {
                     const monthlyValue = parseFloat(e.target.value) || 0
@@ -573,7 +748,7 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                   type="number"
                   min="0"
                   step="0.01"
-                  required
+                  required={!!(parentProjectId || editingProject || isRegularProjectCreation)}
                   value={formData.budget_annual}
                   onChange={(e) => {
                     const yearlyValue = parseFloat(e.target.value) || 0
@@ -591,14 +766,17 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
               </div>
             </div>
           </div>
+          )}
 
+          {/* Dates are always shown and required for parent projects */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                תאריך התחלה
+                תאריך התחלה {(isParentProjectCreation || isRegularProjectCreation) ? '*' : ''}
               </label>
               <input
                 type="date"
+                required={isParentProjectCreation || isRegularProjectCreation}
                 value={formData.start_date || ''}
                 onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
                 className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -607,10 +785,11 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
 
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                תאריך סיום
+                תאריך סיום {(isParentProjectCreation || isRegularProjectCreation) ? '*' : ''}
               </label>
               <input
                 type="date"
+                required={isParentProjectCreation || isRegularProjectCreation}
                 value={formData.end_date || ''}
                 onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
                 className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -620,8 +799,9 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
 
           {/* Removed num_residents and monthly_price_per_apartment inputs */}
 
-          {/* Fund Section */}
-          <div className="space-y-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+          {/* Fund Section - Only for subprojects, regular project creation, or editing non-parent projects */}
+          {(parentProjectId || (editingProject && !isParentProject) || isRegularProjectCreation) && (
+            <div className="space-y-4 border-t border-gray-200 dark:border-gray-700 pt-4">
             <div className="flex items-center gap-2 mb-2">
               <input
                 id="hasFund"
@@ -660,10 +840,12 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                 </p>
               </div>
             )}
-          </div>
+            </div>
+          )}
 
-          {/* Category Budgets Section */}
-          <div className="space-y-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+          {/* Category Budgets Section - Only for subprojects, regular project creation, or editing non-parent projects */}
+          {(parentProjectId || (editingProject && !isParentProject) || isRegularProjectCreation) && (
+            <div className="space-y-4 border-t border-gray-200 dark:border-gray-700 pt-4">
             <div className="flex justify-between items-center">
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                 תקציבים לקטגוריות
@@ -708,12 +890,18 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                         className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                         required
                       >
+                        <option value="">בחר קטגוריה</option>
                         {expenseCategories.map((cat) => (
                           <option key={cat} value={cat}>
                             {cat}
                           </option>
                         ))}
                       </select>
+                      {expenseCategories.length === 0 && (
+                        <p className="mt-1 text-xs text-yellow-600 dark:text-yellow-400">
+                          אין קטגוריות זמינות. הוסף קטגוריות בהגדרות תחילה.
+                        </p>
+                      )}
                     </div>
 
                     <div>
@@ -790,6 +978,7 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
               ))}
             </div>
           </div>
+          )}
 
           {error && (
             <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md p-3">

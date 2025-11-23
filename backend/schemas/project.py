@@ -23,6 +23,7 @@ class ProjectBase(BaseModel):
     address: str | None = None
     city: str | None = None
     image_url: str | None = None
+    is_parent_project: bool = False
     
     # Fund fields
     has_fund: bool = False
@@ -48,6 +49,7 @@ class ProjectUpdate(BaseModel):
     address: str | None = None
     city: str | None = None
     image_url: str | None = None
+    is_parent_project: bool | None = None
     budgets: Optional[list["BudgetCreateWithoutProject"]] = None
     
     # Fund fields

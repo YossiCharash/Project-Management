@@ -141,6 +141,9 @@ async def sync_database_schema():
             changes_made |= await check_and_add_column(session, "projects", "city", "VARCHAR(120)", nullable=True)
             changes_made |= await check_and_add_column(session, "projects", "relation_project", "INTEGER", nullable=True)
             changes_made |= await check_and_add_column(session, "projects", "image_url", "VARCHAR(500)", nullable=True)
+            changes_made |= await check_and_add_column(session, "projects", "is_parent_project", "BOOLEAN", nullable=False, default="FALSE")
+            if changes_made:
+                await check_and_create_index(session, "ix_projects_is_parent_project", "projects", "is_parent_project")
             
             # 4. Sync suppliers table
             print("\n[4/6] Syncing suppliers table...")

@@ -21,31 +21,53 @@ def calculate_start_date(project_start_date: date | None) -> date:
 
 def calculate_monthly_income_amount(monthly_income: float, income_start_date: date, current_date: date) -> float:
     """
-    Calculate expected income based on a fixed monthly amount that accrues on the 1st of each month.
-    Income starts accruing on the later of:
-      - income_start_date (already adjusted to project start or start of year)
-      - the first day of the month following income_start_date if it isn't the 1st
+    Calculate expected income based on a fixed monthly amount that accrues on the same day of month as the start date.
+    Income starts accruing from income_start_date, and then every month on that same day.
+    For example, if start_date is 2024-01-15, income accrues on 15th of each month.
     """
     if monthly_income <= 0:
         return 0.0
     if income_start_date > current_date:
         return 0.0
 
-    # Income accrues on the 1st of each month. If the start date is mid-month,
-    # the first accrual happens on the next month.
-    if income_start_date.day == 1:
-        first_occurrence = income_start_date
-    else:
-        if income_start_date.month == 12:
-            first_occurrence = date(income_start_date.year + 1, 1, 1)
-        else:
-            first_occurrence = date(income_start_date.year, income_start_date.month + 1, 1)
-
+    # Income accrues on the same day of month as the start date
+    # First occurrence is on the start date itself
+    first_occurrence = income_start_date
+    
     if first_occurrence > current_date:
         return 0.0
 
-    months_passed = (current_date.year - first_occurrence.year) * 12 + (current_date.month - first_occurrence.month)
-    occurrences = months_passed + 1  # Include the first occurrence
+    # Calculate how many monthly occurrences have passed from first_occurrence to current_date
+    # Count occurrences on the same day of month (or last day of month if day doesn't exist)
+    occurrences = 0
+    occurrence_date = first_occurrence
+    original_day = first_occurrence.day  # Remember the original day of month
+    
+    # Count all occurrences from start date to current date (inclusive)
+    while occurrence_date <= current_date:
+        occurrences += 1
+        
+        # Calculate next occurrence date
+        if occurrence_date.month == 12:
+            next_year = occurrence_date.year + 1
+            next_month = 1
+        else:
+            next_year = occurrence_date.year
+            next_month = occurrence_date.month + 1
+        
+        # Try to use the original day of month, but handle edge cases
+        try:
+            next_occurrence = date(next_year, next_month, original_day)
+        except ValueError:
+            # If day doesn't exist in this month (e.g., 31st in February), use last day of month
+            if next_month == 12:
+                next_month_date = date(next_year + 1, 1, 1)
+            else:
+                next_month_date = date(next_year, next_month + 1, 1)
+            next_occurrence = next_month_date - timedelta(days=1)
+        
+        # Move to next occurrence for next iteration
+        occurrence_date = next_occurrence
 
     return monthly_income * occurrences
 
@@ -254,16 +276,32 @@ class ProjectService:
         )
         
         # Calculate income from the monthly budget (treated as expected monthly income)
-        # Calculate only for the current year, from project start date (or start of year if project started earlier)
+        # Calculate from project start date (or created_at if start_date not available)
         project_income = 0.0
         monthly_income = float(project.budget_monthly or 0)
-        if monthly_income > 0 and calculation_start_date:
+        if monthly_income > 0:
             # When using monthly budget as the income source, ignore actual/recurring income transactions
             actual_income = 0.0
             recurring_income = 0.0
-            # Calculate start date for income calculation: use the later of project start date or start of current year
-            current_year_start = date(current_date.year, 1, 1)  # January 1st of current year
-            income_calculation_start = max(calculation_start_date, current_year_start)
+            # Use project start_date if available, otherwise use created_at date
+            if project.start_date:
+                income_calculation_start = project.start_date
+            elif project.created_at:
+                # Convert datetime to date if needed
+                if hasattr(project.created_at, 'date'):
+                    income_calculation_start = project.created_at.date()
+                elif isinstance(project.created_at, date):
+                    income_calculation_start = project.created_at
+                else:
+                    # Try to parse if it's a string
+                    from datetime import datetime
+                    if isinstance(project.created_at, str):
+                        income_calculation_start = datetime.fromisoformat(project.created_at.replace('Z', '+00:00')).date()
+                    else:
+                        income_calculation_start = calculation_start_date
+            else:
+                # Fallback: use calculation_start_date (which is already 1 year ago if no start_date)
+                income_calculation_start = calculation_start_date
             project_income = calculate_monthly_income_amount(monthly_income, income_calculation_start, current_date)
         elif monthly_income <= 0:
             project_income = 0.0

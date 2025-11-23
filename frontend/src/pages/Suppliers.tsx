@@ -2,6 +2,7 @@ import { useEffect, useState, FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAppDispatch, useAppSelector } from '../utils/hooks'
 import { createSupplier, deleteSupplier, fetchSuppliers, updateSupplier } from '../store/slices/suppliersSlice'
+import { CategoryAPI } from '../lib/apiClient'
 import { Eye } from 'lucide-react'
 
 export default function Suppliers() {
@@ -16,10 +17,24 @@ export default function Suppliers() {
   const [annualBudget, setAnnualBudget] = useState<number | ''>('')
   const [formError, setFormError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [availableCategories, setAvailableCategories] = useState<string[]>([])
 
   const [editId, setEditId] = useState<number | null>(null)
 
-  useEffect(() => { dispatch(fetchSuppliers()) }, [dispatch])
+  useEffect(() => { 
+    dispatch(fetchSuppliers())
+    loadCategories()
+  }, [dispatch])
+  
+  const loadCategories = async () => {
+    try {
+      const categories = await CategoryAPI.getCategories()
+      const categoryNames = categories.filter(cat => cat.is_active).map(cat => cat.name)
+      setAvailableCategories(categoryNames)
+    } catch (err) {
+      console.error('Error loading categories:', err)
+    }
+  }
 
   const onCreate = async (e: FormEvent) => {
     e.preventDefault()
@@ -119,13 +134,14 @@ export default function Suppliers() {
             className="border rounded p-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white border-gray-300 dark:border-gray-600"
             value={category}
             onChange={e => setCategory(e.target.value)}
+            required
           >
-            <option value="">קטגוריה</option>
-            <option value="ניקיון">ניקיון</option>
-            <option value="חשמל">חשמל</option>
-            <option value="ביטוח">ביטוח</option>
-            <option value="גינון">גינון</option>
-            <option value="אחר">אחר</option>
+            <option value="">בחר קטגוריה</option>
+            {availableCategories.map((cat) => (
+              <option key={cat} value={cat}>
+                {cat}
+              </option>
+            ))}
           </select>
           <input 
             className="border rounded p-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white border-gray-300 dark:border-gray-600" 
@@ -180,13 +196,14 @@ export default function Suppliers() {
                         className="border border-gray-300 dark:border-gray-600 p-1 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded"
                         value={category}
                         onChange={e => setCategory(e.target.value)}
+                        required
                       >
-                        <option value="">קטגוריה</option>
-                        <option value="ניקיון">ניקיון</option>
-                        <option value="חשמל">חשמל</option>
-                        <option value="ביטוח">ביטוח</option>
-                        <option value="גינון">גינון</option>
-                        <option value="אחר">אחר</option>
+                        <option value="">בחר קטגוריה</option>
+                        {availableCategories.map((cat) => (
+                          <option key={cat} value={cat}>
+                            {cat}
+                          </option>
+                        ))}
                       </select>
                     ) : (
                       s.category ?? ''

@@ -46,12 +46,6 @@ const getNavigationItems = (userRole?: string) => {
       href: '/reports',
       icon: BarChart3,
       description: 'דוחות פיננסיים ומעקב'
-    },
-    {
-      name: 'ספקים',
-      href: '/suppliers',
-      icon: Users,
-      description: 'ניהול ספקים ומסמכים'
     }
   ]
 

@@ -61,18 +61,47 @@ const calculateMonthlyIncomeAccrual = (monthlyIncome: number, incomeStartDate: D
   if (monthlyIncome <= 0) return 0
   if (incomeStartDate.getTime() > currentDate.getTime()) return 0
 
+  // Income accrues on the same day of month as the start date
+  // First occurrence is on the start date itself
   const firstOccurrence = new Date(incomeStartDate.getTime())
-  if (firstOccurrence.getDate() !== 1) {
-    firstOccurrence.setMonth(firstOccurrence.getMonth() + 1)
-    firstOccurrence.setDate(1)
-  }
-
+  const originalDay = firstOccurrence.getDate()
+  
   if (firstOccurrence.getTime() > currentDate.getTime()) return 0
 
-  const monthsPassed =
-    (currentDate.getFullYear() - firstOccurrence.getFullYear()) * 12 +
-    (currentDate.getMonth() - firstOccurrence.getMonth())
-  const occurrences = monthsPassed + 1
+  // Calculate how many monthly occurrences have passed from firstOccurrence to currentDate
+  // Count occurrences on the same day of month (or last day of month if day doesn't exist)
+  let occurrences = 0
+  let occurrenceDate = new Date(firstOccurrence.getTime())
+  
+  // Count all occurrences from start date to current date (inclusive)
+  while (occurrenceDate.getTime() <= currentDate.getTime()) {
+    occurrences++
+    
+    // Calculate next occurrence date
+    const nextMonth = occurrenceDate.getMonth() + 1
+    const nextYear = occurrenceDate.getFullYear()
+    
+    // Try to use the original day of month, but handle edge cases
+    let nextOccurrence: Date
+    if (nextMonth === 12) {
+      nextOccurrence = new Date(nextYear + 1, 0, originalDay)
+    } else {
+      nextOccurrence = new Date(nextYear, nextMonth, originalDay)
+    }
+    
+    // If day doesn't exist in this month (e.g., 31st in February), use last day of month
+    if (nextOccurrence.getDate() !== originalDay) {
+      // Use last day of month
+      if (nextMonth === 12) {
+        nextOccurrence = new Date(nextYear + 1, 0, 0) // Last day of December
+      } else {
+        nextOccurrence = new Date(nextYear, nextMonth + 1, 0) // Last day of next month
+      }
+    }
+    
+    // Move to next occurrence for next iteration
+    occurrenceDate = nextOccurrence
+  }
 
   return monthlyIncome * occurrences
 }
@@ -205,6 +234,11 @@ export default function ProjectDetail() {
   const [fundCategoryFilter, setFundCategoryFilter] = useState<string>('all')
   const [transactionsExpandedId, setTransactionsExpandedId] = useState<number | null>(null)
   const [showFundTransactionsModal, setShowFundTransactionsModal] = useState(false)
+  const [showCreateFundModal, setShowCreateFundModal] = useState(false)
+  const [showEditFundModal, setShowEditFundModal] = useState(false)
+  const [monthlyFundAmount, setMonthlyFundAmount] = useState<number>(0)
+  const [creatingFund, setCreatingFund] = useState(false)
+  const [updatingFund, setUpdatingFund] = useState(false)
 
   const load = async () => {
     if (!id) return
@@ -354,17 +388,27 @@ const formatDate = (value: string | null) => {
     dispatch(fetchSuppliers())
   }, [dispatch])
 
-  // Reload project info when project is updated (e.g., after editing in modal)
+  // Reload project info when project is updated (e.g., after editing in modal or uploading image)
   useEffect(() => {
-    const handleProjectUpdated = (event: CustomEvent) => {
-      if (event.detail?.projectId && id && event.detail.projectId === parseInt(id)) {
-        loadProjectInfo()
+    const handleProjectUpdated = (event: Event) => {
+      const customEvent = event as CustomEvent
+      if (customEvent.detail?.projectId && id && customEvent.detail.projectId === parseInt(id)) {
+        // Reload all data: project info, transactions, charts, and fund data
+        loadProjectInfo().then(() => {
+          load().then(() => {
+            loadChartsData()
+            // Reload fund data if project has fund
+            if (hasFund) {
+              loadFundData()
+            }
+          })
+        })
       }
     }
 
-    window.addEventListener('projectUpdated', handleProjectUpdated as EventListener)
-    return () => window.removeEventListener('projectUpdated', handleProjectUpdated as EventListener)
-  }, [id])
+    window.addEventListener('projectUpdated', handleProjectUpdated)
+    return () => window.removeEventListener('projectUpdated', handleProjectUpdated)
+  }, [id, hasFund])
 
   const handleDeleteBudget = async (budgetId: number) => {
     if (!confirm('האם אתה בטוח שברצונך למחוק את התקציב?')) {
@@ -610,17 +654,18 @@ const formatDate = (value: string | null) => {
     
     let projectIncome = 0
     if (monthlyIncome > 0 && calculationStartDate) {
+      // Use project start_date (or created_at if start_date not available) directly
+      // Always use current date (now) - don't use projectEndDate for income calculation
+      // Income should only be calculated up to the current date, not the project end date
+      const incomeCalculationStart = calculationStartDate
+      const incomeCalculationEnd = now  // Always use current date
+      projectIncome = calculateMonthlyIncomeAccrual(monthlyIncome, incomeCalculationStart, incomeCalculationEnd)
       
-      // Calculate start date for income calculation: use the later of project start date or start of current year
-      const currentYearStart = new Date(now.getFullYear(), 0, 1) // January 1st of current year
-      const incomeCalculationStart = calculationStartDate > currentYearStart ? calculationStartDate : currentYearStart
-      projectIncome = calculateMonthlyIncomeAccrual(monthlyIncome, incomeCalculationStart, now)
-      
-      console.log('✅ DEBUG - Project income calculation (current year):', {
+      console.log('✅ DEBUG - Project income calculation:', {
         monthlyIncome,
         calculationStartDate: calculationStartDate.toISOString(),
-        currentYearStart: currentYearStart.toISOString(),
         incomeCalculationStart: incomeCalculationStart.toISOString(),
+        incomeCalculationEnd: incomeCalculationEnd.toISOString(),
         monthlyOccurrences: monthlyIncome > 0 ? projectIncome / monthlyIncome : 0,
         projectIncome
       })
@@ -744,13 +789,24 @@ const formatDate = (value: string | null) => {
             </svg>
             + הוסף תקציב
           </button>
-                    <button
+          {!hasFund && !fundData && (
+            <button
+              onClick={() => setShowCreateFundModal(true)}
+              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center gap-2 text-sm"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              הוסף קופה
+            </button>
+          )}
+          <button
             onClick={() => navigate('/dashboard')}
             className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors text-sm"
           >
             ← חזור לדשבורד
-                    </button>
-                      </div>
+          </button>
+        </div>
       </motion.div>
 
       {/* Financial Summary */}
@@ -816,17 +872,33 @@ const formatDate = (value: string | null) => {
                   מעקב אחר יתרת הקופה ועסקאות מהקופה
                 </p>
               </div>
-              {fundData && fundData.transactions && fundData.transactions.length > 0 && (
-                <button
-                  onClick={() => setShowFundTransactionsModal(true)}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm flex items-center gap-2"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                  </svg>
-                  עסקאות קופה ({fundData.transactions.length})
-                </button>
-              )}
+              <div className="flex items-center gap-2">
+                {fundData && fundData.transactions && fundData.transactions.length > 0 && (
+                  <button
+                    onClick={() => setShowFundTransactionsModal(true)}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm flex items-center gap-2"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                    </svg>
+                    עסקאות קופה ({fundData.transactions.length})
+                  </button>
+                )}
+                {fundData && (
+                  <button
+                    onClick={() => {
+                      setMonthlyFundAmount(fundData.monthly_amount)
+                      setShowEditFundModal(true)
+                    }}
+                    className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm flex items-center gap-2"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                    ערוך קופה
+                  </button>
+                )}
+              </div>
             </div>
 
             {fundLoading ? (
@@ -1272,6 +1344,191 @@ const formatDate = (value: string | null) => {
                   )}
               </div>
             </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Edit Fund Modal */}
+      {showEditFundModal && fundData && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl max-w-md w-full p-6"
+          >
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-2xl font-bold text-gray-900 dark:text-white">
+                ערוך קופה
+              </h3>
+              <button
+                onClick={() => {
+                  setShowEditFundModal(false)
+                  setMonthlyFundAmount(0)
+                }}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault()
+                setUpdatingFund(true)
+                try {
+                  await api.put(`/projects/${id}/fund?monthly_amount=${monthlyFundAmount}`)
+                  // Reload fund data
+                  await loadFundData()
+                  setShowEditFundModal(false)
+                  setMonthlyFundAmount(0)
+                } catch (err: any) {
+                  alert(err.response?.data?.detail || 'שגיאה בעדכון הקופה')
+                } finally {
+                  setUpdatingFund(false)
+                }
+              }}
+              className="space-y-4"
+            >
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  סכום חודשי (₪)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={monthlyFundAmount}
+                  onChange={(e) => setMonthlyFundAmount(Number(e.target.value))}
+                  placeholder="הכנס סכום חודשי"
+                  className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-4 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  הסכום יתווסף לקופה כל חודש באופן אוטומטי
+                </p>
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <button
+                  type="submit"
+                  disabled={updatingFund}
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+                >
+                  {updatingFund ? 'מעדכן...' : 'עדכן קופה'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEditFundModal(false)
+                    setMonthlyFundAmount(0)
+                  }}
+                  disabled={updatingFund}
+                  className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors disabled:opacity-50"
+                >
+                  ביטול
+                </button>
+              </div>
+            </form>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Create Fund Modal */}
+      {showCreateFundModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl max-w-md w-full p-6"
+          >
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-2xl font-bold text-gray-900 dark:text-white">
+                הוסף קופה לפרויקט
+              </h3>
+              <button
+                onClick={() => {
+                  setShowCreateFundModal(false)
+                  setMonthlyFundAmount(0)
+                }}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault()
+                setCreatingFund(true)
+                try {
+                  const response = await api.post(`/projects/${id}/fund?monthly_amount=${monthlyFundAmount}`)
+                  // Success - reload data
+                  await loadProjectInfo()
+                  await loadFundData()
+                  setShowCreateFundModal(false)
+                  setMonthlyFundAmount(0)
+                } catch (err: any) {
+                  // If status is 2xx, it's actually a success
+                  const status = err.response?.status
+                  if (status >= 200 && status < 300) {
+                    // Success - reload data
+                    await loadProjectInfo()
+                    await loadFundData()
+                    setShowCreateFundModal(false)
+                    setMonthlyFundAmount(0)
+                  } else {
+                    alert(err.response?.data?.detail || 'שגיאה ביצירת הקופה')
+                  }
+                } finally {
+                  setCreatingFund(false)
+                }
+              }}
+              className="space-y-4"
+            >
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  סכום חודשי (₪)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={monthlyFundAmount}
+                  onChange={(e) => setMonthlyFundAmount(Number(e.target.value))}
+                  placeholder="הכנס סכום חודשי"
+                  className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-4 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  הסכום יתווסף לקופה כל חודש באופן אוטומטי
+                </p>
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <button
+                  type="submit"
+                  disabled={creatingFund}
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+                >
+                  {creatingFund ? 'יוצר...' : 'צור קופה'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowCreateFundModal(false)
+                    setMonthlyFundAmount(0)
+                  }}
+                  disabled={creatingFund}
+                  className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors disabled:opacity-50"
+                >
+                  ביטול
+                </button>
+              </div>
+            </form>
           </motion.div>
         </div>
       )}

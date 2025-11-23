@@ -211,6 +211,7 @@ async def get_project(project_id: int, db: DBSessionDep, user = Depends(get_curr
         "budget_annual": project.budget_annual,
         "manager_id": project.manager_id,
         "relation_project": project.relation_project,
+        "is_parent_project": project.is_parent_project,  # Add is_parent_project field
         "num_residents": project.num_residents,
         "monthly_price_per_apartment": project.monthly_price_per_apartment,
         "address": project.address,
@@ -246,6 +247,28 @@ async def create_project(db: DBSessionDep, data: ProjectCreate, user = Depends(g
     budgets = data.budgets or []
     has_fund = data.has_fund or False
     monthly_fund_amount = data.monthly_fund_amount
+    
+    # Determine if this is a parent project or regular project
+    # If relation_project is set, this is a subproject (not a parent project)
+    # If is_parent_project is explicitly set to True, this is a parent project
+    # Otherwise, if relation_project is None and is_parent_project is not explicitly False, default to regular project
+    if project_data.get('relation_project') is not None:
+        # This is a subproject - cannot be a parent project
+        project_data['is_parent_project'] = False
+        
+        # Validate that the parent project exists and is actually a parent project
+        parent_id = project_data['relation_project']
+        parent_project = await ProjectRepository(db).get_by_id(parent_id)
+        if not parent_project:
+            raise HTTPException(status_code=404, detail=f"פרויקט אב עם מזהה {parent_id} לא נמצא")
+        if not parent_project.is_parent_project:
+            raise HTTPException(status_code=400, detail="לא ניתן ליצור תת-פרויקט לפרויקט רגיל. רק פרויקט על יכול לקבל תת-פרויקטים")
+    else:
+        # This is not a subproject - check if it should be a parent project
+        # If is_parent_project is explicitly set, use that value
+        # Otherwise, default to False (regular project)
+        if 'is_parent_project' not in project_data:
+            project_data['is_parent_project'] = False
     
     # Create the project
     project = await ProjectService(db).create(**project_data)
@@ -382,6 +405,31 @@ async def update_project(project_id: int, db: DBSessionDep, data: ProjectUpdate,
     }
 
     update_payload = data.model_dump(exclude_unset=True, exclude={'budgets', 'has_fund', 'monthly_fund_amount'})
+    
+    # Validate relation_project if it's being set
+    if 'relation_project' in update_payload and update_payload['relation_project'] is not None:
+        parent_id = update_payload['relation_project']
+        parent_project = await repo.get_by_id(parent_id)
+        if not parent_project:
+            raise HTTPException(status_code=404, detail=f"פרויקט אב עם מזהה {parent_id} לא נמצא")
+        if not parent_project.is_parent_project:
+            raise HTTPException(status_code=400, detail="לא ניתן להגדיר פרויקט רגיל כפרויקט אב. רק פרויקט על יכול לקבל תת-פרויקטים")
+        # If setting relation_project, this becomes a subproject (not a parent project)
+        update_payload['is_parent_project'] = False
+    elif 'relation_project' in update_payload and update_payload['relation_project'] is None:
+        # If removing relation_project, we need to determine if it should be a parent project
+        # Don't change is_parent_project if it's not explicitly set
+        if 'is_parent_project' not in update_payload:
+            # Keep current value
+            pass
+    
+    # Prevent changing is_parent_project if project already has subprojects
+    if 'is_parent_project' in update_payload:
+        # Check if this project has subprojects
+        subprojects = await repo.get_subprojects(project_id)
+        if len(subprojects) > 0 and not update_payload['is_parent_project']:
+            raise HTTPException(status_code=400, detail="לא ניתן לשנות פרויקט על לפרויקט רגיל כאשר יש לו תת-פרויקטים")
+    
     updated_project = await ProjectService(db).update(project, **update_payload)
     
     # Handle fund creation/update
@@ -692,11 +740,26 @@ async def get_parent_project_financial_summary(
         # Calculate income from parent project's monthly budget (treated as expected monthly income)
         parent_project_income = 0.0
         monthly_income = float(parent_project.budget_monthly or 0)
-        if monthly_income > 0 and start_date:
+        if monthly_income > 0:
             parent_transaction_income = 0.0
-            # Calculate start date for income calculation: use the later of project start date or start of current year
-            current_year_start = date_type(end_date.year, 1, 1)  # January 1st of current year
-            income_calculation_start = max(start_date, current_year_start)
+            # Use project start_date if available, otherwise use created_at date
+            if parent_project.start_date:
+                income_calculation_start = parent_project.start_date
+            elif hasattr(parent_project, 'created_at') and parent_project.created_at:
+                try:
+                    if hasattr(parent_project.created_at, 'date'):
+                        income_calculation_start = parent_project.created_at.date()
+                    elif isinstance(parent_project.created_at, date):
+                        income_calculation_start = parent_project.created_at
+                    else:
+                        # Fallback: use start_date parameter
+                        income_calculation_start = start_date
+                except (AttributeError, TypeError):
+                    # Fallback: use start_date parameter
+                    income_calculation_start = start_date
+            else:
+                # Fallback: use start_date parameter (which is already set to project start or 1 year ago)
+                income_calculation_start = start_date
             parent_project_income = calculate_monthly_income_amount(monthly_income, income_calculation_start, end_date)
         
         parent_income = parent_transaction_income + parent_project_income
@@ -722,11 +785,26 @@ async def get_parent_project_financial_summary(
             # Calculate income from subproject monthly budget (treated as expected monthly income)
             subproject_project_income = 0.0
             subproject_monthly_income = float(subproject.budget_monthly or 0)
-            if subproject_monthly_income > 0 and start_date:
+            if subproject_monthly_income > 0:
                 subproject_transaction_income = 0.0
-                # Calculate start date for income calculation: use the later of project start date or start of year
-                current_year_start = date_type(end_date.year, 1, 1)  # January 1st of current year
-                income_calculation_start = max(start_date, current_year_start)
+                # Use project start_date if available, otherwise use created_at date
+                if subproject.start_date:
+                    income_calculation_start = subproject.start_date
+                elif hasattr(subproject, 'created_at') and subproject.created_at:
+                    try:
+                        if hasattr(subproject.created_at, 'date'):
+                            income_calculation_start = subproject.created_at.date()
+                        elif isinstance(subproject.created_at, date):
+                            income_calculation_start = subproject.created_at
+                        else:
+                            # Fallback: use start_date parameter
+                            income_calculation_start = start_date
+                    except (AttributeError, TypeError):
+                        # Fallback: use start_date parameter
+                        income_calculation_start = start_date
+                else:
+                    # Fallback: use start_date parameter (which is already set to project start or 1 year ago)
+                    income_calculation_start = start_date
                 subproject_project_income = calculate_monthly_income_amount(subproject_monthly_income, income_calculation_start, end_date)
             
             subproject_income = subproject_transaction_income + subproject_project_income
@@ -928,6 +1006,75 @@ async def get_project_fund(
         'total_deductions': total_deductions,  # Total amount withdrawn from fund
         'transactions': transactions_list
     }
+
+
+@router.post("/{project_id}/fund")
+async def create_project_fund(
+    db: DBSessionDep,
+    project_id: int,
+    monthly_amount: float = Query(0, description="Monthly amount to add to fund"),
+    user = Depends(get_current_user)
+):
+    """Create a fund for an existing project"""
+    # Check if project exists
+    project_repo = ProjectRepository(db)
+    project = await project_repo.get_by_id(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    # Check if fund already exists
+    fund_service = FundService(db)
+    existing_fund = await fund_service.get_fund_by_project(project_id)
+    if existing_fund:
+        raise HTTPException(status_code=400, detail="Fund already exists for this project")
+    
+    # Create fund
+    fund = await fund_service.create_fund(
+        project_id=project_id,
+        monthly_amount=monthly_amount,
+        initial_balance=0
+    )
+    
+    return {
+        'id': fund.id,
+        'project_id': fund.project_id,
+        'current_balance': float(fund.current_balance),
+        'monthly_amount': float(fund.monthly_amount),
+        'created_at': fund.created_at.isoformat()
+    }
+
+
+@router.put("/{project_id}/fund")
+async def update_project_fund(
+    db: DBSessionDep,
+    project_id: int,
+    monthly_amount: float = Query(0, description="Monthly amount to add to fund"),
+    user = Depends(get_current_user)
+):
+    """Update fund monthly amount for a project"""
+    # Check if project exists
+    project_repo = ProjectRepository(db)
+    project = await project_repo.get_by_id(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    # Check if fund exists
+    fund_service = FundService(db)
+    fund = await fund_service.get_fund_by_project(project_id)
+    if not fund:
+        raise HTTPException(status_code=404, detail="Fund not found for this project")
+    
+    # Update fund monthly amount
+    await fund_service.update_fund(fund, monthly_amount=monthly_amount)
+    
+    return {
+        'id': fund.id,
+        'project_id': fund.project_id,
+        'current_balance': float(fund.current_balance),
+        'monthly_amount': float(fund.monthly_amount),
+        'updated_at': fund.updated_at.isoformat()
+    }
+
 
 @router.get("/{project_id}/financial-trends")
 async def get_financial_trends(

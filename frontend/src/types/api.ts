@@ -24,6 +24,7 @@ export interface Project {
   city?: string | null
   relation_project?: number | null // Parent project ID
   image_url?: string | null
+  is_parent_project: boolean // True if this is a parent project that can have subprojects
   is_active: boolean
   manager_id?: number | null
   created_at: string
@@ -76,6 +77,7 @@ export interface ProjectCreate {
   city?: string | null
   relation_project?: number | null // Parent project ID
   image_url?: string | null
+  is_parent_project?: boolean // True if this is a parent project that can have subprojects
   manager_id?: number | null
   recurring_transactions?: RecurringTransactionTemplateCreate[] | null
   budgets?: BudgetCreate[] | null

@@ -25,5 +25,5 @@ class FundRepository:
         return fund
 
     async def delete(self, fund: Fund) -> None:
-        self.db.delete(fund)
+        await self.db.delete(fund)
         await self.db.commit()

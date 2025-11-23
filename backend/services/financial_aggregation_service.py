@@ -6,6 +6,7 @@ from sqlalchemy import and_, or_, func, extract
 from backend.models.project import Project
 from backend.models.transaction import Transaction
 from backend.models.subproject import Subproject
+from backend.services.project_service import calculate_monthly_income_amount
 
 
 class FinancialAggregationService:
@@ -63,8 +64,35 @@ class FinancialAggregationService:
         parent_transactions = parent_transactions_query.all()
         
         # Calculate parent project financials
-        parent_income = sum(t.amount for t in parent_transactions if t.type == 'Income')
-        parent_expense = sum(t.amount for t in parent_transactions if t.type == 'Expense')
+        parent_transaction_income = sum(t.amount for t in parent_transactions if t.type == 'Income' and not (hasattr(t, 'from_fund') and t.from_fund))
+        parent_expense = sum(t.amount for t in parent_transactions if t.type == 'Expense' and not (hasattr(t, 'from_fund') and t.from_fund))
+        
+        # Calculate income from monthly budget (expected monthly income)
+        parent_project_income = 0.0
+        monthly_income = float(parent_project.budget_monthly or 0)
+        if monthly_income > 0:
+            # Use project start_date if available, otherwise use created_at date
+            if parent_project.start_date:
+                income_calculation_start = parent_project.start_date
+            elif hasattr(parent_project, 'created_at') and parent_project.created_at:
+                income_calculation_start = parent_project.created_at.date() if hasattr(parent_project.created_at, 'date') else parent_project.created_at
+            else:
+                # Fallback: use start_date if provided, otherwise use project creation date
+                income_calculation_start = start_date if start_date else (parent_project.created_at.date() if hasattr(parent_project, 'created_at') and parent_project.created_at else date.today())
+            
+            # Use end_date if provided, otherwise use today
+            calculation_end_date = end_date if end_date else date.today()
+            
+            # Only calculate if start date is within the date range
+            if income_calculation_start <= calculation_end_date:
+                # Adjust start date to be within the date range (if start_date filter is provided)
+                if start_date and income_calculation_start < start_date:
+                    effective_start = start_date
+                else:
+                    effective_start = income_calculation_start
+                parent_project_income = calculate_monthly_income_amount(monthly_income, effective_start, calculation_end_date)
+        
+        parent_income = parent_transaction_income + parent_project_income
         parent_profit = parent_income - parent_expense
         parent_profit_margin = (parent_profit / parent_income * 100) if parent_income > 0 else 0
         
@@ -82,8 +110,35 @@ class FinancialAggregationService:
             
             subproject_transactions = subproject_transactions_query.all()
             
-            subproject_income = sum(t.amount for t in subproject_transactions if t.type == 'Income')
-            subproject_expense = sum(t.amount for t in subproject_transactions if t.type == 'Expense')
+            subproject_transaction_income = sum(t.amount for t in subproject_transactions if t.type == 'Income' and not (hasattr(t, 'from_fund') and t.from_fund))
+            subproject_expense = sum(t.amount for t in subproject_transactions if t.type == 'Expense' and not (hasattr(t, 'from_fund') and t.from_fund))
+            
+            # Calculate income from monthly budget (expected monthly income)
+            subproject_project_income = 0.0
+            subproject_monthly_income = float(subproject.budget_monthly or 0)
+            if subproject_monthly_income > 0:
+                # Use project start_date if available, otherwise use created_at date
+                if subproject.start_date:
+                    income_calculation_start = subproject.start_date
+                elif hasattr(subproject, 'created_at') and subproject.created_at:
+                    income_calculation_start = subproject.created_at.date() if hasattr(subproject.created_at, 'date') else subproject.created_at
+                else:
+                    # Fallback: use start_date if provided, otherwise use project creation date
+                    income_calculation_start = start_date if start_date else (subproject.created_at.date() if hasattr(subproject, 'created_at') and subproject.created_at else date.today())
+                
+                # Use end_date if provided, otherwise use today
+                calculation_end_date = end_date if end_date else date.today()
+                
+                # Only calculate if start date is within the date range
+                if income_calculation_start <= calculation_end_date:
+                    # Adjust start date to be within the date range (if start_date filter is provided)
+                    if start_date and income_calculation_start < start_date:
+                        effective_start = start_date
+                    else:
+                        effective_start = income_calculation_start
+                    subproject_project_income = calculate_monthly_income_amount(subproject_monthly_income, effective_start, calculation_end_date)
+            
+            subproject_income = subproject_transaction_income + subproject_project_income
             subproject_profit = subproject_income - subproject_expense
             subproject_profit_margin = (subproject_profit / subproject_income * 100) if subproject_income > 0 else 0
             
