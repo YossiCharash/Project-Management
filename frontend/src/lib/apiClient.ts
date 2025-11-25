@@ -78,6 +78,82 @@ export class ProjectAPI {
     const { data } = await api.get<{ exists: boolean; available: boolean }>(`/projects/check-name?${params.toString()}`)
     return data
   }
+
+  // Get previous contract periods for a project
+  static async getContractPeriods(projectId: number): Promise<{
+    project_id: number
+    periods_by_year: Array<{
+      year: number
+      periods: Array<{
+        period_id: number
+        start_date: string
+        end_date: string
+        year_index: number
+        year_label: string
+        total_income: number
+        total_expense: number
+        total_profit: number
+      }>
+    }>
+  }> {
+    const { data } = await api.get(`/projects/${projectId}/contract-periods`)
+    return data
+  }
+
+  // Get contract period summary
+  static async getContractPeriodSummary(projectId: number, periodId: number): Promise<{
+    period_id: number
+    project_id: number
+    start_date: string
+    end_date: string
+    contract_year: number
+    year_index: number
+    year_label: string
+    total_income: number
+    total_expense: number
+    total_profit: number
+    transactions: Array<{
+      id: number
+      tx_date: string
+      type: string
+      amount: number
+      description: string | null
+      category: string | null
+      payment_method: string | null
+      notes: string | null
+      supplier_id: number | null
+    }>
+    budgets: Array<{
+      category: string
+      amount: number
+      period_type: string
+      start_date: string | null
+      end_date: string | null
+      is_active: boolean
+    }>
+  }> {
+    const { data } = await api.get(`/projects/${projectId}/contract-periods/${periodId}`)
+    return data
+  }
+
+  // Export contract period to CSV
+  static async exportContractPeriodCSV(projectId: number, periodId: number): Promise<Blob> {
+    const response = await api.get(`/projects/${projectId}/contract-periods/${periodId}/export-csv`, {
+      responseType: 'blob'
+    })
+    return response.data
+  }
+
+  // Check and renew contract
+  static async checkAndRenewContract(projectId: number): Promise<{
+    renewed: boolean
+    message: string
+    new_start_date?: string
+    new_end_date?: string
+  }> {
+    const { data } = await api.post(`/projects/${projectId}/check-contract-renewal`)
+    return data
+  }
 }
 
 export class TransactionAPI {

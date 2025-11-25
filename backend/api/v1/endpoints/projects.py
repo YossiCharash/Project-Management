@@ -1,8 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Response
 from datetime import date
 from typing import Optional
 import os
 from uuid import uuid4
+import csv
+import io
 
 from backend.core.deps import DBSessionDep, require_roles, get_current_user, require_admin
 from backend.core.config import settings
@@ -17,6 +19,7 @@ from backend.services.budget_service import BudgetService
 from backend.services.fund_service import FundService
 from backend.services.s3_service import S3Service
 from backend.services.audit_service import AuditService
+from backend.services.contract_period_service import ContractPeriodService
 from backend.models.user import UserRole
 from backend.models.project import Project
 
@@ -1181,3 +1184,434 @@ async def get_financial_trends(
             
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving financial trends: {str(e)}")
+
+
+# ============================================================================
+# Contract Period Endpoints
+# ============================================================================
+
+@router.get("/{project_id}/contract-periods")
+async def get_previous_contract_periods(
+    project_id: int,
+    db: DBSessionDep,
+    user = Depends(get_current_user)
+):
+    """Get all previous contract periods grouped by year for a project"""
+    try:
+        service = ContractPeriodService(db)
+        periods_by_year = await service.get_previous_contracts_by_year(project_id)
+        
+        # Convert to list format for easier frontend handling
+        result = []
+        for year in sorted(periods_by_year.keys(), reverse=True):
+            result.append({
+                'year': year,
+                'periods': periods_by_year[year]
+            })
+        
+        return {
+            'project_id': project_id,
+            'periods_by_year': result
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving contract periods: {str(e)}")
+
+
+@router.get("/{project_id}/contract-periods/{period_id}")
+async def get_contract_period_summary(
+    project_id: int,
+    period_id: int,
+    db: DBSessionDep,
+    user = Depends(get_current_user)
+):
+    """Get full summary of a contract period including transactions and budgets (read-only)"""
+    try:
+        service = ContractPeriodService(db)
+        summary = await service.get_contract_period_summary(period_id)
+        
+        if not summary:
+            raise HTTPException(status_code=404, detail="Contract period not found")
+        
+        if summary['project_id'] != project_id:
+            raise HTTPException(status_code=400, detail="Contract period does not belong to this project")
+        
+        return summary
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving contract period summary: {str(e)}")
+
+
+@router.get("/{project_id}/contract-periods/{period_id}/export-csv")
+async def export_contract_period_csv(
+    project_id: int,
+    period_id: int,
+    db: DBSessionDep,
+    user = Depends(get_current_user)
+):
+    """Export contract period data to Excel with colors and formatting"""
+    try:
+        service = ContractPeriodService(db)
+        summary = await service.get_contract_period_summary(period_id)
+        
+        if not summary:
+            raise HTTPException(status_code=404, detail="Contract period not found")
+        
+        if summary['project_id'] != project_id:
+            raise HTTPException(status_code=400, detail="Contract period does not belong to this project")
+        
+        # Get project name
+        project = await ProjectRepository(db).get_by_id(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        try:
+            from openpyxl import Workbook
+            from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+            from openpyxl.utils import get_column_letter
+            
+            # Create workbook
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "סיכום תקופת חוזה"
+            
+            # Define colors and styles
+            header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+            title_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+            income_fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
+            expense_fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
+            profit_positive_fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
+            profit_negative_fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
+            section_fill = PatternFill(start_color="D9E1F2", end_color="D9E1F2", fill_type="solid")
+            
+            header_font = Font(bold=True, color="FFFFFF", size=12)
+            title_font = Font(bold=True, color="FFFFFF", size=14)
+            normal_font = Font(size=11)
+            bold_font = Font(bold=True, size=11)
+            
+            border = Border(
+                left=Side(style='thin'),
+                right=Side(style='thin'),
+                top=Side(style='thin'),
+                bottom=Side(style='thin')
+            )
+            
+            row = 1
+            
+            # Title
+            ws.merge_cells(f'A{row}:B{row}')
+            cell = ws[f'A{row}']
+            cell.value = 'סיכום תקופת חוזה'
+            cell.fill = title_fill
+            cell.font = title_font
+            cell.alignment = Alignment(horizontal='center', vertical='center')
+            row += 2
+            
+            # Project info
+            ws[f'A{row}'] = 'שם פרויקט'
+            ws[f'A{row}'].font = bold_font
+            ws[f'B{row}'] = project.name
+            row += 1
+            
+            ws[f'A{row}'] = 'שנת חוזה'
+            ws[f'A{row}'].font = bold_font
+            ws[f'B{row}'] = summary['year_label']
+            row += 1
+            
+            ws[f'A{row}'] = 'תאריך התחלה'
+            ws[f'A{row}'].font = bold_font
+            ws[f'B{row}'] = summary['start_date']
+            row += 1
+            
+            ws[f'A{row}'] = 'תאריך סיום'
+            ws[f'A{row}'].font = bold_font
+            ws[f'B{row}'] = summary['end_date']
+            row += 2
+            
+            # Financial Summary
+            ws.merge_cells(f'A{row}:B{row}')
+            cell = ws[f'A{row}']
+            cell.value = 'סיכום כלכלי'
+            cell.fill = section_fill
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal='center', vertical='center')
+            row += 1
+            
+            # Financial headers
+            ws[f'A{row}'] = 'סוג'
+            ws[f'B{row}'] = 'סכום (₪)'
+            for col in ['A', 'B']:
+                cell = ws[f'{col}{row}']
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.border = border
+                cell.alignment = Alignment(horizontal='center', vertical='center')
+            row += 1
+            
+            # Income
+            ws[f'A{row}'] = 'סה"כ הכנסות'
+            ws[f'B{row}'] = summary['total_income']
+            ws[f'A{row}'].font = bold_font
+            ws[f'B{row}'].fill = income_fill
+            ws[f'B{row}'].number_format = '#,##0.00'
+            for col in ['A', 'B']:
+                ws[f'{col}{row}'].border = border
+            row += 1
+            
+            # Expense
+            ws[f'A{row}'] = 'סה"כ הוצאות'
+            ws[f'B{row}'] = summary['total_expense']
+            ws[f'A{row}'].font = bold_font
+            ws[f'B{row}'].fill = expense_fill
+            ws[f'B{row}'].number_format = '#,##0.00'
+            for col in ['A', 'B']:
+                ws[f'{col}{row}'].border = border
+            row += 1
+            
+            # Profit
+            ws[f'A{row}'] = 'סה"כ רווח'
+            ws[f'B{row}'] = summary['total_profit']
+            ws[f'A{row}'].font = bold_font
+            profit_fill = profit_positive_fill if summary['total_profit'] >= 0 else profit_negative_fill
+            ws[f'B{row}'].fill = profit_fill
+            ws[f'B{row}'].number_format = '#,##0.00'
+            for col in ['A', 'B']:
+                ws[f'{col}{row}'].border = border
+            row += 2
+            
+            # Budgets
+            if summary['budgets']:
+                ws.merge_cells(f'A{row}:F{row}')
+                cell = ws[f'A{row}']
+                cell.value = 'תקציבים'
+                cell.fill = section_fill
+                cell.font = header_font
+                cell.alignment = Alignment(horizontal='center', vertical='center')
+                row += 1
+                
+                # Budget headers
+                headers = ['קטגוריה', 'סכום (₪)', 'סוג תקופה', 'תאריך התחלה', 'תאריך סיום', 'פעיל']
+                for idx, header in enumerate(headers, 1):
+                    col = get_column_letter(idx)
+                    cell = ws[f'{col}{row}']
+                    cell.value = header
+                    cell.fill = header_fill
+                    cell.font = header_font
+                    cell.border = border
+                    cell.alignment = Alignment(horizontal='center', vertical='center')
+                row += 1
+                
+                # Budget data
+                for budget in summary['budgets']:
+                    ws[f'A{row}'] = budget.get('category', '')
+                    ws[f'B{row}'] = budget.get('amount', 0)
+                    ws[f'B{row}'].number_format = '#,##0.00'
+                    ws[f'C{row}'] = budget.get('period_type', '')
+                    ws[f'D{row}'] = budget.get('start_date', '') or ''
+                    ws[f'E{row}'] = budget.get('end_date', '') or ''
+                    ws[f'F{row}'] = 'כן' if budget.get('is_active', False) else 'לא'
+                    for col_idx in range(1, 7):
+                        col = get_column_letter(col_idx)
+                        ws[f'{col}{row}'].border = border
+                    row += 1
+                row += 1
+            
+            # Transactions
+            if summary['transactions']:
+                ws.merge_cells(f'A{row}:G{row}')
+                cell = ws[f'A{row}']
+                cell.value = 'עסקאות'
+                cell.fill = section_fill
+                cell.font = header_font
+                cell.alignment = Alignment(horizontal='center', vertical='center')
+                row += 1
+                
+                # Transaction headers
+                headers = ['תאריך', 'סוג', 'סכום (₪)', 'תיאור', 'קטגוריה', 'אמצעי תשלום', 'הערות']
+                for idx, header in enumerate(headers, 1):
+                    col = get_column_letter(idx)
+                    cell = ws[f'{col}{row}']
+                    cell.value = header
+                    cell.fill = header_fill
+                    cell.font = header_font
+                    cell.border = border
+                    cell.alignment = Alignment(horizontal='center', vertical='center')
+                row += 1
+                
+                # Transaction data
+                for tx in summary['transactions']:
+                    tx_type = 'הכנסה' if tx.get('type') == 'Income' else 'הוצאה'
+                    amount = tx.get('amount', 0)
+                    
+                    ws[f'A{row}'] = tx.get('tx_date', '')
+                    ws[f'B{row}'] = tx_type
+                    ws[f'C{row}'] = amount
+                    ws[f'C{row}'].number_format = '#,##0.00'
+                    ws[f'D{row}'] = tx.get('description', '') or ''
+                    ws[f'E{row}'] = tx.get('category', '') or ''
+                    ws[f'F{row}'] = tx.get('payment_method', '') or ''
+                    ws[f'G{row}'] = tx.get('notes', '') or ''
+                    
+                    # Color code by type
+                    if tx.get('type') == 'Income':
+                        ws[f'B{row}'].fill = income_fill
+                        ws[f'C{row}'].fill = income_fill
+                    else:
+                        ws[f'B{row}'].fill = expense_fill
+                        ws[f'C{row}'].fill = expense_fill
+                    
+                    for col_idx in range(1, 8):
+                        col = get_column_letter(col_idx)
+                        ws[f'{col}{row}'].border = border
+                    row += 1
+            
+            # Auto-adjust column widths
+            for col in ws.columns:
+                try:
+                    if not col:
+                        continue
+                    max_length = 0
+                    col_letter = col[0].column_letter
+                    for cell in col:
+                        try:
+                            if cell.value:
+                                max_length = max(max_length, len(str(cell.value)))
+                        except:
+                            pass
+                    adjusted_width = min(max_length + 2, 50)
+                    if adjusted_width > 0:
+                        ws.column_dimensions[col_letter].width = adjusted_width
+                except Exception as e:
+                    # Skip if there's an error adjusting column width
+                    print(f"Warning: Could not adjust column width: {e}")
+                    pass
+            
+            # Save to BytesIO
+            output = io.BytesIO()
+            wb.save(output)
+            output.seek(0)
+            
+            # Sanitize filename for download
+            safe_project_name = project.name.replace('"', '').replace('/', '_').replace('\\', '_')
+            safe_year_label = str(summary["year_label"]).replace('"', '').replace('/', '_').replace('\\', '_')
+            filename = f"contract_period_{safe_year_label}_{safe_project_name}.xlsx"
+            
+            return Response(
+                content=output.getvalue(),
+                media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                headers={
+                    'Content-Disposition': f'attachment; filename="{filename}"'
+                }
+            )
+        except ImportError as import_err:
+            # Fallback to CSV if openpyxl is not available
+            print(f"⚠️ openpyxl not available, falling back to CSV: {import_err}")
+            output = io.StringIO()
+            writer = csv.writer(output)
+            
+            # Write header with Hebrew support
+            writer.writerow(['סיכום תקופת חוזה'])
+            writer.writerow([])
+            writer.writerow(['שם פרויקט', project.name])
+            writer.writerow(['שנת חוזה', summary['year_label']])
+            writer.writerow(['תאריך התחלה', summary['start_date']])
+            writer.writerow(['תאריך סיום', summary['end_date']])
+            writer.writerow([])
+            writer.writerow(['סיכום כלכלי'])
+            writer.writerow(['סה"כ הכנסות', summary['total_income']])
+            writer.writerow(['סה"כ הוצאות', summary['total_expense']])
+            writer.writerow(['סה"כ רווח', summary['total_profit']])
+            writer.writerow([])
+            
+            # Write budgets
+            if summary['budgets']:
+                writer.writerow(['תקציבים'])
+                writer.writerow(['קטגוריה', 'סכום', 'סוג תקופה', 'תאריך התחלה', 'תאריך סיום', 'פעיל'])
+                for budget in summary['budgets']:
+                    writer.writerow([
+                        budget.get('category', ''),
+                        budget.get('amount', 0),
+                        budget.get('period_type', ''),
+                        budget.get('start_date', ''),
+                        budget.get('end_date', ''),
+                        'כן' if budget.get('is_active', False) else 'לא'
+                    ])
+                writer.writerow([])
+            
+            # Write transactions
+            writer.writerow(['עסקאות'])
+            writer.writerow([
+                'תאריך',
+                'סוג',
+                'סכום',
+                'תיאור',
+                'קטגוריה',
+                'אמצעי תשלום',
+                'הערות'
+            ])
+            
+            for tx in summary['transactions']:
+                writer.writerow([
+                    tx.get('tx_date', ''),
+                    'הכנסה' if tx.get('type') == 'Income' else 'הוצאה',
+                    tx.get('amount', 0),
+                    tx.get('description', '') or '',
+                    tx.get('category', '') or '',
+                    tx.get('payment_method', '') or '',
+                    tx.get('notes', '') or ''
+                ])
+            
+            # Prepare response with UTF-8 BOM for Excel compatibility
+            csv_content = output.getvalue()
+            output.close()
+            
+            # Add BOM for proper Hebrew display in Excel
+            csv_bytes = '\ufeff'.encode('utf-8') + csv_content.encode('utf-8-sig')
+            
+            # Sanitize filename for download
+            safe_project_name = project.name.replace('"', '').replace('/', '_').replace('\\', '_')
+            safe_year_label = str(summary["year_label"]).replace('"', '').replace('/', '_').replace('\\', '_')
+            filename = f"contract_period_{safe_year_label}_{safe_project_name}.csv"
+            
+            return Response(
+                content=csv_bytes,
+                media_type='text/csv; charset=utf-8',
+                headers={
+                    'Content-Disposition': f'attachment; filename="{filename}"'
+                }
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"❌ Error exporting contract period CSV/Excel: {e}")
+        print(f"Traceback: {error_details}")
+        raise HTTPException(status_code=500, detail=f"Error exporting CSV: {str(e)}")
+
+
+@router.post("/{project_id}/check-contract-renewal")
+async def check_and_renew_contract(
+    project_id: int,
+    db: DBSessionDep,
+    user = Depends(get_current_user)
+):
+    """Check if contract has ended and renew it automatically if needed"""
+    try:
+        service = ContractPeriodService(db)
+        renewed_project = await service.check_and_renew_contract(project_id)
+        
+        if renewed_project:
+            return {
+                'renewed': True,
+                'message': 'חוזה חודש בהצלחה',
+                'new_start_date': renewed_project.start_date.isoformat() if renewed_project.start_date else None,
+                'new_end_date': renewed_project.end_date.isoformat() if renewed_project.end_date else None
+            }
+        else:
+            return {
+                'renewed': False,
+                'message': 'החוזה עדיין לא הסתיים או אין תאריך סיום מוגדר'
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error checking contract renewal: {str(e)}")

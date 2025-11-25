@@ -18,3 +18,4 @@ authlib==1.3.0
 cryptography==42.0.5
 boto3
 botocore
+openpyxl==3.1.2

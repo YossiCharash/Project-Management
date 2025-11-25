@@ -1,4 +1,4 @@
-from sqlalchemy import select, and_, func
+from sqlalchemy import select, and_, func, cast, String
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import date
 from typing import Tuple
@@ -73,11 +73,12 @@ class BudgetRepository:
         end_date = budget.end_date if budget.end_date else as_of_date
         
         # Calculate expenses for transactions in this category within the period
+        # Use cast to string to handle custom categories that aren't in the enum
         expenses_query = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
             and_(
                 Transaction.project_id == budget.project_id,
                 Transaction.type == "Expense",
-                Transaction.category == budget.category,
+                cast(Transaction.category, String) == budget.category,
                 Transaction.tx_date >= start_date,
                 Transaction.tx_date <= end_date,
                 Transaction.from_fund == False  # Exclude fund transactions
@@ -89,7 +90,7 @@ class BudgetRepository:
             and_(
                 Transaction.project_id == budget.project_id,
                 Transaction.type == "Income",
-                Transaction.category == budget.category,
+                cast(Transaction.category, String) == budget.category,
                 Transaction.tx_date >= start_date,
                 Transaction.tx_date <= end_date,
                 Transaction.from_fund == False  # Exclude fund transactions

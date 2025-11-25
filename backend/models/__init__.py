@@ -15,6 +15,7 @@ from backend.models.member_invite import MemberInvite
 from backend.models.budget import Budget
 from backend.models.fund import Fund
 from backend.models.category import Category
+from backend.models.contract_period import ContractPeriod
 
 __all__ = [
     "User",
@@ -33,5 +34,6 @@ __all__ = [
     "MemberInvite",
     "Budget",
     "Fund",
-    "Category"
+    "Category",
+    "ContractPeriod"
 ]

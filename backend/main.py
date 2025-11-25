@@ -84,6 +84,9 @@ def create_app() -> FastAPI:
         
         # Start background task for recurring transactions
         asyncio.create_task(run_recurring_transactions_scheduler())
+        
+        # Start background task for contract renewal checks
+        asyncio.create_task(run_contract_renewal_scheduler())
 
     def custom_openapi():
         if app.openapi_schema:
@@ -187,6 +190,76 @@ async def run_recurring_transactions_scheduler():
                     await db.close()
         except Exception as e:
             print(f"❌ Error in recurring transactions scheduler: {e}")
+            import traceback
+            traceback.print_exc()
+            # Wait a bit before retrying
+            await asyncio.sleep(60 * 60)  # Wait 1 hour before retrying
+
+
+async def run_contract_renewal_scheduler():
+    """
+    Background task that runs daily to check if any contracts have ended
+    and need to be renewed. Checks every day at midnight.
+    Runs immediately on startup, then every 24 hours.
+    """
+    from backend.db.session import AsyncSessionLocal
+    from backend.services.contract_period_service import ContractPeriodService
+    from backend.repositories.project_repository import ProjectRepository
+    from sqlalchemy import select
+    from backend.models.project import Project
+    
+    # Run immediately on startup
+    first_run = True
+    
+    while True:
+        try:
+            if not first_run:
+                # Wait 24 hours before next run
+                await asyncio.sleep(60 * 60 * 24)
+            else:
+                first_run = False
+                # Wait 10 seconds after startup to let the app fully initialize
+                await asyncio.sleep(10)
+            
+            # Create a new database session for this task
+            async with AsyncSessionLocal() as db:
+                try:
+                    service = ContractPeriodService(db)
+                    project_repo = ProjectRepository(db)
+                    
+                    # Get all active projects with end dates
+                    result = await db.execute(
+                        select(Project).where(
+                            Project.is_active == True,
+                            Project.end_date.isnot(None)
+                        )
+                    )
+                    projects = result.scalars().all()
+                    
+                    renewed_count = 0
+                    for project in projects:
+                        try:
+                            renewed_project = await service.check_and_renew_contract(project.id)
+                            if renewed_project:
+                                renewed_count += 1
+                                print(f"✅ Renewed contract for project: {project.name} (ID: {project.id})")
+                        except Exception as e:
+                            print(f"❌ Error renewing contract for project {project.name} (ID: {project.id}): {e}")
+                            import traceback
+                            traceback.print_exc()
+                    
+                    if renewed_count > 0:
+                        print(f"✅ Contract renewal check completed: {renewed_count} contracts renewed")
+                    else:
+                        print(f"ℹ️  Contract renewal check completed: No contracts needed renewal")
+                except Exception as e:
+                    print(f"❌ Error in contract renewal scheduler: {e}")
+                    import traceback
+                    traceback.print_exc()
+                finally:
+                    await db.close()
+        except Exception as e:
+            print(f"❌ Error in contract renewal scheduler: {e}")
             import traceback
             traceback.print_exc()
             # Wait a bit before retrying

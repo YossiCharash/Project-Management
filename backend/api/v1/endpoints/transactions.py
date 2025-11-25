@@ -62,7 +62,19 @@ async def list_transactions(project_id: int, db: DBSessionDep, user = Depends(ge
     )
     
     # Get transactions with user info
+    # Filter by project's current contract period dates if they exist
     transactions = await TransactionRepository(db).list_by_project(project_id)
+    
+    # Filter transactions by current contract period dates (if project has dates)
+    if project and project.start_date and project.end_date:
+        filtered_transactions = []
+        for tx in transactions:
+            # Only include transactions within the current contract period
+            # or fund transactions (which are not tied to contract period)
+            # Both project dates and tx_date are date objects
+            if tx.from_fund or (project.start_date <= tx.tx_date <= project.end_date):
+                filtered_transactions.append(tx)
+        transactions = filtered_transactions
     
     # Load user info for each transaction
     from backend.repositories.user_repository import UserRepository
