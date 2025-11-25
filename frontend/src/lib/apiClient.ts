@@ -49,6 +49,16 @@ export class ProjectAPI {
     return data
   }
 
+  // Upload project contract file
+  static async uploadProjectContract(projectId: number, file: File): Promise<Project> {
+    const formData = new FormData()
+    formData.append('file', file)
+    const { data } = await api.post<Project>(`/projects/${projectId}/upload-contract`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+    return data
+  }
+
   // Get profitability alerts
   static async getProfitabilityAlerts(): Promise<{
     alerts: Array<{
@@ -214,7 +224,13 @@ export class DashboardAPI {
       // Return empty state on other errors
       return {
         projects: [],
-        alerts: { budget_overrun: [], missing_proof: [], unpaid_recurring: [] },
+        alerts: {
+          budget_overrun: [],
+          budget_warning: [],
+          missing_proof: [],
+          unpaid_recurring: [],
+          category_budget_alerts: []
+        },
         summary: { total_income: 0, total_expense: 0, total_profit: 0 },
         expense_categories: []
       }

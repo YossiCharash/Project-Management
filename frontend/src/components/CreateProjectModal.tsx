@@ -37,6 +37,8 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
   const [error, setError] = useState<string | null>(null)
   const [selectedImage, setSelectedImage] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [selectedContractFile, setSelectedContractFile] = useState<File | null>(null)
+  const [existingContractUrl, setExistingContractUrl] = useState<string | null>(null)
   const [budgetInputType, setBudgetInputType] = useState<'monthly' | 'yearly'>('monthly')
   const [categoryBudgets, setCategoryBudgets] = useState<BudgetCreate[]>([])
   const [hasFund, setHasFund] = useState(false)
@@ -130,6 +132,13 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
       // Reset image states when editing
       setSelectedImage(null)
       setImagePreview(editingProject.image_url ? getImageUrl(editingProject.image_url) : null)
+      // Reset contract states when editing
+      if (editingProject.contract_file_url) {
+        setExistingContractUrl(getFileUrl(editingProject.contract_file_url))
+      } else {
+        setExistingContractUrl(null)
+      }
+      setSelectedContractFile(null)
       // Reset name validation when editing
       setNameError(null)
       setNameValid(null)
@@ -247,6 +256,8 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
     setError(null)
     setSelectedImage(null)
     setImagePreview(null)
+    setSelectedContractFile(null)
+    setExistingContractUrl(null)
     setBudgetInputType('monthly')
     setCategoryBudgets([])
     setHasFund(false)
@@ -266,6 +277,17 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
     // @ts-ignore
     const baseUrl = apiUrl ? apiUrl.replace('/api/v1', '') : ''
     return `${baseUrl}/uploads/${imageUrl}`
+  }
+
+  const getFileUrl = (fileUrl: string): string => {
+    if (!fileUrl) return ''
+    if (fileUrl.startsWith('http')) {
+      return fileUrl
+    }
+    const apiUrl = import.meta.env.VITE_API_URL || ''
+    // @ts-ignore
+    const baseUrl = apiUrl ? apiUrl.replace('/api/v1', '') : ''
+    return `${baseUrl}/uploads/${fileUrl}`
   }
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -293,6 +315,37 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
         setImagePreview(reader.result as string)
       }
       reader.readAsDataURL(file)
+    }
+  }
+
+  const handleContractChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      const allowedExtensions = ['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png']
+      const ext = file.name.split('.').pop()?.toLowerCase()
+      if (!ext || !allowedExtensions.includes(ext)) {
+        setError('סוג קובץ לא תקין. ניתן לצרף קובץ PDF, DOC, DOCX או תמונה (JPG/PNG).')
+        return
+      }
+
+      const maxSizeMb = 15
+      if (file.size > maxSizeMb * 1024 * 1024) {
+        setError(`גודל הקובץ גדול מדי. מקסימום ${maxSizeMb}MB`)
+        return
+      }
+
+      setSelectedContractFile(file)
+      setExistingContractUrl(null)
+      setError(null)
+    }
+  }
+
+  const handleClearContractSelection = () => {
+    setSelectedContractFile(null)
+    if (editingProject?.contract_file_url) {
+      setExistingContractUrl(getFileUrl(editingProject.contract_file_url))
+    } else {
+      setExistingContractUrl(null)
     }
   }
 
@@ -431,14 +484,21 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
       }
 
       // Upload image if one was selected
-      let imageUploadError = false
       if (selectedImage) {
         try {
           result = await ProjectAPI.uploadProjectImage(result.id, selectedImage)
         } catch (imgErr: any) {
           // Don't fail the whole operation if image upload fails
-          imageUploadError = true
           setError(`הפרויקט נוצר בהצלחה אך העלאת התמונה נכשלה: ${imgErr.response?.data?.detail || 'שגיאה לא ידועה'}`)
+        }
+      }
+
+      // Upload contract if one was selected
+      if (selectedContractFile) {
+        try {
+          result = await ProjectAPI.uploadProjectContract(result.id, selectedContractFile)
+        } catch (contractErr: any) {
+          setError(`הפרויקט נשמר אך העלאת החוזה נכשלה: ${contractErr.response?.data?.detail || contractErr.message || 'שגיאה לא ידועה'}`)
         }
       }
 
@@ -652,6 +712,48 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                     </div>
                   )}
                 </div>
+          </div>
+
+          {/* Contract upload */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              חוזה עם הבניין
+            </label>
+            <div className="space-y-2">
+              <input
+                type="file"
+                accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png"
+                onChange={handleContractChange}
+                className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-blue-900/20 dark:file:text-blue-300"
+              />
+              {selectedContractFile ? (
+                <div className="flex items-center justify-between text-sm text-gray-700 dark:text-gray-300">
+                  <span>קובץ שנבחר: {selectedContractFile.name}</span>
+                  <button
+                    type="button"
+                    onClick={handleClearContractSelection}
+                    className="text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 text-xs"
+                  >
+                    הסר קובץ
+                  </button>
+                </div>
+              ) : existingContractUrl ? (
+                <div className="text-sm">
+                  <a
+                    href={existingContractUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 dark:text-blue-400 hover:underline"
+                  >
+                    צפייה בחוזה שכבר שמור
+                  </a>
+                </div>
+              ) : (
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  ניתן לצרף מסמך PDF / Word או תמונת חוזה חתום.
+                </p>
+              )}
+            </div>
           </div>
 
           {/* Show address and city for subprojects, regular project creation, or editing non-parent projects */}

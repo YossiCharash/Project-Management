@@ -153,6 +153,8 @@ export default function ProjectDetail() {
   const [loading, setLoading] = useState(false)
   const [chartsLoading, setChartsLoading] = useState(false)
   const [projectImageUrl, setProjectImageUrl] = useState<string | null>(null)
+  const [contractFileUrl, setContractFileUrl] = useState<string | null>(null)
+  const [showContractModal, setShowContractModal] = useState(false)
   const [projectBudget, setProjectBudget] = useState<{ budget_monthly: number; budget_annual: number }>({ budget_monthly: 0, budget_annual: 0 })
   const [projectStartDate, setProjectStartDate] = useState<string | null>(null)
   const [projectEndDate, setProjectEndDate] = useState<string | null>(null)
@@ -312,6 +314,44 @@ const formatDate = (value: string | null) => {
     }
   }
 
+  const resolveFileUrl = (fileUrl: string | null | undefined): string | null => {
+    if (!fileUrl) return null
+    if (fileUrl.startsWith('http')) {
+      return fileUrl
+    }
+    const apiUrl = import.meta.env.VITE_API_URL || ''
+    // @ts-ignore
+    const baseUrl = apiUrl ? apiUrl.replace('/api/v1', '') : ''
+    return `${baseUrl}/uploads/${fileUrl}`
+  }
+
+  useEffect(() => {
+    if (!contractFileUrl) {
+      setShowContractModal(false)
+    }
+  }, [contractFileUrl])
+
+  const isOfficeDocument = (fileUrl: string | null): boolean => {
+    if (!fileUrl) return false
+    return /\.docx?$/i.test(fileUrl.split('?')[0] || '')
+  }
+
+  const isInlinePreviewSupported = (fileUrl: string | null): boolean => {
+    if (!fileUrl) return false
+    return /\.(pdf|png|jpe?g|gif|webp)$/i.test(fileUrl.split('?')[0] || '')
+  }
+
+  const getContractViewerUrl = (): string | null => {
+    if (!contractFileUrl) return null
+    if (isInlinePreviewSupported(contractFileUrl)) {
+      return contractFileUrl
+    }
+    if (isOfficeDocument(contractFileUrl)) {
+      return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(contractFileUrl)}`
+    }
+    return null
+  }
+
   const loadProjectInfo = async () => {
     if (!id) return
 
@@ -360,6 +400,11 @@ const formatDate = (value: string | null) => {
           const baseUrl = apiUrl ? apiUrl.replace('/api/v1', '') : ''
           setProjectImageUrl(`${baseUrl}/uploads/${data.image_url}`)
         }
+      }
+      if (data.contract_file_url) {
+        setContractFileUrl(resolveFileUrl(data.contract_file_url))
+      } else {
+        setContractFileUrl(null)
       }
       // Check if project has fund and load fund data
       const hasFundFlag = data.has_fund || false
@@ -775,6 +820,7 @@ const formatDate = (value: string | null) => {
   
   const income = financialSummary.income
   const expense = financialSummary.expense
+  const contractViewerUrl = getContractViewerUrl()
   
   console.log('💰 Final values displayed:', { income, expense, txsCount: txs.length })
 
@@ -833,6 +879,19 @@ const formatDate = (value: string | null) => {
                   <span className="font-medium text-gray-700 dark:text-gray-300">תאריך סיום:</span>
                   {projectEndDate ? formatDate(projectEndDate) : 'לא הוגדר'}
                 </span>
+                {contractFileUrl && (
+                  <>
+                    <span className="hidden sm:block text-gray-300 dark:text-gray-600">|</span>
+                    <button
+                      type="button"
+                      onClick={() => setShowContractModal(true)}
+                      className="flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:underline"
+                    >
+                      <span className="text-gray-400 dark:text-gray-500">📄</span>
+                      <span className="font-medium">חוזה הפרויקט</span>
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -3445,6 +3504,62 @@ const formatDate = (value: string | null) => {
               )}
             </div>
           </motion.div>
+        </div>
+      )}
+
+      {showContractModal && contractFileUrl && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col border border-gray-200 dark:border-gray-700">
+            <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">חוזה הפרויקט</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400">נפתח בתוך האתר לצפייה מהירה</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <a
+                  href={contractFileUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                >
+                  פתח בחלון חדש
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setShowContractModal(false)}
+                  className="text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 w-full bg-gray-50 dark:bg-gray-800">
+              {contractViewerUrl ? (
+                <iframe
+                  src={contractViewerUrl}
+                  title="תצוגת חוזה"
+                  className="w-full h-[70vh] border-0"
+                  allowFullScreen
+                />
+              ) : (
+                <div className="p-6 text-center text-sm text-gray-600 dark:text-gray-300 space-y-3">
+                  <p>לא ניתן להציג תצוגה מקדימה לסוג קובץ זה.</p>
+                  <p>
+                    ניתן להוריד את הקובץ ולצפות בו במחשב:
+                    <br />
+                    <a
+                      href={contractFileUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 dark:text-blue-400 underline"
+                    >
+                      הורד את החוזה
+                    </a>
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -220,6 +220,7 @@ async def get_project(project_id: int, db: DBSessionDep, user = Depends(get_curr
         "address": project.address,
         "city": project.city,
         "image_url": project.image_url,
+        "contract_file_url": project.contract_file_url,
         "is_active": project.is_active,
         "created_at": project.created_at,
         "total_value": getattr(project, 'total_value', 0.0),  # Use getattr with default value
@@ -557,6 +558,7 @@ async def update_project(project_id: int, db: DBSessionDep, data: ProjectUpdate,
         "address": updated_project.address,
         "city": updated_project.city,
         "image_url": updated_project.image_url,
+        "contract_file_url": updated_project.contract_file_url,
         "is_active": updated_project.is_active,
         "created_at": updated_project.created_at,
         "total_value": getattr(updated_project, 'total_value', 0.0),  # Use getattr with default value
@@ -597,6 +599,41 @@ async def upload_project_image(project_id: int, db: DBSessionDep, file: UploadFi
 
     # Store full URL in image_url
     project.image_url = image_url
+    await repo.update(project)
+
+    return project
+
+
+@router.post("/{project_id}/upload-contract", response_model=ProjectOut)
+async def upload_project_contract(project_id: int, db: DBSessionDep, file: UploadFile = File(...), user = Depends(get_current_user)):
+    """Upload a building contract file for a project."""
+    repo = ProjectRepository(db)
+    project = await repo.get_by_id(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    allowed_extensions = {'.pdf', '.doc', '.docx', '.jpg', '.jpeg', '.png'}
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if ext not in allowed_extensions:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid file type. Allowed types: {', '.join(sorted(allowed_extensions))}"
+        )
+
+    s3 = S3Service()
+    content = await file.read()
+
+    from io import BytesIO
+    file_obj = BytesIO(content)
+
+    contract_url = s3.upload_file(
+        prefix="project-contracts",
+        file_obj=file_obj,
+        filename=file.filename or "project-contract",
+        content_type=file.content_type,
+    )
+
+    project.contract_file_url = contract_url
     await repo.update(project)
 
     return project

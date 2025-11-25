@@ -212,6 +212,7 @@ class ProjectService:
             "is_active": proj.is_active,
             "manager_id": proj.manager_id,
             "created_at": proj.created_at,
+            "contract_file_url": proj.contract_file_url,
             **financial_data
         }
         return project_data
