@@ -3,8 +3,10 @@ from datetime import datetime, date
 from enum import Enum
 from sqlalchemy import String, Date, DateTime, ForeignKey, Numeric, Text, Boolean, Enum as SAEnum, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.ext.associationproxy import association_proxy
 
 from backend.db.base import Base
+from backend.models.category import Category
 
 
 class RecurringFrequency(str, Enum):
@@ -28,7 +30,9 @@ class RecurringTransactionTemplate(Base):
     description: Mapped[str] = mapped_column(Text)
     type: Mapped[str] = mapped_column(String(20), index=True)  # Income/Expense
     amount: Mapped[float] = mapped_column(Numeric(14, 2))
-    category: Mapped[str | None] = mapped_column(Text, default=None)
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"), nullable=True, index=True)
+    category_obj: Mapped["Category | None"] = relationship(lazy="selectin")
+    category = association_proxy("category_obj", "name")
     notes: Mapped[str | None] = mapped_column(Text, default=None)
     
     # Supplier relationship (optional for Income transactions)

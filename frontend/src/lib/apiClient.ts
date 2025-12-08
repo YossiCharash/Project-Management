@@ -9,6 +9,12 @@ export class ProjectAPI {
     return data
   }
 
+  // Get single project (includes fund information)
+  static async getProject(projectId: number): Promise<Project> {
+    const { data } = await api.get<Project>(`/projects/${projectId}`)
+    return data
+  }
+
   // Get project with financial data for dashboard
   static async getProjectWithFinance(projectId: number): Promise<ProjectWithFinance> {
     const { data } = await api.get<ProjectWithFinance>(`/projects/get_values/${projectId}`)
@@ -277,6 +283,21 @@ export class BudgetAPI {
     return data
   }
 
+  // Update an existing budget
+  static async updateBudget(
+    budgetId: number,
+    payload: {
+      category?: string
+      amount?: number
+      period_type?: 'Annual' | 'Monthly'
+      start_date?: string
+      end_date?: string | null
+      is_active?: boolean
+    }
+  ): Promise<void> {
+    await api.put(`/budgets/${budgetId}`, payload)
+  }
+
   // Delete a specific budget
   static async deleteBudget(budgetId: number): Promise<void> {
     await api.delete(`/budgets/${budgetId}`)
@@ -356,7 +377,6 @@ export interface CategoryCreate {
 }
 
 export interface CategoryUpdate {
-  name?: string
   is_active?: boolean
 }
 

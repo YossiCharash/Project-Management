@@ -188,7 +188,7 @@ export default function ProjectTrendsChart({
           </p>
           {payload.map((entry: any, index: number) => (
             <p key={index} className="text-sm" style={{ color: entry.color }}>
-              {entry.name}: {entry.value.toLocaleString()} ₪
+              {entry.name}: {Number(entry.value ?? 0).toLocaleString()} ₪
             </p>
           ))}
         </div>
@@ -367,7 +367,7 @@ export default function ProjectTrendsChart({
               {!compact && (
                 <div className="mt-4 text-center">
                   <div className="text-lg font-bold text-gray-700 dark:text-gray-300">
-                    סה״כ הוצאות: {filteredExpenseCategories.reduce((sum, cat) => sum + cat.amount, 0).toLocaleString()} ₪
+                    סה״כ הוצאות: {Number(filteredExpenseCategories.reduce((sum, cat) => sum + (cat.amount ?? 0), 0)).toLocaleString()} ₪
                   </div>
                 </div>
               )}

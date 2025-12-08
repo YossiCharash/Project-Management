@@ -11,9 +11,11 @@ class RecurringTransactionRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def create(self, data: RecurringTransactionTemplateCreate) -> RecurringTransactionTemplate:
+    async def create(self, data: RecurringTransactionTemplateCreate | dict) -> RecurringTransactionTemplate:
         """Create a new recurring transaction template"""
-        template = RecurringTransactionTemplate(**data.model_dump())
+        payload = data if isinstance(data, dict) else data.model_dump()
+        payload.pop("category", None)
+        template = RecurringTransactionTemplate(**payload)
         self.db.add(template)
         await self.db.commit()
         await self.db.refresh(template)
@@ -42,9 +44,10 @@ class RecurringTransactionRepository:
         )
         return list(res.scalars().all())
 
-    async def update(self, template: RecurringTransactionTemplate, data: RecurringTransactionTemplateUpdate) -> RecurringTransactionTemplate:
+    async def update(self, template: RecurringTransactionTemplate, data: RecurringTransactionTemplateUpdate | dict) -> RecurringTransactionTemplate:
         """Update a recurring transaction template"""
-        update_data = data.model_dump(exclude_unset=True)
+        update_data = data if isinstance(data, dict) else data.model_dump(exclude_unset=True)
+        update_data.pop("category", None)
         for field, value in update_data.items():
             setattr(template, field, value)
         

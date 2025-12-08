@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { RecurringTransactionTemplate, RecurringTransactionTemplateUpdate } from '../types/api'
-import { RecurringTransactionAPI } from '../lib/apiClient'
+import { RecurringTransactionAPI, CategoryAPI } from '../lib/apiClient'
 import { useAppDispatch, useAppSelector } from '../utils/hooks'
 import { fetchSuppliers } from '../store/slices/suppliersSlice'
 
@@ -35,10 +35,12 @@ const EditRecurringTemplateModal: React.FC<EditRecurringTemplateModalProps> = ({
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [availableCategories, setAvailableCategories] = useState<string[]>([])
 
   useEffect(() => {
     if (isOpen) {
       dispatch(fetchSuppliers())
+      loadCategories()
     }
     if (template && isOpen) {
       setFormData({
@@ -181,12 +183,9 @@ const EditRecurringTemplateModal: React.FC<EditRecurringTemplateModalProps> = ({
               className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
             >
               <option value="">בחר קטגוריה</option>
-              <option value="ניקיון">ניקיון</option>
-              <option value="חשמל">חשמל</option>
-              <option value="ביטוח">ביטוח</option>
-              <option value="גינון">גינון</option>
-              <option value="תחזוקה">תחזוקה</option>
-              <option value="אחר">אחר</option>
+              {availableCategories.map((cat) => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
             </select>
           </div>
 

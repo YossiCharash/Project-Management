@@ -3,8 +3,10 @@ from datetime import datetime, date
 from enum import Enum
 from sqlalchemy import String, Date, DateTime, ForeignKey, Numeric, Text, Boolean, Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship, validates, reconstructor
+from sqlalchemy.ext.associationproxy import association_proxy
 
 from backend.db.base import Base
+from backend.models.category import Category
 
 
 class TransactionType(str, Enum):
@@ -46,7 +48,9 @@ class Transaction(Base):
     amount: Mapped[float] = mapped_column(Numeric(14, 2))
     description: Mapped[str | None] = mapped_column(Text, default=None)
 
-    category: Mapped[str | None] = mapped_column(SAEnum(ExpenseCategory, name="expense_category", create_constraint=True, native_enum=True), default=ExpenseCategory.OTHER.value, nullable=True)
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"), nullable=True, index=True)
+    category_obj: Mapped["Category | None"] = relationship(lazy="selectin")
+    category = association_proxy("category_obj", "name")
     payment_method: Mapped[str | None] = mapped_column(SAEnum(PaymentMethod, name="payment_method", create_constraint=True, native_enum=True), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, default=None)
     is_exceptional: Mapped[bool] = mapped_column(Boolean, default=False, index=True)

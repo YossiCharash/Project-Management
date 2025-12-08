@@ -23,7 +23,6 @@ async def create_budget(
             {
                 "user": current_user.email,
                 "project_id": budget.project_id,
-                "category": budget.category,
                 "amount": budget.amount,
                 "period_type": budget.period_type,
                 "start_date": budget.start_date,
@@ -31,9 +30,23 @@ async def create_budget(
             },
         )
         service = BudgetService(db)
+        
+        # Convert category name to category_id
+        from backend.repositories.category_repository import CategoryRepository
+        category_repo = CategoryRepository(db)
+        category_obj = await category_repo.get_by_name(budget.category)
+        if not category_obj:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"קטגוריה '{budget.category}' לא נמצאה במערכת. יש לבחור קטגוריה מהרשימה."
+            )
+        
+        # Debug: Print what we're about to pass
+        print(f"🔍 [Budget API] Calling create_budget with: project_id={budget.project_id}, category_id={category_obj.id}, amount={budget.amount}")
+        
         created_budget = await service.create_budget(
             project_id=budget.project_id,
-            category=budget.category,
+            category_id=category_obj.id,
             amount=budget.amount,
             period_type=budget.period_type,
             start_date=budget.start_date,
@@ -104,7 +117,9 @@ async def update_budget(
     """Update a budget"""
     try:
         from backend.repositories.budget_repository import BudgetRepository
+        from backend.repositories.category_repository import CategoryRepository
         repository = BudgetRepository(db)
+        category_repository = CategoryRepository(db)
         budget = await repository.get_by_id(budget_id)
         
         if not budget:

@@ -92,7 +92,7 @@ export default function ExpensePieChartMini({ expenseCategories }: ExpensePieCha
       
       <div className="mt-2 text-center">
         <div className="text-xs font-semibold text-gray-700 dark:text-gray-300">
-          סה״כ: {totalExpenses.toLocaleString()} ₪
+          סה״כ: {Number(totalExpenses ?? 0).toLocaleString()} ₪
         </div>
       </div>
     </div>

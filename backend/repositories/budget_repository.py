@@ -1,4 +1,4 @@
-from sqlalchemy import select, and_, func, cast, String
+from sqlalchemy import select, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import date
 from typing import Tuple
@@ -37,15 +37,24 @@ class BudgetRepository:
         return list(res.scalars().all())
 
     async def get_by_project_and_category(
-        self, 
-        project_id: int, 
-        category: str, 
+        self,
+        project_id: int,
+        category_id: int,
         active_only: bool = True
     ) -> Budget | None:
+        # First get the category name from category_id
+        from backend.models.category import Category
+        category_result = await self.db.execute(
+            select(Category.name).where(Category.id == category_id)
+        )
+        category_name = category_result.scalar_one_or_none()
+        if not category_name:
+            return None
+        
         stmt = select(Budget).where(
             and_(
                 Budget.project_id == project_id,
-                Budget.category == category
+                Budget.category == category_name  # Budget stores category as string (name)
             )
         )
         if active_only:
@@ -72,13 +81,23 @@ class BudgetRepository:
         start_date = budget.start_date
         end_date = budget.end_date if budget.end_date else as_of_date
         
+        # Get category_id from category name (Budget stores category as string name)
+        from backend.models.category import Category
+        category_result = await self.db.execute(
+            select(Category.id).where(Category.name == budget.category)
+        )
+        category_id = category_result.scalar_one_or_none()
+        
+        # If category not found, return zero spending
+        if not category_id:
+            return 0.0, 0.0
+        
         # Calculate expenses for transactions in this category within the period
-        # Use cast to string to handle custom categories that aren't in the enum
         expenses_query = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
             and_(
                 Transaction.project_id == budget.project_id,
                 Transaction.type == "Expense",
-                cast(Transaction.category, String) == budget.category,
+                Transaction.category_id == category_id,  # Use category_id instead of category name
                 Transaction.tx_date >= start_date,
                 Transaction.tx_date <= end_date,
                 Transaction.from_fund == False  # Exclude fund transactions
@@ -90,7 +109,7 @@ class BudgetRepository:
             and_(
                 Transaction.project_id == budget.project_id,
                 Transaction.type == "Income",
-                cast(Transaction.category, String) == budget.category,
+                Transaction.category_id == category_id,  # Use category_id instead of category name
                 Transaction.tx_date >= start_date,
                 Transaction.tx_date <= end_date,
                 Transaction.from_fund == False  # Exclude fund transactions
@@ -100,8 +119,9 @@ class BudgetRepository:
         expenses_result = await self.db.execute(expenses_query)
         income_result = await self.db.execute(income_query)
         
-        total_expenses = float(expenses_result.scalar_one())
-        total_income = float(income_result.scalar_one())
+        # Ensure values are floats, defaulting to 0.0 if None
+        total_expenses = float(expenses_result.scalar_one() or 0.0)
+        total_income = float(income_result.scalar_one() or 0.0)
         
         return total_expenses, total_income
 

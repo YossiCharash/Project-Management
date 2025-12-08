@@ -50,10 +50,10 @@ export default function SystemFinancialPieChart({
             {data.name}
           </p>
           <p className="text-sm text-gray-600 dark:text-gray-400">
-            {data.value.toLocaleString()} ₪
+            {Number(data.value ?? 0).toLocaleString()} ₪
           </p>
           <p className="text-xs text-gray-500 dark:text-gray-500">
-            {((data.value / (totalIncome + totalExpense)) * 100).toFixed(1)}%
+            {((Number(data.value ?? 0) / (Number(totalIncome ?? 0) + Number(totalExpense ?? 0))) * 100).toFixed(1)}%
           </p>
         </div>
       )
@@ -117,7 +117,7 @@ export default function SystemFinancialPieChart({
             סה״כ הכנסות
           </div>
           <div className="text-xl font-bold text-green-700 dark:text-green-300">
-            {totalIncome.toLocaleString()} ₪
+            {Number(totalIncome ?? 0).toLocaleString()} ₪
           </div>
         </div>
         <div className="bg-red-50 dark:bg-red-900/20 p-3 rounded-lg">
@@ -125,28 +125,28 @@ export default function SystemFinancialPieChart({
             סה״כ הוצאות
           </div>
           <div className="text-xl font-bold text-red-700 dark:text-red-300">
-            {totalExpense.toLocaleString()} ₪
+            {Number(totalExpense ?? 0).toLocaleString()} ₪
           </div>
         </div>
         <div className={`p-3 rounded-lg ${
-          (totalIncome - totalExpense) >= 0 
+          (Number(totalIncome ?? 0) - Number(totalExpense ?? 0)) >= 0 
             ? 'bg-green-50 dark:bg-green-900/20' 
             : 'bg-red-50 dark:bg-red-900/20'
         }`}>
           <div className={`font-semibold text-sm mb-1 ${
-            (totalIncome - totalExpense) >= 0 
+            (Number(totalIncome ?? 0) - Number(totalExpense ?? 0)) >= 0 
               ? 'text-green-600 dark:text-green-400' 
               : 'text-red-600 dark:text-red-400'
           }`}>
             סה״כ רווח/הפסד
           </div>
           <div className={`text-xl font-bold ${
-            (totalIncome - totalExpense) >= 0 
+            (Number(totalIncome ?? 0) - Number(totalExpense ?? 0)) >= 0 
               ? 'text-green-700 dark:text-green-300' 
               : 'text-red-700 dark:text-red-300'
           }`}>
-            {(totalIncome - totalExpense) >= 0 ? '+' : ''}
-            {(totalIncome - totalExpense).toLocaleString()} ₪
+            {(Number(totalIncome ?? 0) - Number(totalExpense ?? 0)) >= 0 ? '+' : ''}
+            {Number(Number(totalIncome ?? 0) - Number(totalExpense ?? 0)).toLocaleString()} ₪
           </div>
         </div>
       </div>

@@ -9,7 +9,7 @@ class TransactionBase(BaseModel):
     type: Literal["Income", "Expense"]
     amount: float
     description: str | None = None
-    category: str | None = None
+    category_id: int | None = None
     payment_method: str | None = None
     notes: str | None = None
     is_exceptional: bool = False
@@ -26,7 +26,7 @@ class TransactionUpdate(BaseModel):
     type: Literal["Income", "Expense"] | None = None
     amount: float | None = None
     description: str | None = None
-    category: str | None = None
+    category_id: int | None = None
     payment_method: str | None = None
     notes: str | None = None
     is_exceptional: bool | None = None
@@ -42,6 +42,7 @@ class TransactionOut(BaseModel):
     amount: float  # No validation constraint for response
     description: str | None = None
     category: str | None = None
+    category_id: int | None = None
     payment_method: str | None = None
     notes: str | None = None
     is_exceptional: bool = False

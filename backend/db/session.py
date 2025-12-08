@@ -8,8 +8,10 @@ engine = create_async_engine(
     future=True,
     pool_size=10,
     max_overflow=20,
-    pool_pre_ping=True,  # Verify connections before using them
+    # pool_pre_ping removed - causes greenlet issues with asyncpg in SQLAlchemy 2.0
+    # Connection validation is handled by pool_recycle instead
     pool_recycle=3600,   # Recycle connections after 1 hour
+    pool_reset_on_return='commit',  # Reset connections on return to pool
 )
 
 AsyncSessionLocal = async_sessionmaker(

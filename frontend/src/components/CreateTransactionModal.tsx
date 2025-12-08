@@ -1,7 +1,7 @@
 import React, { useState, useEffect, FormEvent, ChangeEvent } from 'react'
 import { motion } from 'framer-motion'
 import { TransactionCreate, RecurringTransactionTemplateCreate } from '../types/api'
-import { TransactionAPI, RecurringTransactionAPI } from '../lib/apiClient'
+import { TransactionAPI, RecurringTransactionAPI, CategoryAPI } from '../lib/apiClient'
 import api from '../lib/api'
 import { useAppDispatch, useAppSelector } from '../utils/hooks'
 import { fetchSuppliers } from '../store/slices/suppliersSlice'
@@ -11,6 +11,7 @@ interface CreateTransactionModalProps {
   onClose: () => void
   onSuccess: () => void
   projectId: number
+  isSubproject?: boolean // True if the current project is a subproject
 }
 
 type TransactionType = 'regular' | 'recurring'
@@ -19,7 +20,8 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
   isOpen,
   onClose,
   onSuccess,
-  projectId
+  projectId,
+  isSubproject = false
 }) => {
   const dispatch = useAppDispatch()
   const { items: suppliers } = useAppSelector(s => s.suppliers)
@@ -65,15 +67,28 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
   const [showDescriptionModal, setShowDescriptionModal] = useState(false)
   const [uploadedDocuments, setUploadedDocuments] = useState<Array<{id: number, fileName: string, description: string}>>([])
   const [selectedTransactionForDocuments, setSelectedTransactionForDocuments] = useState<any | null>(null)
+  const [availableCategories, setAvailableCategories] = useState<string[]>([])
 
   useEffect(() => {
     if (isOpen) {
       dispatch(fetchSuppliers())
       loadSubprojects()
       loadFundInfo()
+      loadCategories()
       resetForms()
     }
   }, [isOpen, projectId, dispatch])
+
+  const loadCategories = async () => {
+    try {
+      const categories = await CategoryAPI.getCategories()
+      const categoryNames = categories.filter(cat => cat.is_active).map(cat => cat.name)
+      setAvailableCategories(categoryNames)
+    } catch (err) {
+      console.error('Error loading categories:', err)
+      setAvailableCategories([])
+    }
+  }
 
   const loadFundInfo = async () => {
     if (!projectId) {
@@ -123,7 +138,8 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
     setCategory('')
     setPaymentMethod('')
     setNotes('')
-    setSubprojectId('')
+    // If this is a subproject, set subprojectId to current projectId automatically
+    setSubprojectId(isSubproject ? projectId : '')
     setSupplierId('')
     setIsExceptional(false)
     setFromFund(false)
@@ -537,11 +553,9 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
                           💰 הוריד מהקופה
                         </option>
                       )}
-                      <option value="ניקיון">ניקיון</option>
-                      <option value="חשמל">חשמל</option>
-                      <option value="ביטוח">ביטוח</option>
-                      <option value="גינון">גינון</option>
-                      <option value="אחר">אחר</option>
+                      {availableCategories.map((cat) => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
                     </select>
                     {fromFund && type === 'Expense' && (
                       <div className="mt-2 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md">
@@ -575,16 +589,25 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">תת־פרויקט</label>
-                    <select
-                      className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      value={subprojectId}
-                      onChange={e => setSubprojectId(e.target.value === '' ? '' : Number(e.target.value))}
-                    >
-                      <option value="">ללא</option>
-                      {subprojects.map(sp => (
-                        <option key={sp.id} value={sp.id}>{sp.name}</option>
-                      ))}
-                    </select>
+                    {isSubproject ? (
+                      <input
+                        type="text"
+                        value={projectId ? `פרויקט #${projectId}` : ''}
+                        disabled
+                        className="w-full px-3 py-2 bg-gray-100 dark:bg-gray-600 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-600 dark:text-gray-400 cursor-not-allowed"
+                      />
+                    ) : (
+                      <select
+                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        value={subprojectId}
+                        onChange={e => setSubprojectId(e.target.value === '' ? '' : Number(e.target.value))}
+                      >
+                        <option value="">ללא</option>
+                        {subprojects.map(sp => (
+                          <option key={sp.id} value={sp.id}>{sp.name}</option>
+                        ))}
+                      </select>
+                    )}
                   </div>
 
                   {!fromFund && type === 'Expense' && (
@@ -789,11 +812,9 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
                       className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                     >
                       <option value="">בחר קטגוריה</option>
-                      <option value="ניקיון">ניקיון</option>
-                      <option value="חשמל">חשמל</option>
-                      <option value="ביטוח">ביטוח</option>
-                      <option value="גינון">גינון</option>
-                      <option value="אחר">אחר</option>
+                      {availableCategories.map((cat) => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
                     </select>
                   </div>
 

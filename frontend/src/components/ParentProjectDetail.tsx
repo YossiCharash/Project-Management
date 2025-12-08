@@ -452,6 +452,7 @@ const ConsolidatedFinancialSummary: React.FC<{
   subprojects: SubprojectFinancial[]
   onAddTransaction?: (subprojectId: number) => void
 }> = ({ summary, subprojects, onAddTransaction }) => {
+  const navigate = useNavigate()
   // Filter out parent project from subprojects (if it's included with "(ראשי)" in the name)
   const actualSubprojects = subprojects.filter(sp => !sp.name.includes('(ראשי)'))
   
@@ -546,7 +547,11 @@ const ConsolidatedFinancialSummary: React.FC<{
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {actualSubprojects.map((subproject) => (
-              <div key={subproject.id} className="bg-gradient-to-br from-gray-50 to-white dark:from-gray-700 dark:to-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 p-5 hover:shadow-md transition-shadow">
+              <div
+                key={subproject.id}
+                onClick={() => navigate(`/projects/${subproject.id}`)}
+                className="bg-gradient-to-br from-gray-50 to-white dark:from-gray-700 dark:to-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 p-5 hover:shadow-md transition-shadow cursor-pointer"
+              >
                 <div className="flex items-start justify-between mb-4">
                   <h5 className="font-semibold text-gray-900 dark:text-white text-lg flex-1">
                     {subproject.name}
@@ -554,7 +559,10 @@ const ConsolidatedFinancialSummary: React.FC<{
                   <div className="flex items-center gap-2">
                     {onAddTransaction && (
                       <button
-                        onClick={() => onAddTransaction(subproject.id)}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onAddTransaction(subproject.id)
+                        }}
                         className="px-3 py-1.5 text-xs bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors flex items-center gap-1.5"
                         title="הוסף עסקה לתת-פרויקט"
                       >

@@ -2,25 +2,58 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import date, timedelta
 from typing import List, Dict, Any
 from backend.models.budget import Budget
-from backend.models.transaction import ExpenseCategory
 from backend.repositories.budget_repository import BudgetRepository
+from backend.repositories.category_repository import CategoryRepository
 
 
 class BudgetService:
     def __init__(self, db: AsyncSession):
         self.db = db
         self.repository = BudgetRepository(db)
+        self.category_repository = CategoryRepository(db)
+
+    async def _resolve_category(
+        self,
+        *,
+        category_id: int
+    ):
+        """Resolve category by ID."""
+        if category_id is None:
+            raise ValueError("קטגוריה היא שדה חובה. יש לבחור קטגוריה מהרשימה.")
+        
+        category = await self.category_repository.get(category_id)
+        if not category:
+            raise ValueError("קטגוריה שנבחרה לא קיימת יותר במערכת.")
+
+        if not category.is_active:
+            raise ValueError(
+                f"קטגוריה '{category.name}' לא פעילה. יש להפעיל את הקטגוריה בהגדרות לפני יצירת תקציב."
+            )
+        return category
 
     async def create_budget(
         self,
         project_id: int,
-        category: str,
         amount: float,
+        category_id: int,
         period_type: str = "Annual",
         start_date: date | None = None,
         end_date: date | None = None
     ) -> Budget:
         """Create a new budget for a project category"""
+        # Validate that the category exists in the Category table - ONLY categories from DB are allowed
+        resolved_category = await self._resolve_category(category_id=category_id)
+
+        existing_budget = await self.repository.get_by_project_and_category(
+            project_id,
+            resolved_category.id,  # Pass category_id, function will convert to category name internally
+            active_only=True
+        )
+        if existing_budget:
+            raise ValueError(
+                f"לפרויקט כבר מוגדר תקציב פעיל עבור הקטגוריה '{resolved_category.name}'. יש לערוך או למחוק את התקציב הקיים מתוך דף פרטי הפרויקט."
+            )
+        
         if start_date is None:
             start_date = date.today()
         
@@ -30,7 +63,7 @@ class BudgetService:
         
         budget = Budget(
             project_id=project_id,
-            category=category,
+            category=resolved_category.name,  # Store category name as string
             amount=amount,
             period_type=period_type,
             start_date=start_date,
@@ -55,7 +88,10 @@ class BudgetService:
         
         # Calculate spending breakdown
         total_expenses, total_income = await self.repository.calculate_spending_for_budget(budget, as_of_date)
-        base_amount = float(budget.amount)
+        # Ensure values are floats, not None
+        total_expenses = float(total_expenses) if total_expenses is not None else 0.0
+        total_income = float(total_income) if total_income is not None else 0.0
+        base_amount = float(budget.amount) if budget.amount is not None else 0.0
         effective_amount = base_amount + total_income
         remaining_amount = effective_amount - total_expenses
         

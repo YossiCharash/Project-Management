@@ -225,7 +225,7 @@ export default function Projects() {
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [cityFilter, setCityFilter] = useState('')
-  const [projectTypeFilter, setProjectTypeFilter] = useState('')
+  const [projectTypeFilter, setProjectTypeFilter] = useState('') // Default: show parent projects and regular projects without subprojects
   const [archiveFilter, setArchiveFilter] = useState<'active' | 'archived' | 'all'>('active')
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [showCreateModal, setShowCreateModal] = useState(false)
@@ -428,11 +428,31 @@ export default function Projects() {
     const matchesCity = !cityFilter || project.city?.toLowerCase().includes(cityFilter.toLowerCase())
     
     // Filter by project type (parent projects vs subprojects)
+    // Default (empty): show parent projects AND regular projects without subprojects
     let matchesType = true
     if (projectTypeFilter === 'parent') {
-      matchesType = !project.relation_project // Parent projects don't have relation_project
+      // Show only parent projects (projects with is_parent_project === true)
+      matchesType = project.is_parent_project === true
     } else if (projectTypeFilter === 'subproject') {
-      matchesType = !!project.relation_project // Subprojects have relation_project
+      // Show only subprojects (projects with relation_project set)
+      matchesType = !!project.relation_project
+    } else if (projectTypeFilter === '') {
+      // Default: show parent projects AND regular projects without subprojects
+      const isParentProject = project.is_parent_project === true
+      const isSubproject = !!project.relation_project
+      
+      if (isSubproject) {
+        // Don't show subprojects in default view
+        matchesType = false
+      } else if (isParentProject) {
+        // Show parent projects
+        matchesType = true
+      } else {
+        // Regular project - check if it has subprojects
+        const hasSubprojects = dashboardData?.projects?.some((p: any) => p.relation_project === project.id)
+        // Show only if it doesn't have subprojects
+        matchesType = !hasSubprojects
+      }
     }
     
     // Filter by archive status

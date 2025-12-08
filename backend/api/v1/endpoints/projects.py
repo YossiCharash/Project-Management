@@ -325,7 +325,7 @@ async def create_project(db: DBSessionDep, data: ProjectCreate, user = Depends(g
                     {
                         "project_id": project.id,
                         "index": idx,
-                        "category": budget_data.category,
+                        "category_id": budget_data.category_id,
                         "amount": budget_data.amount,
                         "period_type": budget_data.period_type,
                         "start_date": start_date,
@@ -335,7 +335,7 @@ async def create_project(db: DBSessionDep, data: ProjectCreate, user = Depends(g
 
                 created_budget = await budget_service.create_budget(
                     project_id=project.id,
-                    category=budget_data.category,
+                    category_id=budget_data.category_id,
                     amount=budget_data.amount,
                     period_type=budget_data.period_type or "Annual",
                     start_date=start_date,
@@ -343,7 +343,7 @@ async def create_project(db: DBSessionDep, data: ProjectCreate, user = Depends(g
                 )
                 print(
                     "✅ [Project Budget] Budget created",
-                    {"budget_id": created_budget.id, "category": budget_data.category},
+                    {"budget_id": created_budget.id, "category_id": budget_data.category_id},
                 )
             except Exception as e:
                 import traceback
@@ -352,7 +352,7 @@ async def create_project(db: DBSessionDep, data: ProjectCreate, user = Depends(g
                     {
                         "project_id": project.id,
                         "index": idx,
-                        "category": budget_data.category,
+                        "category_id": budget_data.category_id,
                         "amount": budget_data.amount,
                         "period_type": budget_data.period_type,
                         "error": str(e),
@@ -488,7 +488,7 @@ async def update_project(project_id: int, db: DBSessionDep, data: ProjectUpdate,
                     {
                         "project_id": project_id,
                         "index": idx,
-                        "category": budget_data.category,
+                        "category_id": budget_data.category_id,
                         "amount": budget_data.amount,
                         "period_type": budget_data.period_type,
                         "start_date": start_date,
@@ -498,7 +498,7 @@ async def update_project(project_id: int, db: DBSessionDep, data: ProjectUpdate,
 
                 created_budget = await budget_service.create_budget(
                     project_id=project_id,
-                    category=budget_data.category,
+                    category_id=budget_data.category_id,
                     amount=budget_data.amount,
                     period_type=budget_data.period_type or "Annual",
                     start_date=start_date,
@@ -506,7 +506,7 @@ async def update_project(project_id: int, db: DBSessionDep, data: ProjectUpdate,
                 )
                 print(
                     "✅ [Project Budget] Budget added during update",
-                    {"budget_id": created_budget.id, "category": budget_data.category},
+                    {"budget_id": created_budget.id, "category_id": budget_data.category_id},
                 )
             except Exception as e:
                 import traceback
@@ -515,7 +515,7 @@ async def update_project(project_id: int, db: DBSessionDep, data: ProjectUpdate,
                     {
                         "project_id": project_id,
                         "index": idx,
-                        "category": budget_data.category,
+                        "category_id": budget_data.category_id,
                         "amount": budget_data.amount,
                         "period_type": budget_data.period_type,
                         "error": str(e),
@@ -1528,9 +1528,11 @@ async def export_contract_period_csv(
             wb.save(output)
             output.seek(0)
             
-            # Sanitize filename for download
-            safe_project_name = project.name.replace('"', '').replace('/', '_').replace('\\', '_')
-            safe_year_label = str(summary["year_label"]).replace('"', '').replace('/', '_').replace('\\', '_')
+            # Create filename - use ASCII-safe version to avoid encoding issues in headers
+            import re
+            # Remove non-ASCII characters from filename for header compatibility
+            safe_project_name = re.sub(r'[^\x00-\x7F]', '_', project.name).replace('"', '').replace('/', '_').replace('\\', '_').strip()
+            safe_year_label = re.sub(r'[^\x00-\x7F]', '_', str(summary["year_label"])).replace('"', '').replace('/', '_').replace('\\', '_').strip()
             filename = f"contract_period_{safe_year_label}_{safe_project_name}.xlsx"
             
             return Response(
@@ -1605,9 +1607,11 @@ async def export_contract_period_csv(
             # Add BOM for proper Hebrew display in Excel
             csv_bytes = '\ufeff'.encode('utf-8') + csv_content.encode('utf-8-sig')
             
-            # Sanitize filename for download
-            safe_project_name = project.name.replace('"', '').replace('/', '_').replace('\\', '_')
-            safe_year_label = str(summary["year_label"]).replace('"', '').replace('/', '_').replace('\\', '_')
+            # Create filename - use ASCII-safe version to avoid encoding issues in headers
+            import re
+            # Remove non-ASCII characters from filename for header compatibility
+            safe_project_name = re.sub(r'[^\x00-\x7F]', '_', project.name).replace('"', '').replace('/', '_').replace('\\', '_').strip()
+            safe_year_label = re.sub(r'[^\x00-\x7F]', '_', str(summary["year_label"])).replace('"', '').replace('/', '_').replace('\\', '_').strip()
             filename = f"contract_period_{safe_year_label}_{safe_project_name}.csv"
             
             return Response(

@@ -10,7 +10,7 @@ class RecurringTransactionTemplateBase(BaseModel):
     description: str
     type: Literal["Income", "Expense"]
     amount: float
-    category: Optional[str] = None
+    category_id: Optional[int] = None
     notes: Optional[str] = None
     supplier_id: int | None = Field(None, description="Supplier ID is required for Expense transactions")
     frequency: Literal["Monthly"] = "Monthly"
@@ -28,7 +28,7 @@ class RecurringTransactionTemplateCreate(RecurringTransactionTemplateBase):
 class RecurringTransactionTemplateUpdate(BaseModel):
     description: Optional[str] = None
     amount: Optional[float] = None
-    category: Optional[str] = None
+    category_id: Optional[int] = None
     notes: Optional[str] = None
     supplier_id: Optional[int] = None
     day_of_month: Optional[int] = Field(None, ge=1, le=31)
@@ -39,8 +39,22 @@ class RecurringTransactionTemplateUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
-class RecurringTransactionTemplateOut(RecurringTransactionTemplateBase):
+class RecurringTransactionTemplateOut(BaseModel):
     id: int
+    project_id: int
+    description: str
+    type: Literal["Income", "Expense"]
+    amount: float
+    category: Optional[str] = None  # Category name for display (from association_proxy)
+    category_id: Optional[int] = None
+    notes: Optional[str] = None
+    supplier_id: int | None = None
+    frequency: Literal["Monthly"] = "Monthly"
+    day_of_month: int
+    start_date: date
+    end_type: Literal["No End", "After Occurrences", "On Date"] = "No End"
+    end_date: Optional[date] = None
+    max_occurrences: Optional[int] = None
     is_active: bool
     created_at: datetime
     updated_at: datetime
@@ -52,7 +66,7 @@ class RecurringTransactionTemplateOut(RecurringTransactionTemplateBase):
         if hasattr(data, '__dict__') or hasattr(data, '_sa_instance_state'):
             # Handle SQLAlchemy model objects - use getattr to access attributes
             obj_dict = {}
-            for attr in ['id', 'project_id', 'description', 'type', 'amount', 'category', 'notes',
+            for attr in ['id', 'project_id', 'description', 'type', 'amount', 'category', 'category_id', 'notes',
                         'supplier_id', 'frequency', 'day_of_month', 'start_date', 'end_type', 'end_date',
                         'max_occurrences', 'is_active', 'created_at', 'updated_at']:
                 if hasattr(data, attr):
@@ -89,7 +103,7 @@ class RecurringTransactionInstanceUpdate(BaseModel):
     """For updating individual instances of recurring transactions"""
     tx_date: Optional[date] = None
     amount: Optional[float] = None
-    category: Optional[str] = None
+    category_id: Optional[int] = None
     notes: Optional[str] = None
 
 

@@ -1,5 +1,5 @@
 from functools import lru_cache
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 import os
 from dotenv import load_dotenv
 
@@ -41,9 +41,18 @@ class Settings(BaseModel):
     CORS_ORIGINS: list[str] = [
         origin.strip().rstrip("/") for origin in os.getenv(
             "CORS_ORIGINS",
-            "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000"
-        ).split(",")
+            "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,https://www.ziposystem.co.il,https://ziposystem.co.il,https://bms-project-frontend.onrender.com"
+        ).split(",") if origin.strip()
     ]
+    
+    @model_validator(mode='after')
+    def ensure_ziposystem_domains(self):
+        """Ensure both www and non-www versions of ziposystem.co.il are included"""
+        ziposystem_domains = ["https://www.ziposystem.co.il", "https://ziposystem.co.il"]
+        for domain in ziposystem_domains:
+            if domain not in self.CORS_ORIGINS:
+                self.CORS_ORIGINS.append(domain)
+        return self
 
     FILE_UPLOAD_DIR: str = os.getenv("FILE_UPLOAD_DIR", "./uploads")
 

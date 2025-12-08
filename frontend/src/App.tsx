@@ -26,6 +26,7 @@ import { logout, fetchMe } from './store/slices/authSlice'
 import { Sidebar, MobileSidebar } from './components/ui/Sidebar'
 import { ThemeProvider } from './contexts/ThemeContext'
 import { LoadingOverlay } from './components/ui/Loading'
+import { Logo } from './components/ui/Logo'
 import { Menu, LogOut, User } from 'lucide-react'
 import { cn } from './lib/utils'
 
@@ -117,9 +118,7 @@ function AppContent() {
               >
                 <Menu className="w-5 h-5 text-gray-600 dark:text-gray-400" />
               </button>
-              <h1 className="text-xl font-semibold text-gray-900 dark:text-white">
-                מערכת ניהול נכסים
-              </h1>
+              <Logo size="lg" showText={false} />
             </div>
 
             <div className="flex items-center gap-3">
