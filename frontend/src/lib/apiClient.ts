@@ -166,6 +166,22 @@ export class ProjectAPI {
     message: string
     new_start_date?: string
     new_end_date?: string
+    contract_periods?: {
+      project_id: number
+      periods_by_year: Array<{
+        year: number
+        periods: Array<{
+          period_id: number
+          start_date: string
+          end_date: string
+          year_index: number
+          year_label: string
+          total_income: number
+          total_expense: number
+          total_profit: number
+        }>
+      }>
+    }
   }> {
     const { data } = await api.post(`/projects/${projectId}/check-contract-renewal`)
     return data

@@ -54,6 +54,17 @@ class Settings(BaseModel):
                 self.CORS_ORIGINS.append(domain)
         return self
 
+    @model_validator(mode='after')
+    def check_security_settings(self):
+        """Warn if using default insecure settings in production"""
+        if self.JWT_SECRET_KEY == "change_me":
+            print("⚠️ WARNING: Using default JWT_SECRET_KEY. This is insecure for production!")
+        
+        if self.SUPER_ADMIN_PASSWORD == "c98C98@98":
+            print("⚠️ WARNING: Using default SUPER_ADMIN_PASSWORD. Change this in production!")
+            
+        return self
+
     FILE_UPLOAD_DIR: str = os.getenv("FILE_UPLOAD_DIR", "./uploads")
 
     # AWS S3 configuration (for documents and project images)

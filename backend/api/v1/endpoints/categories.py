@@ -12,10 +12,14 @@ router = APIRouter()
 async def list_categories(
     db: DBSessionDep,
     include_inactive: bool = Query(False),
+    tree: bool = Query(False, description="Return as tree structure (only top-level parents)"),
     user = Depends(get_current_user)
 ):
     """List all categories - accessible to all authenticated users"""
-    return await CategoryRepository(db).list(include_inactive=include_inactive)
+    repo = CategoryRepository(db)
+    if tree:
+        return await repo.list_tree(include_inactive=include_inactive)
+    return await repo.list(include_inactive=include_inactive)
 
 
 @router.get("/{category_id}", response_model=CategoryOut)
@@ -41,15 +45,29 @@ async def create_category(
     """Create a new category - Admin only"""
     repo = CategoryRepository(db)
     
-    # Validate that category name doesn't already exist
-    existing = await repo.get_by_name(data.name)
+    # Validate parent exists if provided
+    if data.parent_id is not None:
+        parent = await repo.get(data.parent_id)
+        if not parent:
+            raise HTTPException(
+                status_code=404,
+                detail="קטגוריית אב לא נמצאה"
+            )
+        if not parent.is_active:
+            raise HTTPException(
+                status_code=400,
+                detail="לא ניתן ליצור תת-קטגוריה תחת קטגוריה לא פעילה"
+            )
+    
+    # Validate that category name doesn't already exist under the same parent
+    existing = await repo.get_by_name(data.name, parent_id=data.parent_id)
     if existing:
         raise HTTPException(
             status_code=422,
             detail=[{
                 "type": "value_error",
                 "loc": ["body", "name"],
-                "msg": "קטגוריה עם שם זה כבר קיימת",
+                "msg": "קטגוריה עם שם זה כבר קיימת תחת אותה קטגוריית אב",
                 "input": data.name
             }]
         )
@@ -63,7 +81,7 @@ async def create_category(
         action='create',
         entity='category',
         entity_id=str(created_category.id),
-        details={'name': created_category.name}
+        details={'name': created_category.name, 'parent_id': created_category.parent_id}
     )
     
     return created_category

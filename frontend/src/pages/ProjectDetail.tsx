@@ -391,11 +391,21 @@ const formatDate = (value: string | null) => {
 
     try {
       // First check and renew contract if needed
+      let contractRenewed = false
+      let renewalContractPeriods = null
       try {
-        await ProjectAPI.checkAndRenewContract(parseInt(id))
+        const renewalResult = await ProjectAPI.checkAndRenewContract(parseInt(id))
+        if (renewalResult?.renewed) {
+          console.log('✅ Contract renewed:', renewalResult)
+          contractRenewed = true
+          // Use contract periods from renewal response if available
+          if ((renewalResult as any).contract_periods) {
+            renewalContractPeriods = (renewalResult as any).contract_periods
+          }
+        }
       } catch (err) {
-        // Ignore errors in renewal check
-        console.log('Contract renewal check:', err)
+        // Log but don't fail the entire load
+        console.error('Contract renewal check error:', err)
       }
       
       const { data } = await api.get(`/projects/${id}`)
@@ -468,8 +478,19 @@ const formatDate = (value: string | null) => {
         }
       }
       
-      // Load contract periods
-      await loadContractPeriods()
+      // Load contract periods (use from renewal response if available, otherwise load normally)
+      if (renewalContractPeriods) {
+        setContractPeriods(renewalContractPeriods)
+        console.log('✅ Contract periods loaded from renewal response')
+      } else {
+        await loadContractPeriods()
+      }
+      
+      // If contract was renewed, show a notification
+      if (contractRenewed) {
+        // The contract periods will now include the archived period
+        console.log('ℹ️ Contract was renewed. Previous period is now archived and visible in contract periods.')
+      }
     } catch (err: any) {
       setProjectName(`פרויקט ${id}`)
       setProjectBudget({ budget_monthly: 0, budget_annual: 0 })

@@ -5,6 +5,7 @@ from typing import Any
 
 class CategoryBase(BaseModel):
     name: str = Field(min_length=1, max_length=100)
+    parent_id: int | None = Field(default=None, description="ID of parent category for subcategories")
     
     @field_validator('name')
     @classmethod
@@ -25,10 +26,17 @@ class CategoryUpdate(BaseModel):
 
 class CategoryOut(CategoryBase):
     id: int
+    parent_id: int | None
     is_active: bool
     created_at: datetime
     updated_at: datetime
+    # Include children for hierarchical display
+    children: list["CategoryOut"] = Field(default_factory=list)
 
     class Config:
         from_attributes = True
+
+
+# Update forward reference
+CategoryOut.model_rebuild()
 

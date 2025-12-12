@@ -16,6 +16,7 @@ from backend.models.budget import Budget
 from backend.models.fund import Fund
 from backend.models.category import Category
 from backend.models.contract_period import ContractPeriod
+from backend.models.archived_contract import ArchivedContract
 
 __all__ = [
     "User",
@@ -35,5 +36,6 @@ __all__ = [
     "Budget",
     "Fund",
     "Category",
-    "ContractPeriod"
+    "ContractPeriod",
+    "ArchivedContract"
 ]

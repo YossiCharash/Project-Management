@@ -2,7 +2,6 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 import os
 import re
 from uuid import uuid4
-from io import BytesIO
 
 from backend.core.deps import DBSessionDep, require_roles, get_current_user, require_admin
 from backend.core.config import settings
@@ -170,7 +169,12 @@ async def create_transaction(db: DBSessionDep, data: TransactionCreate, user = D
     # Debug: Print to verify user_id is being set
     print(f"DEBUG: Creating transaction with created_by_user_id={user.id}, user={user.full_name}")
     
-    transaction = await TransactionService(db).create(**transaction_data)
+    # Create transaction (duplicate check is done inside TransactionService.create)
+    try:
+        transaction = await TransactionService(db).create(**transaction_data)
+    except ValueError as e:
+        # Convert ValueError from duplicate check to HTTPException
+        raise HTTPException(status_code=400, detail=str(e))
     
     # Debug: Verify transaction was created with user_id
     print(f"DEBUG: Transaction created with id={transaction.id}, created_by_user_id={transaction.created_by_user_id}")
@@ -386,11 +390,16 @@ async def upload_supplier_document(tx_id: int, db: DBSessionDep, file: UploadFil
         prefix = "transactions"
         supplier_id = None
     
-    content = await file.read()
-    file_obj = BytesIO(content)
-    file_url = s3.upload_file(
+    # Upload to S3 (using thread to avoid blocking loop)
+    # Reset file pointer
+    await file.seek(0)
+    
+    import asyncio
+    
+    file_url = await asyncio.to_thread(
+        s3.upload_file,
         prefix=prefix,
-        file_obj=file_obj,
+        file_obj=file.file,
         filename=file.filename or "supplier-document",
         content_type=file.content_type,
     )

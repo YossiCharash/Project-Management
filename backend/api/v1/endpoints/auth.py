@@ -23,39 +23,29 @@ def health() -> dict[str, str]:
 @router.post("/login", response_model=Token)
 async def login(db: DBSessionDep, login_data: LoginInput):
     """Login endpoint - accepts email and password"""
+    auth_service = AuthService(db)
+    user = await auth_service.authenticate_user(email=login_data.email, password=login_data.password)
+    
+    if not user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+    
+    token = create_access_token(user.id)
+    
+    # Check if user needs to change password - handle case where column might not exist yet
     try:
-        auth_service = AuthService(db)
-        user = await auth_service.authenticate_user(email=login_data.email, password=login_data.password)
-        
-        if not user:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
-        
-        token = create_access_token(user.id)
-        
-        # Check if user needs to change password - handle case where column might not exist yet
-        try:
-            requires_change = user.requires_password_change if hasattr(user, 'requires_password_change') else False
-        except (AttributeError, KeyError):
-            requires_change = False
-        
-        response_data = {
-            "access_token": token, 
-            "token_type": "bearer", 
-            "expires_in": 1440, 
-            "refresh_token": None,
-            "requires_password_change": requires_change
-        }
-        
-        return response_data
-    except HTTPException:
-        raise
-    except Exception as e:
-        import logging
-        logging.error(f"Login error: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Internal server error: {str(e)}"
-        )
+        requires_change = user.requires_password_change if hasattr(user, 'requires_password_change') else False
+    except (AttributeError, KeyError):
+        requires_change = False
+    
+    response_data = {
+        "access_token": token, 
+        "token_type": "bearer", 
+        "expires_in": 1440, 
+        "refresh_token": None,
+        "requires_password_change": requires_change
+    }
+    
+    return response_data
 
 
 @router.post("/token", response_model=Token)

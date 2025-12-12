@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Response, Form
 from datetime import date
 from typing import Optional
 import os
@@ -79,108 +79,104 @@ async def get_profitability_alerts(
     Get projects and sub-projects with profitability issues based on last 6 months of data.
     Returns projects with profit margin <= -10% (loss-making projects).
     """
-    try:
-        from sqlalchemy import select, and_
-        from backend.models.project import Project
-        from backend.models.transaction import Transaction
-        from datetime import timedelta
+    from sqlalchemy import select, and_
+    from backend.models.project import Project
+    from backend.models.transaction import Transaction
+    from datetime import timedelta
 
-        # Calculate date 6 months ago
-        today = date.today()
-        six_months_ago = today - timedelta(days=180)
+    # Calculate date 6 months ago
+    today = date.today()
+    six_months_ago = today - timedelta(days=180)
 
-        # Get all projects (both active and inactive) - we'll check transactions for all
-        projects_result = await db.execute(
-            select(Project)
-        )
-        all_projects = projects_result.scalars().all()
+    # Get all projects (both active and inactive) - we'll check transactions for all
+    projects_result = await db.execute(
+        select(Project)
+    )
+    all_projects = projects_result.scalars().all()
 
-        alerts = []
+    alerts = []
 
-        for project in all_projects:
-            # Get transactions for the last 6 months
-            transactions_query = select(Transaction).where(
-                and_(
-                    Transaction.project_id == project.id,
-                    Transaction.tx_date >= six_months_ago,
-                    Transaction.tx_date <= today
-                )
+    for project in all_projects:
+        # Get transactions for the last 6 months
+        transactions_query = select(Transaction).where(
+            and_(
+                Transaction.project_id == project.id,
+                Transaction.tx_date >= six_months_ago,
+                Transaction.tx_date <= today
             )
-            transactions_result = await db.execute(transactions_query)
-            transactions = transactions_result.scalars().all()
+        )
+        transactions_result = await db.execute(transactions_query)
+        transactions = transactions_result.scalars().all()
 
-            # Calculate income and expenses (exclude fund transactions)
-            income = sum(float(t.amount) for t in transactions if t.type == 'Income' and not (hasattr(t, 'from_fund') and t.from_fund))
-            expense = sum(float(t.amount) for t in transactions if t.type == 'Expense' and not (hasattr(t, 'from_fund') and t.from_fund))
-            profit = income - expense
+        # Calculate income and expenses (exclude fund transactions)
+        income = sum(float(t.amount) for t in transactions if t.type == 'Income' and not (hasattr(t, 'from_fund') and t.from_fund))
+        expense = sum(float(t.amount) for t in transactions if t.type == 'Expense' and not (hasattr(t, 'from_fund') and t.from_fund))
+        profit = income - expense
 
-            # Also check all transactions regardless of date for debugging
-            all_transactions_query = select(Transaction).where(Transaction.project_id == project.id)
-            all_transactions_result = await db.execute(all_transactions_query)
-            all_transactions = all_transactions_result.scalars().all()
+        # Also check all transactions regardless of date for debugging
+        all_transactions_query = select(Transaction).where(Transaction.project_id == project.id)
+        all_transactions_result = await db.execute(all_transactions_query)
+        all_transactions = all_transactions_result.scalars().all()
 
-            # If no transactions in the last 6 months, check if there are any transactions at all
-            if len(transactions) == 0 and len(all_transactions) > 0:
-                # Check if the oldest transaction is recent (within last year)
-                oldest_tx = min(all_transactions, key=lambda t: t.tx_date)
-                # If the oldest transaction is within the last year, include it in calculation
-                one_year_ago = today - timedelta(days=365)
-                if oldest_tx.tx_date >= one_year_ago:
-                    # Use all transactions from the last year
-                    transactions_query = select(Transaction).where(
-                        and_(
-                            Transaction.project_id == project.id,
-                            Transaction.tx_date >= one_year_ago,
-                            Transaction.tx_date <= today
-                        )
+        # If no transactions in the last 6 months, check if there are any transactions at all
+        if len(transactions) == 0 and len(all_transactions) > 0:
+            # Check if the oldest transaction is recent (within last year)
+            oldest_tx = min(all_transactions, key=lambda t: t.tx_date)
+            # If the oldest transaction is within the last year, include it in calculation
+            one_year_ago = today - timedelta(days=365)
+            if oldest_tx.tx_date >= one_year_ago:
+                # Use all transactions from the last year
+                transactions_query = select(Transaction).where(
+                    and_(
+                        Transaction.project_id == project.id,
+                        Transaction.tx_date >= one_year_ago,
+                        Transaction.tx_date <= today
                     )
-                    transactions_result = await db.execute(transactions_query)
-                    transactions = transactions_result.scalars().all()
-                    # Recalculate with new transactions
-                    income = sum(float(t.amount) for t in transactions if t.type == 'Income')
-                    expense = sum(float(t.amount) for t in transactions if t.type == 'Expense')
-                    profit = income - expense
+                )
+                transactions_result = await db.execute(transactions_query)
+                transactions = transactions_result.scalars().all()
+                # Recalculate with new transactions
+                income = sum(float(t.amount) for t in transactions if t.type == 'Income')
+                expense = sum(float(t.amount) for t in transactions if t.type == 'Expense')
+                profit = income - expense
 
-            # Calculate profit margin
-            if income > 0:
-                profit_margin = (profit / income) * 100
-            elif expense > 0:
-                # If no income but there are expenses, consider it as 100% loss
-                profit_margin = -100
-            else:
-                # No transactions, skip this project
-                continue
+        # Calculate profit margin
+        if income > 0:
+            profit_margin = (profit / income) * 100
+        elif expense > 0:
+            # If no income but there are expenses, consider it as 100% loss
+            profit_margin = -100
+        else:
+            # No transactions, skip this project
+            continue
 
-            # Only include projects with profit margin <= -10% (loss-making)
-            if profit_margin <= -10:
-                # Determine if it's a sub-project
-                is_subproject = project.relation_project is not None
+        # Only include projects with profit margin <= -10% (loss-making)
+        if profit_margin <= -10:
+            # Determine if it's a sub-project
+            is_subproject = project.relation_project is not None
 
-                alerts.append({
-                    'id': int(project.id),
-                    'name': str(project.name),
-                    'profit_margin': float(round(profit_margin, 1)),
-                    'income': float(income),
-                    'expense': float(expense),
-                    'profit': float(profit),
-                    'is_subproject': bool(is_subproject),
-                    'parent_project_id': int(project.relation_project) if project.relation_project else None
-                })
+            alerts.append({
+                'id': int(project.id),
+                'name': str(project.name),
+                'profit_margin': float(round(profit_margin, 1)),
+                'income': float(income),
+                'expense': float(expense),
+                'profit': float(profit),
+                'is_subproject': bool(is_subproject),
+                'parent_project_id': int(project.relation_project) if project.relation_project else None
+            })
 
-        # Sort by profit margin (most negative first)
-        alerts.sort(key=lambda x: x['profit_margin'])
+    # Sort by profit margin (most negative first)
+    alerts.sort(key=lambda x: x['profit_margin'])
 
-        result = {
-            'alerts': alerts,
-            'count': int(len(alerts)),
-            'period_start': str(six_months_ago.isoformat()),
-            'period_end': str(today.isoformat())
-        }
+    result = {
+        'alerts': alerts,
+        'count': int(len(alerts)),
+        'period_start': str(six_months_ago.isoformat()),
+        'period_end': str(today.isoformat())
+    }
 
-        return result
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error retrieving profitability alerts: {str(e)}")
+    return result
 
 @router.get("/{project_id}", response_model=ProjectOut)
 async def get_project(project_id: int, db: DBSessionDep, user = Depends(get_current_user)):
@@ -716,81 +712,125 @@ async def get_parent_project_financial_summary(
     user = Depends(get_current_user)
 ):
     """Get consolidated financial summary for a parent project including all subprojects"""
-    try:
-        # Use async approach instead of sync
-        from sqlalchemy import select, and_, func
-        from backend.models.project import Project
-        from backend.models.transaction import Transaction
-        from backend.services.project_service import calculate_start_date
-        from datetime import date as date_type
-        
-        # Get parent project
-        parent_result = await db.execute(
-            select(Project).where(
-                Project.id == project_id,
-                Project.is_active == True
-            )
+    # Use async approach instead of sync
+    from sqlalchemy import select, and_, func
+    from backend.models.project import Project
+    from backend.models.transaction import Transaction
+    from backend.services.project_service import calculate_start_date
+    from datetime import date as date_type
+    
+    # Get parent project
+    parent_result = await db.execute(
+        select(Project).where(
+            Project.id == project_id,
+            Project.is_active == True
         )
-        parent_project = parent_result.scalar_one_or_none()
-        
-        if not parent_project:
-            raise HTTPException(status_code=404, detail="Parent project not found")
-        
-        # Get all subprojects
-        subprojects_result = await db.execute(
-            select(Project).where(
-                Project.relation_project == project_id,
-                Project.is_active == True
-            )
+    )
+    parent_project = parent_result.scalar_one_or_none()
+    
+    if not parent_project:
+        raise HTTPException(status_code=404, detail="Parent project not found")
+    
+    # Get all subprojects
+    subprojects_result = await db.execute(
+        select(Project).where(
+            Project.relation_project == project_id,
+            Project.is_active == True
         )
-        subprojects = subprojects_result.scalars().all()
-        
-        # If no start_date provided, use project start_date (or 1 year back as fallback if no start_date)
-        if not start_date:
-            if parent_project.start_date:
-                start_date = parent_project.start_date
-            else:
-                # Fallback: use 1 year ago if no project start date
-                from dateutil.relativedelta import relativedelta
-                start_date = date_type.today() - relativedelta(years=1)
-        
-        # If no end_date provided, use today
-        if not end_date:
-            end_date = date_type.today()
-        
-        # Build date filter
-        date_conditions = []
-        if start_date:
-            date_conditions.append(Transaction.tx_date >= start_date)
-        if end_date:
-            date_conditions.append(Transaction.tx_date <= end_date)
-        
-        # Get transactions for parent project
-        parent_transactions_query = select(Transaction).where(Transaction.project_id == project_id)
+    )
+    subprojects = subprojects_result.scalars().all()
+    
+    # If no start_date provided, use project start_date (or 1 year back as fallback if no start_date)
+    if not start_date:
+        if parent_project.start_date:
+            start_date = parent_project.start_date
+        else:
+            # Fallback: use 1 year ago if no project start date
+            from dateutil.relativedelta import relativedelta
+            start_date = date_type.today() - relativedelta(years=1)
+    
+    # If no end_date provided, use today
+    if not end_date:
+        end_date = date_type.today()
+    
+    # Build date filter
+    date_conditions = []
+    if start_date:
+        date_conditions.append(Transaction.tx_date >= start_date)
+    if end_date:
+        date_conditions.append(Transaction.tx_date <= end_date)
+    
+    # Get transactions for parent project
+    parent_transactions_query = select(Transaction).where(Transaction.project_id == project_id)
+    if date_conditions:
+        parent_transactions_query = parent_transactions_query.where(and_(*date_conditions))
+    
+    parent_transactions_result = await db.execute(parent_transactions_query)
+    parent_transactions = parent_transactions_result.scalars().all()
+    
+    # Calculate parent project financials
+    parent_transaction_income = sum(t.amount for t in parent_transactions if t.type == 'Income' and not t.from_fund)
+    parent_expense = sum(t.amount for t in parent_transactions if t.type == 'Expense' and not t.from_fund)
+    
+    # Calculate income from parent project's monthly budget (treated as expected monthly income)
+    parent_project_income = 0.0
+    monthly_income = float(parent_project.budget_monthly or 0)
+    if monthly_income > 0:
+        parent_transaction_income = 0.0
+        # Use project start_date if available, otherwise use created_at date
+        if parent_project.start_date:
+            income_calculation_start = parent_project.start_date
+        elif hasattr(parent_project, 'created_at') and parent_project.created_at:
+            try:
+                if hasattr(parent_project.created_at, 'date'):
+                    income_calculation_start = parent_project.created_at.date()
+                elif isinstance(parent_project.created_at, date):
+                    income_calculation_start = parent_project.created_at
+                else:
+                    # Fallback: use start_date parameter
+                    income_calculation_start = start_date
+            except (AttributeError, TypeError):
+                # Fallback: use start_date parameter
+                income_calculation_start = start_date
+        else:
+            # Fallback: use start_date parameter (which is already set to project start or 1 year ago)
+            income_calculation_start = start_date
+        parent_project_income = calculate_monthly_income_amount(monthly_income, income_calculation_start, end_date)
+    
+    parent_income = parent_transaction_income + parent_project_income
+    parent_profit = parent_income - parent_expense
+    parent_profit_margin = (parent_profit / parent_income * 100) if parent_income > 0 else 0
+    
+    # Calculate subproject financials
+    subproject_financials = []
+    total_subproject_income = 0
+    total_subproject_expense = 0
+    
+    for subproject in subprojects:
+        subproject_transactions_query = select(Transaction).where(Transaction.project_id == subproject.id)
         if date_conditions:
-            parent_transactions_query = parent_transactions_query.where(and_(*date_conditions))
+            subproject_transactions_query = subproject_transactions_query.where(and_(*date_conditions))
         
-        parent_transactions_result = await db.execute(parent_transactions_query)
-        parent_transactions = parent_transactions_result.scalars().all()
+        subproject_transactions_result = await db.execute(subproject_transactions_query)
+        subproject_transactions = subproject_transactions_result.scalars().all()
         
-        # Calculate parent project financials
-        parent_transaction_income = sum(t.amount for t in parent_transactions if t.type == 'Income' and not t.from_fund)
-        parent_expense = sum(t.amount for t in parent_transactions if t.type == 'Expense' and not t.from_fund)
+        subproject_transaction_income = sum(t.amount for t in subproject_transactions if t.type == 'Income' and not t.from_fund)
+        subproject_expense = sum(t.amount for t in subproject_transactions if t.type == 'Expense' and not t.from_fund)
         
-        # Calculate income from parent project's monthly budget (treated as expected monthly income)
-        parent_project_income = 0.0
-        monthly_income = float(parent_project.budget_monthly or 0)
-        if monthly_income > 0:
-            parent_transaction_income = 0.0
+        # Calculate income from subproject monthly budget (treated as expected monthly income)
+        subproject_project_income = 0.0
+        subproject_monthly_income = float(subproject.budget_monthly or 0)
+        if subproject_monthly_income > 0:
+            subproject_transaction_income = 0.0
             # Use project start_date if available, otherwise use created_at date
-            if parent_project.start_date:
-                income_calculation_start = parent_project.start_date
-            elif hasattr(parent_project, 'created_at') and parent_project.created_at:
+            if subproject.start_date:
+                income_calculation_start = subproject.start_date
+            elif hasattr(subproject, 'created_at') and subproject.created_at:
                 try:
-                    if hasattr(parent_project.created_at, 'date'):
-                        income_calculation_start = parent_project.created_at.date()
-                    elif isinstance(parent_project.created_at, date):
-                        income_calculation_start = parent_project.created_at
+                    if hasattr(subproject.created_at, 'date'):
+                        income_calculation_start = subproject.created_at.date()
+                    elif isinstance(subproject.created_at, date):
+                        income_calculation_start = subproject.created_at
                     else:
                         # Fallback: use start_date parameter
                         income_calculation_start = start_date
@@ -800,119 +840,71 @@ async def get_parent_project_financial_summary(
             else:
                 # Fallback: use start_date parameter (which is already set to project start or 1 year ago)
                 income_calculation_start = start_date
-            parent_project_income = calculate_monthly_income_amount(monthly_income, income_calculation_start, end_date)
+            subproject_project_income = calculate_monthly_income_amount(subproject_monthly_income, income_calculation_start, end_date)
         
-        parent_income = parent_transaction_income + parent_project_income
-        parent_profit = parent_income - parent_expense
-        parent_profit_margin = (parent_profit / parent_income * 100) if parent_income > 0 else 0
+        subproject_income = subproject_transaction_income + subproject_project_income
+        subproject_profit = subproject_income - subproject_expense
+        subproject_profit_margin = (subproject_profit / subproject_income * 100) if subproject_income > 0 else 0
         
-        # Calculate subproject financials
-        subproject_financials = []
-        total_subproject_income = 0
-        total_subproject_expense = 0
+        # Determine status
+        if subproject_profit_margin >= 10:
+            status = 'green'
+        elif subproject_profit_margin <= -10:
+            status = 'red'
+        else:
+            status = 'yellow'
         
-        for subproject in subprojects:
-            subproject_transactions_query = select(Transaction).where(Transaction.project_id == subproject.id)
-            if date_conditions:
-                subproject_transactions_query = subproject_transactions_query.where(and_(*date_conditions))
-            
-            subproject_transactions_result = await db.execute(subproject_transactions_query)
-            subproject_transactions = subproject_transactions_result.scalars().all()
-            
-            subproject_transaction_income = sum(t.amount for t in subproject_transactions if t.type == 'Income' and not t.from_fund)
-            subproject_expense = sum(t.amount for t in subproject_transactions if t.type == 'Expense' and not t.from_fund)
-            
-            # Calculate income from subproject monthly budget (treated as expected monthly income)
-            subproject_project_income = 0.0
-            subproject_monthly_income = float(subproject.budget_monthly or 0)
-            if subproject_monthly_income > 0:
-                subproject_transaction_income = 0.0
-                # Use project start_date if available, otherwise use created_at date
-                if subproject.start_date:
-                    income_calculation_start = subproject.start_date
-                elif hasattr(subproject, 'created_at') and subproject.created_at:
-                    try:
-                        if hasattr(subproject.created_at, 'date'):
-                            income_calculation_start = subproject.created_at.date()
-                        elif isinstance(subproject.created_at, date):
-                            income_calculation_start = subproject.created_at
-                        else:
-                            # Fallback: use start_date parameter
-                            income_calculation_start = start_date
-                    except (AttributeError, TypeError):
-                        # Fallback: use start_date parameter
-                        income_calculation_start = start_date
-                else:
-                    # Fallback: use start_date parameter (which is already set to project start or 1 year ago)
-                    income_calculation_start = start_date
-                subproject_project_income = calculate_monthly_income_amount(subproject_monthly_income, income_calculation_start, end_date)
-            
-            subproject_income = subproject_transaction_income + subproject_project_income
-            subproject_profit = subproject_income - subproject_expense
-            subproject_profit_margin = (subproject_profit / subproject_income * 100) if subproject_income > 0 else 0
-            
-            # Determine status
-            if subproject_profit_margin >= 10:
-                status = 'green'
-            elif subproject_profit_margin <= -10:
-                status = 'red'
-            else:
-                status = 'yellow'
-            
-            subproject_financials.append({
-                'id': subproject.id,
-                'name': subproject.name,
-                'income': subproject_income,
-                'expense': subproject_expense,
-                'profit': subproject_profit,
-                'profit_margin': subproject_profit_margin,
-                'status': status
-            })
-            
-            total_subproject_income += subproject_income
-            total_subproject_expense += subproject_expense
+        subproject_financials.append({
+            'id': subproject.id,
+            'name': subproject.name,
+            'income': subproject_income,
+            'expense': subproject_expense,
+            'profit': subproject_profit,
+            'profit_margin': subproject_profit_margin,
+            'status': status
+        })
         
-        # Calculate consolidated totals
-        total_income = parent_income + total_subproject_income
-        total_expense = parent_expense + total_subproject_expense
-        total_profit = total_income - total_expense
-        total_profit_margin = (total_profit / total_income * 100) if total_income > 0 else 0
-        
-        return {
-            'parent_project': {
-                'id': parent_project.id,
-                'name': parent_project.name,
-                'description': parent_project.description,
-                'address': parent_project.address,
-                'city': parent_project.city,
-                'num_residents': parent_project.num_residents,
-                'monthly_price_per_apartment': parent_project.monthly_price_per_apartment,
-                'budget_monthly': parent_project.budget_monthly,
-                'budget_annual': parent_project.budget_annual
-            },
-            'financial_summary': {
-                'total_income': total_income,
-                'total_expense': total_expense,
-                'net_profit': total_profit,
-                'profit_margin': total_profit_margin,
-                'subproject_count': len(subprojects),
-                'active_subprojects': len([sp for sp in subprojects if sp.is_active])
-            },
-            'parent_financials': {
-                'income': parent_income,
-                'expense': parent_expense,
-                'profit': parent_profit,
-                'profit_margin': parent_profit_margin
-            },
-            'subproject_financials': subproject_financials,
-            'date_range': {
-                'start_date': start_date.isoformat() if start_date else None,
-                'end_date': end_date.isoformat() if end_date else None
-            }
+        total_subproject_income += subproject_income
+        total_subproject_expense += subproject_expense
+    
+    # Calculate consolidated totals
+    total_income = parent_income + total_subproject_income
+    total_expense = parent_expense + total_subproject_expense
+    total_profit = total_income - total_expense
+    total_profit_margin = (total_profit / total_income * 100) if total_income > 0 else 0
+    
+    return {
+        'parent_project': {
+            'id': parent_project.id,
+            'name': parent_project.name,
+            'description': parent_project.description,
+            'address': parent_project.address,
+            'city': parent_project.city,
+            'num_residents': parent_project.num_residents,
+            'monthly_price_per_apartment': parent_project.monthly_price_per_apartment,
+            'budget_monthly': parent_project.budget_monthly,
+            'budget_annual': parent_project.budget_annual
+        },
+        'financial_summary': {
+            'total_income': total_income,
+            'total_expense': total_expense,
+            'net_profit': total_profit,
+            'profit_margin': total_profit_margin,
+            'subproject_count': len(subprojects),
+            'active_subprojects': len([sp for sp in subprojects if sp.is_active])
+        },
+        'parent_financials': {
+            'income': parent_income,
+            'expense': parent_expense,
+            'profit': parent_profit,
+            'profit_margin': parent_profit_margin
+        },
+        'subproject_financials': subproject_financials,
+        'date_range': {
+            'start_date': start_date.isoformat() if start_date else None,
+            'end_date': end_date.isoformat() if end_date else None
         }
-            
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error retrieving financial summary: {str(e)}")
+    }
 
 
 @router.get("/{project_id}/fund")
@@ -1124,103 +1116,99 @@ async def get_financial_trends(
     user = Depends(get_current_user)
 ):
     """Get financial trends over the last N years"""
-    try:
-        from sqlalchemy import select, and_, func, extract
-        from backend.models.project import Project
-        from backend.models.transaction import Transaction
-        from datetime import datetime, date
+    from sqlalchemy import select, and_, func, extract
+    from backend.models.project import Project
+    from backend.models.transaction import Transaction
+    from datetime import datetime, date
+    
+    # Get parent project
+    parent_result = await db.execute(
+        select(Project).where(
+            Project.id == project_id,
+            Project.is_active == True
+        )
+    )
+    parent_project = parent_result.scalar_one_or_none()
+    
+    if not parent_project:
+        raise HTTPException(status_code=404, detail="Parent project not found")
+    
+    # Get all subprojects
+    subprojects_result = await db.execute(
+        select(Project).where(
+            Project.relation_project == project_id,
+            Project.is_active == True
+        )
+    )
+    subprojects = subprojects_result.scalars().all()
+    
+    # Calculate trends for the last N years
+    trends = []
+    current_year = datetime.now().year
+    
+    for i in range(years_back):
+        year = current_year - i
         
-        # Get parent project
-        parent_result = await db.execute(
-            select(Project).where(
-                Project.id == project_id,
-                Project.is_active == True
+        # Get start and end of year
+        year_start = date(year, 1, 1)
+        year_end = date(year, 12, 31)
+        
+        # Get transactions for parent project in this year
+        parent_transactions_query = select(Transaction).where(
+            and_(
+                Transaction.project_id == project_id,
+                Transaction.tx_date >= year_start,
+                Transaction.tx_date <= year_end
             )
         )
-        parent_project = parent_result.scalar_one_or_none()
+        parent_transactions_result = await db.execute(parent_transactions_query)
+        parent_transactions = parent_transactions_result.scalars().all()
         
-        if not parent_project:
-            raise HTTPException(status_code=404, detail="Parent project not found")
+        parent_income = sum(t.amount for t in parent_transactions if t.type == 'Income')
+        parent_expense = sum(t.amount for t in parent_transactions if t.type == 'Expense')
         
-        # Get all subprojects
-        subprojects_result = await db.execute(
-            select(Project).where(
-                Project.relation_project == project_id,
-                Project.is_active == True
-            )
-        )
-        subprojects = subprojects_result.scalars().all()
+        # Get transactions for subprojects in this year
+        total_subproject_income = 0
+        total_subproject_expense = 0
         
-        # Calculate trends for the last N years
-        trends = []
-        current_year = datetime.now().year
-        
-        for i in range(years_back):
-            year = current_year - i
-            
-            # Get start and end of year
-            year_start = date(year, 1, 1)
-            year_end = date(year, 12, 31)
-            
-            # Get transactions for parent project in this year
-            parent_transactions_query = select(Transaction).where(
+        for subproject in subprojects:
+            subproject_transactions_query = select(Transaction).where(
                 and_(
-                    Transaction.project_id == project_id,
+                    Transaction.project_id == subproject.id,
                     Transaction.tx_date >= year_start,
                     Transaction.tx_date <= year_end
                 )
             )
-            parent_transactions_result = await db.execute(parent_transactions_query)
-            parent_transactions = parent_transactions_result.scalars().all()
+            subproject_transactions_result = await db.execute(subproject_transactions_query)
+            subproject_transactions = subproject_transactions_result.scalars().all()
             
-            parent_income = sum(t.amount for t in parent_transactions if t.type == 'Income')
-            parent_expense = sum(t.amount for t in parent_transactions if t.type == 'Expense')
+            subproject_income = sum(t.amount for t in subproject_transactions if t.type == 'Income')
+            subproject_expense = sum(t.amount for t in subproject_transactions if t.type == 'Expense')
             
-            # Get transactions for subprojects in this year
-            total_subproject_income = 0
-            total_subproject_expense = 0
-            
-            for subproject in subprojects:
-                subproject_transactions_query = select(Transaction).where(
-                    and_(
-                        Transaction.project_id == subproject.id,
-                        Transaction.tx_date >= year_start,
-                        Transaction.tx_date <= year_end
-                    )
-                )
-                subproject_transactions_result = await db.execute(subproject_transactions_query)
-                subproject_transactions = subproject_transactions_result.scalars().all()
-                
-                subproject_income = sum(t.amount for t in subproject_transactions if t.type == 'Income')
-                subproject_expense = sum(t.amount for t in subproject_transactions if t.type == 'Expense')
-                
-                total_subproject_income += subproject_income
-                total_subproject_expense += subproject_expense
-            
-            # Calculate totals
-            total_income = parent_income + total_subproject_income
-            total_expense = parent_expense + total_subproject_expense
-            total_profit = total_income - total_expense
-            total_profit_margin = (total_profit / total_income * 100) if total_income > 0 else 0
-            
-            trends.append({
-                'year': year,
-                'income': total_income,
-                'expense': total_expense,
-                'profit': total_profit,
-                'profit_margin': total_profit_margin
-            })
+            total_subproject_income += subproject_income
+            total_subproject_expense += subproject_expense
         
-        # Reverse to get chronological order
-        trends.reverse()
+        # Calculate totals
+        total_income = parent_income + total_subproject_income
+        total_expense = parent_expense + total_subproject_expense
+        total_profit = total_income - total_expense
+        total_profit_margin = (total_profit / total_income * 100) if total_income > 0 else 0
         
-        return {
-            'trends': trends,
-            'period_years': years_back
-        }
-            
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error retrieving financial trends: {str(e)}")
+        trends.append({
+            'year': year,
+            'income': total_income,
+            'expense': total_expense,
+            'profit': total_profit,
+            'profit_margin': total_profit_margin
+        })
+    
+    # Reverse to get chronological order
+    trends.reverse()
+    
+    return {
+        'trends': trends,
+        'period_years': years_back
+    }
 
 
 # ============================================================================
@@ -1234,24 +1222,21 @@ async def get_previous_contract_periods(
     user = Depends(get_current_user)
 ):
     """Get all previous contract periods grouped by year for a project"""
-    try:
-        service = ContractPeriodService(db)
-        periods_by_year = await service.get_previous_contracts_by_year(project_id)
-        
-        # Convert to list format for easier frontend handling
-        result = []
-        for year in sorted(periods_by_year.keys(), reverse=True):
-            result.append({
-                'year': year,
-                'periods': periods_by_year[year]
-            })
-        
-        return {
-            'project_id': project_id,
-            'periods_by_year': result
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error retrieving contract periods: {str(e)}")
+    service = ContractPeriodService(db)
+    periods_by_year = await service.get_previous_contracts_by_year(project_id)
+    
+    # Convert to list format for easier frontend handling
+    result = []
+    for year in sorted(periods_by_year.keys(), reverse=True):
+        result.append({
+            'year': year,
+            'periods': periods_by_year[year]
+        })
+    
+    return {
+        'project_id': project_id,
+        'periods_by_year': result
+    }
 
 
 @router.get("/{project_id}/contract-periods/{period_id}")
@@ -1262,21 +1247,16 @@ async def get_contract_period_summary(
     user = Depends(get_current_user)
 ):
     """Get full summary of a contract period including transactions and budgets (read-only)"""
-    try:
-        service = ContractPeriodService(db)
-        summary = await service.get_contract_period_summary(period_id)
-        
-        if not summary:
-            raise HTTPException(status_code=404, detail="Contract period not found")
-        
-        if summary['project_id'] != project_id:
-            raise HTTPException(status_code=400, detail="Contract period does not belong to this project")
-        
-        return summary
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error retrieving contract period summary: {str(e)}")
+    service = ContractPeriodService(db)
+    summary = await service.get_contract_period_summary(period_id)
+    
+    if not summary:
+        raise HTTPException(status_code=404, detail="Contract period not found")
+    
+    if summary['project_id'] != project_id:
+        raise HTTPException(status_code=400, detail="Contract period does not belong to this project")
+    
+    return summary
 
 
 @router.get("/{project_id}/contract-periods/{period_id}/export-csv")
@@ -1638,21 +1618,71 @@ async def check_and_renew_contract(
     user = Depends(get_current_user)
 ):
     """Check if contract has ended and renew it automatically if needed"""
-    try:
-        service = ContractPeriodService(db)
-        renewed_project = await service.check_and_renew_contract(project_id)
+    service = ContractPeriodService(db)
+    renewed_project = await service.check_and_renew_contract(project_id)
+    
+    if renewed_project:
+        # Reload contract periods after renewal to ensure they're up to date
+        periods_by_year = await service.get_previous_contracts_by_year(project_id)
+        result = []
+        for year in sorted(periods_by_year.keys(), reverse=True):
+            result.append({
+                'year': year,
+                'periods': periods_by_year[year]
+            })
         
-        if renewed_project:
-            return {
-                'renewed': True,
-                'message': 'חוזה חודש בהצלחה',
-                'new_start_date': renewed_project.start_date.isoformat() if renewed_project.start_date else None,
-                'new_end_date': renewed_project.end_date.isoformat() if renewed_project.end_date else None
+        return {
+            'renewed': True,
+            'message': 'חוזה חודש בהצלחה',
+            'new_start_date': renewed_project.start_date.isoformat() if renewed_project.start_date else None,
+            'new_end_date': renewed_project.end_date.isoformat() if renewed_project.end_date else None,
+            'contract_periods': {
+                'project_id': project_id,
+                'periods_by_year': result
             }
-        else:
-            return {
-                'renewed': False,
-                'message': 'החוזה עדיין לא הסתיים או אין תאריך סיום מוגדר'
-            }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error checking contract renewal: {str(e)}")
+        }
+    else:
+        return {
+            'renewed': False,
+            'message': 'החוזה עדיין לא הסתיים או אין תאריך סיום מוגדר'
+        }
+
+
+@router.post("/{project_id}/close-year")
+async def close_contract_year(
+    project_id: int,
+    db: DBSessionDep,
+    end_date: str = Form(..., description="End date in YYYY-MM-DD format"),
+    user = Depends(require_admin())
+):
+    """
+    Manually close a contract year and archive it.
+    This creates a read-only archive entry and starts a new contract period.
+    Admin only.
+    """
+    try:
+        # Parse date string to date object
+        from datetime import datetime as dt
+        end_date_obj = dt.strptime(end_date, "%Y-%m-%d").date()
+        
+        service = ContractPeriodService(db)
+        contract_period = await service.close_year_manually(
+            project_id=project_id,
+            end_date=end_date_obj,
+            archived_by_user_id=user.id
+        )
+        
+        # Reload contract periods after closing
+        periods_by_year = await service.get_previous_contracts_by_year(project_id)
+        
+        return {
+            'success': True,
+            'message': 'שנה נסגרה ונשמרה בארכיון בהצלחה',
+            'contract_period_id': contract_period.id,
+            'start_date': contract_period.start_date.isoformat(),
+            'end_date': contract_period.end_date.isoformat(),
+            'contract_year': contract_period.contract_year,
+            'periods_by_year': periods_by_year
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))

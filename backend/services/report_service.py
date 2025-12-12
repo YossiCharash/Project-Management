@@ -481,3 +481,63 @@ class ReportService:
             }
             for tx in transactions
         ]
+    
+    async def get_expenses_by_transaction_date(
+        self,
+        project_id: int | None = None,
+        start_date: date | None = None,
+        end_date: date | None = None
+    ) -> Dict[str, Any]:
+        """
+        Get expenses aggregated by transaction date for dashboard.
+        Shows expenses related to specific transaction dates with aggregation.
+        """
+        # Build query
+        query = select(
+            Transaction.tx_date,
+            func.sum(Transaction.amount).label('total_expense'),
+            func.count(Transaction.id).label('transaction_count')
+        ).where(
+            Transaction.type == 'Expense',
+            Transaction.from_fund == False
+        )
+        
+        # Filter by project if provided
+        if project_id:
+            query = query.where(Transaction.project_id == project_id)
+        
+        # Filter by date range if provided
+        if start_date:
+            query = query.where(Transaction.tx_date >= start_date)
+        if end_date:
+            query = query.where(Transaction.tx_date <= end_date)
+        
+        # Group by date and order
+        query = query.group_by(Transaction.tx_date).order_by(Transaction.tx_date.desc())
+        
+        result = await self.db.execute(query)
+        rows = result.all()
+        
+        # Format results
+        expenses_by_date = []
+        total_expense = 0.0
+        total_count = 0
+        
+        for row in rows:
+            expense_amount = float(row.total_expense)
+            total_expense += expense_amount
+            total_count += row.transaction_count
+            
+            expenses_by_date.append({
+                'date': row.tx_date.isoformat(),
+                'expense': expense_amount,
+                'transaction_count': row.transaction_count
+            })
+        
+        return {
+            'expenses_by_date': expenses_by_date,
+            'total_expense': total_expense,
+            'total_transaction_count': total_count,
+            'period_start': start_date.isoformat() if start_date else None,
+            'period_end': end_date.isoformat() if end_date else None
+        }

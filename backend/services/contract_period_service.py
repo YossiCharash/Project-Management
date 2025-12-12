@@ -10,6 +10,7 @@ from backend.repositories.project_repository import ProjectRepository
 from backend.repositories.transaction_repository import TransactionRepository
 from backend.repositories.budget_repository import BudgetRepository
 from backend.models.contract_period import ContractPeriod
+from backend.models.archived_contract import ArchivedContract
 from backend.models.project import Project
 from backend.models.transaction import Transaction
 from backend.models.budget import Budget
@@ -102,11 +103,13 @@ class ContractPeriodService:
             return None
 
         today = date.today()
+        # Renew if end_date is today or in the past
         if project.end_date > today:
             # Contract hasn't ended yet
             return None
 
-        # Contract has ended - archive it and create new period
+        # Contract has ended (end_date <= today) - archive it and create new period
+        print(f"🔄 Contract for project {project_id} has ended (end_date: {project.end_date}, today: {today}). Renewing...")
         # Calculate the duration of the contract
         if not project.start_date:
             # Can't calculate duration without start_date
@@ -124,13 +127,18 @@ class ContractPeriodService:
         # Only create if it doesn't already exist
         if not existing_period:
             # Archive the old contract period
+            print(f"📦 Archiving contract period for project {project_id} ({project.start_date} to {project.end_date})")
             budgets_snapshot = await self._get_budgets_snapshot(project_id)
-            await self.create_contract_period(
+            archived_period = await self.create_contract_period(
                 project_id=project_id,
                 start_date=project.start_date,
                 end_date=project.end_date,
                 budgets_snapshot=budgets_snapshot
             )
+            print(f"✅ Contract period archived with ID {archived_period.id}")
+            
+            # Create read-only archive entry
+            await self._create_read_only_archive(archived_period)
         else:
             # Contract period already exists, just update project dates
             print(f"ℹ️  Contract period already exists for project {project_id}, skipping creation")
@@ -139,12 +147,15 @@ class ContractPeriodService:
         new_start_date = project.end_date + timedelta(days=1)
         new_end_date = new_start_date + timedelta(days=contract_duration)
 
+        print(f"🆕 Creating new contract period for project {project_id}: {new_start_date} to {new_end_date}")
+
         # Update project with new dates
         # Note: Budgets and fund continue, but transactions will only show for new period
         project.start_date = new_start_date
         project.end_date = new_end_date
 
         await self.projects.update(project)
+        print(f"✅ Project {project_id} updated with new contract dates")
         return project
 
     async def _get_budgets_snapshot(self, project_id: int) -> Dict:
@@ -163,6 +174,109 @@ class ContractPeriodService:
                 for b in budgets
             ]
         }
+    
+    async def _create_read_only_archive(self, contract_period: ContractPeriod, archived_by_user_id: int | None = None) -> ArchivedContract:
+        """Create a read-only archive entry for a contract period"""
+        # Count transactions in this period
+        transactions_query = select(Transaction).where(
+            and_(
+                Transaction.project_id == contract_period.project_id,
+                Transaction.tx_date >= contract_period.start_date,
+                Transaction.tx_date <= contract_period.end_date,
+                Transaction.from_fund == False
+            )
+        )
+        result = await self.db.execute(transactions_query)
+        transaction_count = len(list(result.scalars().all()))
+        
+        # Create archived contract entry
+        archived_contract = ArchivedContract(
+            contract_period_id=contract_period.id,
+            project_id=contract_period.project_id,
+            start_date=contract_period.start_date,
+            end_date=contract_period.end_date,
+            contract_year=contract_period.contract_year,
+            year_index=contract_period.year_index,
+            total_income=contract_period.total_income,
+            total_expense=contract_period.total_expense,
+            total_profit=contract_period.total_profit,
+            budgets_snapshot=contract_period.budgets_snapshot,
+            transaction_count=transaction_count,
+            archived_by_user_id=archived_by_user_id,
+            is_read_only=True
+        )
+        
+        self.db.add(archived_contract)
+        await self.db.commit()
+        await self.db.refresh(archived_contract)
+        
+        print(f"📚 Created read-only archive entry for contract period {contract_period.id}")
+        return archived_contract
+    
+    async def close_year_manually(
+        self,
+        project_id: int,
+        end_date: date,
+        archived_by_user_id: int | None = None
+    ) -> ContractPeriod:
+        """
+        Manually close a contract year and archive it.
+        This is the main workflow for year-end closing.
+        """
+        project = await self.projects.get_by_id(project_id)
+        if not project or not project.is_active:
+            raise ValueError("Project not found or not active")
+        
+        if not project.start_date:
+            raise ValueError("Project must have a start_date to close a year")
+        
+        # Use project's current start_date and provided end_date
+        start_date = project.start_date
+        
+        # Check if contract period already exists
+        existing_period = await self.contract_periods.get_by_exact_dates(
+            project_id=project_id,
+            start_date=start_date,
+            end_date=end_date
+        )
+        
+        if existing_period:
+            # If already exists, create archive entry if it doesn't exist
+            from sqlalchemy import select
+            from backend.models.archived_contract import ArchivedContract
+            archive_check = await self.db.execute(
+                select(ArchivedContract).where(
+                    ArchivedContract.contract_period_id == existing_period.id
+                )
+            )
+            if not archive_check.scalar_one_or_none():
+                await self._create_read_only_archive(existing_period, archived_by_user_id)
+            return existing_period
+        
+        # Create new contract period
+        budgets_snapshot = await self._get_budgets_snapshot(project_id)
+        contract_period = await self.create_contract_period(
+            project_id=project_id,
+            start_date=start_date,
+            end_date=end_date,
+            budgets_snapshot=budgets_snapshot
+        )
+        
+        # Create read-only archive entry
+        await self._create_read_only_archive(contract_period, archived_by_user_id)
+        
+        # Update project dates for new period
+        new_start_date = end_date + timedelta(days=1)
+        # Calculate duration and set new end_date
+        duration = (end_date - start_date).days
+        new_end_date = new_start_date + timedelta(days=duration)
+        
+        project.start_date = new_start_date
+        project.end_date = new_end_date
+        await self.projects.update(project)
+        
+        print(f"✅ Year closed and archived for project {project_id}. New period: {new_start_date} to {new_end_date}")
+        return contract_period
 
     async def get_contract_period_summary(
         self, 

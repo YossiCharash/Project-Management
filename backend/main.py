@@ -1,5 +1,6 @@
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.openapi.utils import get_openapi
@@ -44,6 +45,64 @@ def create_app() -> FastAPI:
         openapi_tags=tags_metadata,
         redirect_slashes=False,  # Disable automatic 307 redirects between /route and /route/
     )
+
+    from sqlalchemy.exc import IntegrityError, DataError
+    from fastapi.exceptions import RequestValidationError
+    from pydantic import ValidationError
+
+    @app.exception_handler(IntegrityError)
+    async def integrity_error_handler(request: Request, exc: IntegrityError):
+        """Handle database integrity errors (unique constraints, foreign keys)"""
+        error_msg = str(exc.orig) if exc.orig else str(exc)
+        if "unique constraint" in error_msg.lower():
+            detail = "הפעולה נכשלה: הרשומה כבר קיימת במערכת."
+            status_code = 409
+        elif "foreign key constraint" in error_msg.lower():
+            detail = "הפעולה נכשלה: קיימת תלות ברשומות אחרות המונעת את הפעולה."
+            status_code = 400
+        else:
+            detail = "שגיאת מסד נתונים."
+            status_code = 400
+            
+        print(f"⚠️ Integrity Error at {request.url.path}: {detail} - {error_msg}")
+        return JSONResponse(
+            status_code=status_code,
+            content={"detail": detail},
+        )
+
+    @app.exception_handler(DataError)
+    async def data_error_handler(request: Request, exc: DataError):
+        """Handle database data errors (invalid types, values too long)"""
+        print(f"⚠️ Data Error at {request.url.path}: {exc}")
+        return JSONResponse(
+            status_code=400,
+            content={"detail": "הנתונים שהוזנו אינם תקינים (סוג נתונים שגוי או ערך ארוך מדי)."},
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_exception_handler(request: Request, exc: RequestValidationError):
+        """Handle Pydantic validation errors with cleaner messages"""
+        errors = []
+        for error in exc.errors():
+            field = ".".join(str(x) for x in error["loc"] if x != "body")
+            msg = error["msg"]
+            errors.append(f"{field}: {msg}")
+            
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "שגיאת אימות נתונים", "errors": errors},
+        )
+
+    @app.exception_handler(Exception)
+    async def global_exception_handler(request: Request, exc: Exception):
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"🔥 Unhandled exception at {request.url.path}: {exc}")
+        print(error_details)
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Internal Server Error. Please contact support."},
+        )
 
     # Add CORS middleware FIRST, before any other middleware
     # This ensures CORS headers are set for all requests including preflight

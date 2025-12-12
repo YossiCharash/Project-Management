@@ -1,9 +1,20 @@
 import axios from 'axios'
 
-// ההגדרה של baseURL - משתמשת ב-relative path ב-production (עבור nginx proxy)
-// וב-localhost ב-development (או דרך vite proxy)
+// Support runtime configuration via window.ENV (for Docker/K8s)
+declare global {
+  interface Window {
+    ENV?: {
+      API_URL?: string;
+    }
+  }
+}
+
 const api = axios.create({
-  baseURL: "http://localhost:8000/api/v1",
+  // Order of precedence:
+  // 1. Runtime config (window.ENV.API_URL)
+  // 2. Build-time env var (VITE_API_URL)
+  // 3. Fallback to localhost
+  baseURL: window.ENV?.API_URL || import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1",
   timeout: 30000, // avoid ECONNABORTED on heavy endpoints during dev
   withCredentials: false,
 })

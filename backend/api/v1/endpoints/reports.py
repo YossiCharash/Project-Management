@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
+from datetime import date
 
 from backend.core.deps import DBSessionDep, require_roles, get_current_user
 from backend.services.report_service import ReportService
@@ -199,5 +200,32 @@ async def get_project_transactions(project_id: int, db: DBSessionDep, user = Dep
     except Exception as e:
         import traceback
         print(f"❌ [Report API] Error getting transactions for project {project_id}: {str(e)}")
+        traceback.print_exc()
+        raise
+
+
+@router.get("/expenses-by-date")
+async def get_expenses_by_transaction_date(
+    db: DBSessionDep,
+    project_id: int | None = Query(None, description="Filter by project ID"),
+    start_date: date | None = Query(None, description="Start date for filtering"),
+    end_date: date | None = Query(None, description="End date for filtering"),
+    user = Depends(get_current_user)
+):
+    """
+    Get expenses aggregated by transaction date for dashboard.
+    Shows expenses related to specific transaction dates with aggregation.
+    Accessible to all authenticated users.
+    """
+    try:
+        result = await ReportService(db).get_expenses_by_transaction_date(
+            project_id=project_id,
+            start_date=start_date,
+            end_date=end_date
+        )
+        return result
+    except Exception as e:
+        import traceback
+        print(f"❌ [Report API] Error getting expenses by date: {str(e)}")
         traceback.print_exc()
         raise
