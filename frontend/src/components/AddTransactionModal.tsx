@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { Project, TransactionCreate } from '../types/api'
-import { ProjectAPI, TransactionAPI } from '../lib/apiClient'
+import { ProjectAPI, TransactionAPI, CategoryAPI } from '../lib/apiClient'
 import api from '../lib/api'
 
 interface AddTransactionModalProps {
@@ -31,15 +31,28 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const [fundBalance, setFundBalance] = useState<number | null>(null)
 
   const [availableProjects, setAvailableProjects] = useState<Project[]>([])
+  const [availableCategories, setAvailableCategories] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Load available projects
+  // Load available projects and categories
   useEffect(() => {
     if (isOpen) {
       loadProjects()
+      loadCategories()
     }
   }, [isOpen])
+
+  const loadCategories = async () => {
+    try {
+      const categories = await CategoryAPI.getCategories()
+      const categoryNames = categories.filter(cat => cat.is_active).map(cat => cat.name)
+      setAvailableCategories(categoryNames)
+    } catch (err) {
+      console.error('Error loading categories:', err)
+      setAvailableCategories([])
+    }
+  }
 
   // Load fund info when project is selected
   useEffect(() => {
@@ -229,12 +242,9 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
               className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
             >
               <option value="">בחר קטגוריה</option>
-              <option value="ניקיון">ניקיון</option>
-              <option value="חשמל">חשמל</option>
-              <option value="ביטוח">ביטוח</option>
-              <option value="גינון">גינון</option>
-              <option value="תחזוקה">תחזוקה</option>
-              <option value="אחר">אחר</option>
+              {availableCategories.map((cat) => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
             </select>
           </div>
 

@@ -14,9 +14,7 @@ export default function Settings() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showAddForm, setShowAddForm] = useState(false)
-  const [editingCategory, setEditingCategory] = useState<Category | null>(null)
   const [newCategoryName, setNewCategoryName] = useState('')
-  const [editCategoryName, setEditCategoryName] = useState('')
   const [nameValidationError, setNameValidationError] = useState<string | null>(null)
   const [isValidatingName, setIsValidatingName] = useState(false)
   const [activeTab, setActiveTab] = useState<'categories' | 'suppliers' | 'display'>('categories')
@@ -60,8 +58,26 @@ export default function Settings() {
   }
 
   useEffect(() => {
-    fetchCategories()
-    if (activeTab === 'suppliers') {
+    // Reset forms and errors when switching tabs
+    setShowAddForm(false)
+    setShowAddSupplierForm(false)
+    setEditingSupplier(null)
+    setNewCategoryName('')
+    setSupplierFormData({
+      name: '',
+      contact_email: '',
+      phone: '',
+      category: '',
+      annual_budget: undefined
+    })
+    setError(null)
+    setSuppliersError(null)
+    setNameValidationError(null)
+    
+    // Load data based on active tab
+    if (activeTab === 'categories') {
+      fetchCategories()
+    } else if (activeTab === 'suppliers') {
       fetchSuppliers()
       loadCategoriesForSuppliers()
     }
@@ -275,20 +291,6 @@ export default function Settings() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [newCategoryName, showAddForm])
 
-  // Debounced validation for edit category name
-  useEffect(() => {
-    if (!editingCategory || !editCategoryName) {
-      setNameValidationError(null)
-      return
-    }
-
-    const timeoutId = setTimeout(() => {
-      validateCategoryName(editCategoryName, editingCategory.id)
-    }, 500) // Wait 500ms after user stops typing
-
-    return () => clearTimeout(timeoutId)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editCategoryName, editingCategory?.id])
 
   // Show loading while checking auth
   if (authLoading || !me) {
@@ -333,44 +335,6 @@ export default function Settings() {
     }
   }
 
-  const handleEditCategory = (category: Category) => {
-    setEditingCategory(category)
-    setEditCategoryName(category.name)
-  }
-
-  const handleUpdateCategory = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!editingCategory) {
-      return
-    }
-
-    // Final validation before submit
-    const isValid = await validateCategoryName(editCategoryName, editingCategory.id)
-    if (!isValid || nameValidationError) {
-      setError(nameValidationError || 'שם הקטגוריה לא תקין')
-      return
-    }
-
-    setError(null)
-    setLoading(true)
-    try {
-      await CategoryAPI.updateCategory(editingCategory.id, { name: editCategoryName.trim() })
-      setEditingCategory(null)
-      setEditCategoryName('')
-      setNameValidationError(null)
-      await fetchCategories()
-    } catch (err: any) {
-      const errorDetail = err.response?.data?.detail
-      if (Array.isArray(errorDetail) && errorDetail[0]?.msg) {
-        setError(errorDetail[0].msg)
-        setNameValidationError(errorDetail[0].msg)
-      } else {
-        setError(errorDetail || err.message || 'שגיאה בעדכון הקטגוריה')
-      }
-    } finally {
-      setLoading(false)
-    }
-  }
 
   const handleDeleteCategory = async (categoryId: number, categoryName: string) => {
     if (!confirm(`האם אתה בטוח שברצונך למחוק את הקטגוריה "${categoryName}"?`)) {
@@ -389,11 +353,6 @@ export default function Settings() {
     }
   }
 
-  const cancelEdit = () => {
-    setEditingCategory(null)
-    setEditCategoryName('')
-    setNameValidationError(null)
-  }
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6">
@@ -410,8 +369,6 @@ export default function Settings() {
               <button
                 onClick={() => {
                   setActiveTab('categories')
-                  setShowAddForm(false)
-                  setNameValidationError(null)
                 }}
                 className={`px-4 py-2 font-medium transition-colors border-b-2 ${
                   activeTab === 'categories'
@@ -424,10 +381,6 @@ export default function Settings() {
               <button
                 onClick={() => {
                   setActiveTab('suppliers')
-                  setShowAddForm(false)
-                  setNameValidationError(null)
-                  fetchSuppliers()
-                  loadCategoriesForSuppliers()
                 }}
                 className={`px-4 py-2 font-medium transition-colors border-b-2 ${
                   activeTab === 'suppliers'
@@ -440,8 +393,6 @@ export default function Settings() {
               <button
                 onClick={() => {
                   setActiveTab('display')
-                  setShowAddForm(false)
-                  setNameValidationError(null)
                 }}
                 className={`px-4 py-2 font-medium transition-colors border-b-2 ${
                   activeTab === 'display'
@@ -550,70 +501,17 @@ export default function Settings() {
                   key={category.id}
                   className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                 >
-                  {editingCategory?.id === category.id ? (
-                    <form onSubmit={handleUpdateCategory} className="flex-1 space-y-2">
-                      <div className="flex gap-3">
-                        <div className="flex-1">
-                          <input
-                            type="text"
-                            value={editCategoryName}
-                            onChange={(e) => {
-                              setEditCategoryName(e.target.value)
-                              setError(null)
-                            }}
-                            className={`w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 transition-colors ${
-                              nameValidationError
-                                ? 'border-red-500 focus:ring-red-500'
-                                : 'border-gray-300 dark:border-gray-600 focus:ring-blue-500'
-                            }`}
-                            autoFocus
-                          />
-                          {nameValidationError && (
-                            <p className="mt-1 text-xs text-red-600 dark:text-red-400">{nameValidationError}</p>
-                          )}
-                          {isValidatingName && !nameValidationError && (
-                            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">בודק...</p>
-                          )}
-                        </div>
-                        <button
-                          type="submit"
-                          disabled={loading || !!nameValidationError || isValidatingName || !editCategoryName.trim()}
-                          className="px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          <Check className="w-4 h-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={cancelEdit}
-                          disabled={loading}
-                          className="px-3 py-2 bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-400 dark:hover:bg-gray-500 transition-colors flex items-center gap-2 disabled:opacity-50"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </form>
-                  ) : (
-                    <>
-                      <span className="text-gray-900 dark:text-white font-medium">{category.name}</span>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => handleEditCategory(category)}
-                          className="p-2 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
-                          title="ערוך"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteCategory(category.id, category.name)}
-                          disabled={loading}
-                          className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors disabled:opacity-50"
-                          title="מחק"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </>
-                  )}
+                  <span className="text-gray-900 dark:text-white font-medium">{category.name}</span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleDeleteCategory(category.id, category.name)}
+                      disabled={loading}
+                      className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors disabled:opacity-50"
+                      title="מחק"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>

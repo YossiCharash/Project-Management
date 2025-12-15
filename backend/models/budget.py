@@ -1,10 +1,11 @@
 from __future__ import annotations
 from datetime import datetime, date
-from sqlalchemy import String, Date, DateTime, ForeignKey, Numeric, Integer, Boolean
+from sqlalchemy import String, Date, DateTime, ForeignKey, Numeric, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.ext.associationproxy import association_proxy
 
 from backend.db.base import Base
-from backend.models.transaction import ExpenseCategory
+from backend.models.category import Category
 
 
 class Budget(Base):

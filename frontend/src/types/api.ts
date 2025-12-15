@@ -30,6 +30,8 @@ export interface Project {
   manager_id?: number | null
   created_at: string
   total_value: number
+  has_fund?: boolean
+  monthly_fund_amount?: number | null
 }
 
 export interface Subproject {
@@ -48,6 +50,7 @@ export interface Transaction {
   amount: number
   description?: string | null
   category?: string | null
+  category_id?: number | null
   payment_method?: string | null
   notes?: string | null
   is_exceptional: boolean
@@ -94,6 +97,7 @@ export interface TransactionCreate {
   amount: number
   description?: string | null
   category?: string | null
+  category_id?: number | null
   payment_method?: string | null
   notes?: string | null
   is_exceptional?: boolean
@@ -176,6 +180,7 @@ export interface RecurringTransactionTemplateCreate {
   type: 'Income' | 'Expense'
   amount: number
   category?: string | null
+  category_id?: number | null
   notes?: string | null
   supplier_id: number
   frequency?: 'Monthly'
@@ -193,6 +198,7 @@ export interface RecurringTransactionTemplate {
   type: 'Income' | 'Expense'
   amount: number
   category?: string | null
+  category_id?: number | null
   notes?: string | null
   supplier_id: number
   frequency: 'Monthly'
@@ -210,6 +216,7 @@ export interface RecurringTransactionTemplateUpdate {
   description?: string | null
   amount?: number
   category?: string | null
+  category_id?: number | null
   notes?: string | null
   supplier_id?: number | null
   day_of_month?: number

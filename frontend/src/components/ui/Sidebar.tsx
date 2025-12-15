@@ -21,6 +21,7 @@ import { useTheme } from '../../contexts/ThemeContext'
 import { cn } from '../../lib/utils'
 import { useSelector } from 'react-redux'
 import type { RootState } from '../../store'
+import { Logo } from './Logo'
 
 interface SidebarProps {
   isCollapsed: boolean
@@ -98,21 +99,23 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
       <div className="p-4 border-b border-gray-200 dark:border-gray-700">
         <div className="flex items-center justify-between">
           <AnimatePresence>
-            {!isCollapsed && (
+            {!isCollapsed ? (
               <motion.div
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
                 transition={{ duration: 0.2 }}
-                className="flex items-center gap-3"
               >
-                <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-                  <Building2 className="w-5 h-5 text-white" />
-                </div>
-                <div>
-                  <h1 className="font-bold text-lg text-gray-900 dark:text-white">BMS</h1>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">מערכת ניהול נכסים</p>
-                </div>
+                <Logo size="lg" showText={true} />
+              </motion.div>
+            ) : (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+              >
+                <Logo size="lg" showText={false} collapsed={true} />
               </motion.div>
             )}
           </AnimatePresence>
@@ -246,15 +249,7 @@ export function MobileSidebar({ isOpen, onClose }: MobileSidebarProps) {
           >
             <div className="p-4 border-b border-gray-200 dark:border-gray-700">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-                    <Building2 className="w-5 h-5 text-white" />
-                  </div>
-                  <div>
-                    <h1 className="font-bold text-lg text-gray-900 dark:text-white">BMS</h1>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">מערכת ניהול נכסים</p>
-                  </div>
-                </div>
+                <Logo size="lg" showText={true} />
                 <button
                   onClick={onClose}
                   className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"

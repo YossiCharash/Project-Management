@@ -5,9 +5,10 @@ interface BudgetCardProps {
   budget: BudgetWithSpending
   onDelete?: () => void
   deleting?: boolean
+  onEdit?: () => void
 }
 
-const BudgetCard: React.FC<BudgetCardProps> = ({ budget, onDelete, deleting }) => {
+const BudgetCard: React.FC<BudgetCardProps> = ({ budget, onDelete, deleting, onEdit }) => {
   // Calculate progress percentage
   const baseBudget = Number(budget.base_amount ?? budget.amount ?? 0)
   const effectiveBudget = Number(budget.amount ?? baseBudget)
@@ -38,7 +39,9 @@ const BudgetCard: React.FC<BudgetCardProps> = ({ budget, onDelete, deleting }) =
 
   // Calculate expected amount based on time elapsed
   const expectedAmount = useMemo(() => {
-    return (budget.amount * budget.expected_spent_percentage) / 100
+    const amount = Number(budget.amount ?? 0)
+    const percentage = Number(budget.expected_spent_percentage ?? 0)
+    return (amount * percentage) / 100
   }, [budget.amount, budget.expected_spent_percentage])
 
   return (
@@ -51,6 +54,18 @@ const BudgetCard: React.FC<BudgetCardProps> = ({ budget, onDelete, deleting }) =
             <span className={`px-3 py-1 rounded-full text-xs font-semibold ${isOverBudget ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' : isSpendingTooFast ? 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200' : isWarning ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' : 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'}`}>
               {statusText}
             </span>
+            {onEdit && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onEdit()
+                }}
+                className="px-2 py-1 text-xs bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200 rounded-md hover:bg-blue-200 dark:hover:bg-blue-800/50"
+              >
+                ערוך
+              </button>
+            )}
             {onDelete && (
               <button
                 type="button"
@@ -87,7 +102,7 @@ const BudgetCard: React.FC<BudgetCardProps> = ({ budget, onDelete, deleting }) =
         </div>
         <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-1">
           <span>0 ₪</span>
-          <span>{budget.amount.toLocaleString()} ₪</span>
+          <span>{Number(budget.amount ?? 0).toLocaleString()} ₪</span>
         </div>
       </div>
 
@@ -96,16 +111,16 @@ const BudgetCard: React.FC<BudgetCardProps> = ({ budget, onDelete, deleting }) =
         <div className="text-center bg-gray-50 dark:bg-gray-700 rounded-lg p-3">
           <div className="text-xs text-gray-600 dark:text-gray-400 mb-1 font-medium">צפוי לפי זמן</div>
           <div className="font-bold text-gray-900 dark:text-white text-lg">
-            {expectedAmount.toLocaleString()} ₪
+            {Number(expectedAmount ?? 0).toLocaleString()} ₪
           </div>
           <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-            {budget.expected_spent_percentage.toFixed(1)}%
+            {Number(budget.expected_spent_percentage ?? 0).toFixed(1)}%
           </div>
         </div>
         <div className="text-center bg-gray-50 dark:bg-gray-700 rounded-lg p-3">
           <div className="text-xs text-gray-600 dark:text-gray-400 mb-1 font-medium">הוצאה נטו</div>
           <div className="font-bold text-gray-900 dark:text-white text-lg">
-            {netSpent.toLocaleString()} ₪
+            {Number(netSpent ?? 0).toLocaleString()} ₪
           </div>
           <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
             {progressPercent.toFixed(1)}%
@@ -118,7 +133,7 @@ const BudgetCard: React.FC<BudgetCardProps> = ({ budget, onDelete, deleting }) =
         <div className="flex items-center justify-center gap-2">
           <span className="text-sm text-gray-600 dark:text-gray-400">הפרש:</span>
           <span className="text-lg font-bold text-gray-900 dark:text-white">
-            {budget.spent_amount > expectedAmount ? '+' : ''}{(budget.spent_amount - expectedAmount).toLocaleString()} ₪
+            {Number(budget.spent_amount ?? 0) > expectedAmount ? '+' : ''}{Number(Number(budget.spent_amount ?? 0) - expectedAmount).toLocaleString()} ₪
           </span>
           <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
             ({progressPercent > budget.expected_spent_percentage ? '+' : ''}{(progressPercent - budget.expected_spent_percentage).toFixed(1)}%)
@@ -131,31 +146,31 @@ const BudgetCard: React.FC<BudgetCardProps> = ({ budget, onDelete, deleting }) =
         <div className="text-center">
         <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">תקציב בסיסי</div>
         <div className="text-lg font-bold text-gray-900 dark:text-white">
-          {baseBudget.toLocaleString()} ₪
+          {Number(baseBudget ?? 0).toLocaleString()} ₪
         </div>
         </div>
         <div className="text-center">
           <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">סה\"כ הוצאות</div>
           <div className={`text-lg font-bold ${isOverBudget ? 'text-red-600' : 'text-blue-600'}`}>
-            {expenseAmount.toLocaleString()} ₪
+            {Number(expenseAmount ?? 0).toLocaleString()} ₪
           </div>
         </div>
         <div className="text-center">
           <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">סה\"כ הכנסות</div>
           <div className="text-lg font-bold text-green-600">
-            {incomeAmount.toLocaleString()} ₪
+            {Number(incomeAmount ?? 0).toLocaleString()} ₪
           </div>
         </div>
         <div className="text-center">
           <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">תקציב נוכחי</div>
           <div className="text-lg font-bold text-gray-900 dark:text-white">
-            {effectiveBudget.toLocaleString()} ₪
+            {Number(effectiveBudget ?? 0).toLocaleString()} ₪
           </div>
         </div>
         <div className="text-center">
           <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">נותר</div>
           <div className={`text-lg font-bold ${remainingAmount < 0 ? 'text-red-600' : 'text-green-600'}`}>
-            {remainingAmount.toLocaleString()} ₪
+            {Number(remainingAmount ?? 0).toLocaleString()} ₪
           </div>
         </div>
       </div>
@@ -187,7 +202,7 @@ const BudgetCard: React.FC<BudgetCardProps> = ({ budget, onDelete, deleting }) =
                 חריגה מעל התקציב!
               </div>
               <div className="text-sm text-red-700 dark:text-red-300">
-                הוצאת <span className="font-semibold">{budget.spent_amount.toLocaleString()} ₪</span> מתוך <span className="font-semibold">{budget.amount.toLocaleString()} ₪</span>
+                הוצאת <span className="font-semibold">{Number(budget.spent_amount ?? 0).toLocaleString()} ₪</span> מתוך <span className="font-semibold">{Number(budget.amount ?? 0).toLocaleString()} ₪</span>
                 {budget.expected_spent_percentage > 0 && (
                   <span> - צפוי היה רק <span className="font-semibold">{budget.expected_spent_percentage.toFixed(1)}%</span> לפי זמן</span>
                 )}

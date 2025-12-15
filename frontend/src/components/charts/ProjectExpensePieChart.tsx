@@ -23,10 +23,10 @@ export default function ProjectExpensePieChart({
             {data.name}
           </p>
           <p className="text-sm text-gray-600 dark:text-gray-400">
-            {data.value.toLocaleString()} ₪
+            {Number(data.value ?? 0).toLocaleString()} ₪
           </p>
           <p className="text-xs text-gray-500 dark:text-gray-500">
-            {((data.value / expenseCategories.reduce((sum, cat) => sum + cat.amount, 0)) * 100).toFixed(1)}%
+            {((Number(data.value ?? 0) / expenseCategories.reduce((sum, cat) => sum + (cat.amount ?? 0), 0)) * 100).toFixed(1)}%
           </p>
         </div>
       )
@@ -90,7 +90,7 @@ export default function ProjectExpensePieChart({
           
           <div className="mt-4 text-center">
             <div className="text-lg font-bold text-gray-700 dark:text-gray-300">
-              סה״כ הוצאות: {totalExpenses.toLocaleString()} ₪
+              סה״כ הוצאות: {Number(totalExpenses ?? 0).toLocaleString()} ₪
             </div>
           </div>
         </>

@@ -20,7 +20,6 @@ class CategoryCreate(CategoryBase):
 
 
 class CategoryUpdate(BaseModel):
-    name: str | None = Field(None, min_length=1, max_length=100)
     is_active: bool | None = None
 
 

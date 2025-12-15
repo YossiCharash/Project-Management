@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react'
-import { Project, ProjectCreate, BudgetCreate } from '../types/api'
+import React, { useState, useEffect, useMemo } from 'react'
+import { Project, ProjectCreate, BudgetCreate, BudgetWithSpending } from '../types/api'
 import { ProjectAPI, BudgetAPI, CategoryAPI } from '../lib/apiClient'
 
 interface CreateProjectModalProps {
@@ -41,6 +41,9 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
   const [existingContractUrl, setExistingContractUrl] = useState<string | null>(null)
   const [budgetInputType, setBudgetInputType] = useState<'monthly' | 'yearly'>('monthly')
   const [categoryBudgets, setCategoryBudgets] = useState<BudgetCreate[]>([])
+  const [existingBudgets, setExistingBudgets] = useState<BudgetWithSpending[]>([])
+  const [existingBudgetCategories, setExistingBudgetCategories] = useState<string[]>([])
+  const [existingFundLocked, setExistingFundLocked] = useState(false)
   const [hasFund, setHasFund] = useState(false)
   const [monthlyFundAmount, setMonthlyFundAmount] = useState<number>(0)
   const [nameError, setNameError] = useState<string | null>(null)
@@ -122,13 +125,18 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
         relation_project: editingProject.relation_project || undefined,
         manager_id: editingProject.manager_id || undefined
       })
-      // Load fund data if exists
+      // Load fund data if exists (fallback to prop before fetching fresh data)
       if ('has_fund' in editingProject) {
-        setHasFund((editingProject as any).has_fund || false)
+        const hasFundFlag = Boolean((editingProject as any).has_fund)
+        setHasFund(hasFundFlag)
+        setExistingFundLocked(hasFundFlag)
         setMonthlyFundAmount((editingProject as any).monthly_fund_amount || 0)
+      } else {
+        setExistingFundLocked(false)
       }
       // Load existing budgets
       loadExistingBudgets(editingProject.id)
+      loadFundLockState(editingProject.id)
       // Reset image states when editing
       setSelectedImage(null)
       setImagePreview(editingProject.image_url ? getImageUrl(editingProject.image_url) : null)
@@ -151,20 +159,35 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
   const loadExistingBudgets = async (projectId: number) => {
     try {
       const budgets = await BudgetAPI.getProjectBudgets(projectId)
-      const budgetCreates: BudgetCreate[] = budgets.map(b => ({
-        category: b.category,
-        amount: b.amount,
-        period_type: b.period_type || 'Annual',
-        start_date: b.start_date,
-        end_date: b.end_date || null
-      }))
-      setCategoryBudgets(budgetCreates)
+      setExistingBudgets(budgets)
+      setExistingBudgetCategories(budgets.map(b => b.category))
+      // Editing existing budgets happens from the project details page,
+      // so keep the creation list empty to allow only new categories here.
+      setCategoryBudgets([])
       
       // Note: We don't add budget categories to the list - only use categories from settings
       // If a budget has a category not in settings, it will still work but won't appear in dropdown
     } catch (err) {
       // If loading fails, continue without budgets
       console.error('Error loading existing budgets:', err)
+      setExistingBudgets([])
+      setExistingBudgetCategories([])
+    }
+  }
+
+  const loadFundLockState = async (projectId: number) => {
+    try {
+      const projectDetails = await ProjectAPI.getProject(projectId)
+      const hasFundFlag = Boolean(projectDetails.has_fund)
+      setExistingFundLocked(hasFundFlag)
+      setHasFund(hasFundFlag)
+      if (hasFundFlag) {
+        setMonthlyFundAmount(projectDetails.monthly_fund_amount || 0)
+      } else {
+        setMonthlyFundAmount(0)
+      }
+    } catch (err) {
+      console.error('Error loading fund details:', err)
     }
   }
 
@@ -260,6 +283,9 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
     setExistingContractUrl(null)
     setBudgetInputType('monthly')
     setCategoryBudgets([])
+    setExistingBudgets([])
+    setExistingBudgetCategories([])
+    setExistingFundLocked(false)
     setHasFund(false)
     setMonthlyFundAmount(0)
     setNameError(null)
@@ -389,6 +415,12 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
           setLoading(false)
           return
         }
+        // Validate that end_date is after start_date
+        if (new Date(formData.end_date) <= new Date(formData.start_date)) {
+          setError('תאריך הסיום חייב להיות אחרי תאריך ההתחלה')
+          setLoading(false)
+          return
+        }
       } else if (!editingProject && isRegularProjectCreation) {
         // For regular projects: name and dates are required
         if (!formData.name || formData.name.trim() === '') {
@@ -399,6 +431,13 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
         
         if (!formData.start_date || !formData.end_date) {
           setError('תאריך התחלה ותאריך סיום נדרשים')
+          setLoading(false)
+          return
+        }
+
+        // Validate that end_date is after start_date
+        if (new Date(formData.end_date) <= new Date(formData.start_date)) {
+          setError('תאריך הסיום חייב להיות אחרי תאריך ההתחלה')
           setLoading(false)
           return
         }
@@ -429,11 +468,31 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
           setLoading(false)
           return
         }
+        // Validate dates if both are provided
+        if (formData.start_date && formData.end_date && new Date(formData.end_date) <= new Date(formData.start_date)) {
+          setError('תאריך הסיום חייב להיות אחרי תאריך ההתחלה')
+          setLoading(false)
+          return
+        }
       }
 
       // Filter and validate budgets - remove project_id if present (not needed for project creation)
       const validBudgets = categoryBudgets
-        .filter(b => b.amount > 0 && b.category && b.start_date)
+        .filter(b => {
+          // Validate budget has required fields
+          if (!b.category || !b.start_date) {
+            return false
+          }
+          // Validate amount is positive
+          if (!b.amount || b.amount <= 0) {
+            return false
+          }
+          // Validate dates if both are provided
+          if (b.start_date && b.end_date && new Date(b.end_date) <= new Date(b.start_date)) {
+            return false
+          }
+          return true
+        })
         .map(b => {
           const budgetWithoutProjectId: any = { ...b }
           delete budgetWithoutProjectId.project_id
@@ -443,6 +502,15 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
             end_date: b.end_date || null
           }
         })
+      
+      // Validate fund amount if fund is enabled
+      if (hasFund && !existingFundLocked) {
+        if (!monthlyFundAmount || monthlyFundAmount <= 0) {
+          setError('סכום הקופה החודשי חייב להיות גדול מ-0')
+          setLoading(false)
+          return
+        }
+      }
 
       const projectData: ProjectCreate = {
         // Name is always required by backend (min_length=1), ensure it exists
@@ -542,9 +610,20 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
       setError('אין קטגוריות זמינות. הוסף קטגוריות בהגדרות תחילה.')
       return
     }
+    const reservedCategories = new Set(existingBudgetCategories)
+    categoryBudgets.forEach(b => {
+      if (b.category) {
+        reservedCategories.add(b.category)
+      }
+    })
+    const availableCategories = expenseCategories.filter(cat => !reservedCategories.has(cat))
+    if (availableCategories.length === 0) {
+      setError('לכל הקטגוריות כבר הוגדר תקציב. ניתן לערוך תקציבים קיימים מדף פרטי הפרויקט.')
+      return
+    }
     const today = new Date().toISOString().split('T')[0]
     const newBudget: BudgetCreate = {
-      category: expenseCategories[0],
+      category: availableCategories[0],
       amount: 0,
       period_type: 'Annual',
       start_date: today,
@@ -572,6 +651,18 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
     
     setCategoryBudgets(updated)
   }
+
+  const usedBudgetCategories = useMemo(() => {
+    const reserved = new Set<string>(existingBudgetCategories)
+    categoryBudgets.forEach(b => {
+      if (b.category) {
+        reserved.add(b.category)
+      }
+    })
+    return reserved
+  }, [existingBudgetCategories, categoryBudgets])
+
+  const hasAvailableBudgetCategories = expenseCategories.some(cat => !usedBudgetCategories.has(cat))
 
   if (!isOpen) return null
 
@@ -831,6 +922,11 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                   value={formData.budget_monthly}
                   onChange={(e) => {
                     const monthlyValue = parseFloat(e.target.value) || 0
+                    if (monthlyValue < 0) {
+                      setError('תקציב חודשי לא יכול להיות שלילי')
+                      return
+                    }
+                    setError(null)
                     setFormData({
                       ...formData,
                       budget_monthly: monthlyValue,
@@ -856,6 +952,11 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                   value={formData.budget_annual}
                   onChange={(e) => {
                     const yearlyValue = parseFloat(e.target.value) || 0
+                    if (yearlyValue < 0) {
+                      setError('תקציב שנתי לא יכול להיות שלילי')
+                      return
+                    }
+                    setError(null)
                     setFormData({
                       ...formData,
                       budget_annual: yearlyValue,
@@ -882,7 +983,17 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                 type="date"
                 required={isParentProjectCreation || isRegularProjectCreation}
                 value={formData.start_date || ''}
-                onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
+                onChange={(e) => {
+                  const newStartDate = e.target.value
+                  // If end_date exists and is before new start_date, clear the error
+                  if (formData.end_date && newStartDate && new Date(formData.end_date) <= new Date(newStartDate)) {
+                    setError('תאריך הסיום חייב להיות אחרי תאריך ההתחלה')
+                  } else {
+                    setError(null)
+                  }
+                  setFormData({ ...formData, start_date: newStartDate })
+                }}
+                max={formData.end_date || undefined}
                 className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -895,7 +1006,17 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                 type="date"
                 required={isParentProjectCreation || isRegularProjectCreation}
                 value={formData.end_date || ''}
-                onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
+                onChange={(e) => {
+                  const newEndDate = e.target.value
+                  // Validate that end_date is after start_date
+                  if (formData.start_date && newEndDate && new Date(newEndDate) <= new Date(formData.start_date)) {
+                    setError('תאריך הסיום חייב להיות אחרי תאריך ההתחלה')
+                  } else {
+                    setError(null)
+                  }
+                  setFormData({ ...formData, end_date: newEndDate })
+                }}
+                min={formData.start_date || undefined}
                 className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -911,18 +1032,24 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                 id="hasFund"
                 type="checkbox"
                 checked={hasFund}
+              disabled={existingFundLocked}
                 onChange={(e) => {
                   setHasFund(e.target.checked)
                   if (!e.target.checked) {
                     setMonthlyFundAmount(0)
                   }
                 }}
-                className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+              className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
               />
               <label htmlFor="hasFund" className="text-sm font-medium text-gray-700 dark:text-gray-300">
                 הוסף קופה לפרויקט
               </label>
             </div>
+          {existingFundLocked && (
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+              לעריכת הקופה הקיימת יש להיכנס לדף פרטי הפרויקט ולטפל מתוך קומפוננטת התקציב/קופה.
+            </p>
+          )}
             
             {hasFund && (
               <div>
@@ -935,9 +1062,18 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                   step="0.01"
                   required={hasFund}
                   value={monthlyFundAmount}
-                  onChange={(e) => setMonthlyFundAmount(parseFloat(e.target.value) || 0)}
+                onChange={(e) => {
+                  const value = parseFloat(e.target.value) || 0
+                  if (value < 0) {
+                    setError('סכום הקופה לא יכול להיות שלילי')
+                    return
+                  }
+                  setError(null)
+                  setMonthlyFundAmount(value)
+                }}
+                disabled={existingFundLocked}
                   placeholder="הכנס סכום חודשי"
-                  className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 />
                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                   הסכום יתווסף לקופה כל חודש באופן אוטומטי
@@ -957,15 +1093,43 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
               <button
                 type="button"
                 onClick={addCategoryBudget}
-                className="px-3 py-1 text-sm bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500"
+                disabled={!hasAvailableBudgetCategories}
+                className={`px-3 py-1 text-sm rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 ${
+                  hasAvailableBudgetCategories
+                    ? 'bg-green-600 text-white hover:bg-green-700'
+                    : 'bg-gray-300 text-gray-600 cursor-not-allowed dark:bg-gray-600 dark:text-gray-400'
+                }`}
               >
                 + הוסף תקציב לקטגוריה
               </button>
             </div>
+            {!hasAvailableBudgetCategories && (
+              <p className="text-xs text-amber-600 dark:text-amber-400">
+                לכל הקטגוריות בפרויקט כבר הוגדר תקציב. ניתן לערוך או למחוק תקציבים קיימים מתוך דף פרטי הפרויקט.
+              </p>
+            )}
+            {editingProject && (
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                עריכת תקציבים קיימים מתבצעת מעמוד פרטי הפרויקט. בטופס זה ניתן רק להוסיף תקציב לקטגוריות שעדיין לא קיבלו תקציב.
+              </p>
+            )}
+            {editingProject && existingBudgets.length > 0 && (
+              <div className="bg-gray-50 dark:bg-gray-700/40 border border-dashed border-gray-200 dark:border-gray-600 rounded-lg p-3 space-y-2 text-sm">
+                <div className="font-medium text-gray-700 dark:text-gray-200">תקציבים שכבר קיימים:</div>
+                {existingBudgets.map(budget => (
+                  <div key={budget.id} className="flex items-center justify-between text-gray-600 dark:text-gray-300">
+                    <span>{budget.category}</span>
+                    <span>{Number(budget.base_amount ?? budget.amount).toLocaleString('he-IL')} ₪</span>
+                  </div>
+                ))}
+              </div>
+            )}
             
             {categoryBudgets.length === 0 && (
               <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
-                אין תקציבים לקטגוריות. לחץ על "הוסף תקציב לקטגוריה" כדי להוסיף תקציב לקטגוריה ספציפית (למשל: חשמל, ניקיון).
+                {editingProject
+                  ? 'אין תקציבים חדשים להוספה. ניתן להוסיף תקציב רק לקטגוריות שעדיין לא קיבלו תקציב בעבר.'
+                  : 'אין תקציבים לקטגוריות. לחץ על "הוסף תקציב לקטגוריה" כדי להוסיף תקציב לקטגוריה ספציפית (למשל: חשמל, ניקיון).'}
               </p>
             )}
 
@@ -988,24 +1152,55 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                       <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
                         קטגוריה *
                       </label>
-                      <select
-                        value={budget.category}
-                        onChange={(e) => updateCategoryBudget(index, 'category', e.target.value)}
-                        className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        required
-                      >
-                        <option value="">בחר קטגוריה</option>
-                        {expenseCategories.map((cat) => (
-                          <option key={cat} value={cat}>
-                            {cat}
-                          </option>
-                        ))}
-                      </select>
-                      {expenseCategories.length === 0 && (
-                        <p className="mt-1 text-xs text-yellow-600 dark:text-yellow-400">
-                          אין קטגוריות זמינות. הוסף קטגוריות בהגדרות תחילה.
-                        </p>
-                      )}
+                      {(() => {
+                        if (expenseCategories.length === 0) {
+                          return (
+                            <>
+                              <select
+                                value=""
+                                disabled
+                                className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 text-sm bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 cursor-not-allowed"
+                              >
+                                <option>אין קטגוריות זמינות</option>
+                              </select>
+                              <p className="mt-1 text-xs text-yellow-600 dark:text-yellow-400">
+                                אין קטגוריות זמינות. הוסף קטגוריות בהגדרות תחילה.
+                              </p>
+                            </>
+                          )
+                        }
+                        const reserved = new Set<string>(existingBudgetCategories)
+                        categoryBudgets.forEach((b, i) => {
+                          if (i !== index && b.category) {
+                            reserved.add(b.category)
+                          }
+                        })
+                        const selectableCategories = expenseCategories.filter(
+                          cat => !reserved.has(cat) || cat === budget.category
+                        )
+                        return (
+                          <>
+                            <select
+                              value={budget.category}
+                              onChange={(e) => updateCategoryBudget(index, 'category', e.target.value)}
+                              className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              required
+                            >
+                              <option value="">בחר קטגוריה</option>
+                              {selectableCategories.map((cat) => (
+                                <option key={cat} value={cat}>
+                                  {cat}
+                                </option>
+                              ))}
+                            </select>
+                            {selectableCategories.length === 0 && (
+                              <p className="mt-1 text-xs text-yellow-600 dark:text-yellow-400">
+                                כל הקטגוריות כבר קיבלו תקציב. הסר תקציב מהרשימה או ערוך אותו מדף הפרויקט.
+                              </p>
+                            )}
+                          </>
+                        )
+                      })()}
                     </div>
 
                     <div>
@@ -1017,7 +1212,15 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                         min="0"
                         step="0.01"
                         value={budget.amount}
-                        onChange={(e) => updateCategoryBudget(index, 'amount', parseFloat(e.target.value) || 0)}
+                        onChange={(e) => {
+                          const value = parseFloat(e.target.value) || 0
+                          if (value < 0) {
+                            setError('סכום התקציב לא יכול להיות שלילי')
+                            return
+                          }
+                          setError(null)
+                          updateCategoryBudget(index, 'amount', value)
+                        }}
                         className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                         required
                       />
@@ -1057,7 +1260,22 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                       <input
                         type="date"
                         value={budget.start_date}
-                        onChange={(e) => updateCategoryBudget(index, 'start_date', e.target.value)}
+                        onChange={(e) => {
+                          const newStartDate = e.target.value
+                          updateCategoryBudget(index, 'start_date', newStartDate)
+                          // If end_date exists and is before new start_date, clear it
+                          if (budget.end_date && newStartDate && new Date(budget.end_date) <= new Date(newStartDate)) {
+                            if (budget.period_type === 'Annual') {
+                              // Recalculate end_date for Annual budgets
+                              const startDate = new Date(newStartDate)
+                              const endDate = new Date(startDate)
+                              endDate.setFullYear(endDate.getFullYear() + 1)
+                              endDate.setDate(endDate.getDate() - 1)
+                              updateCategoryBudget(index, 'end_date', endDate.toISOString().split('T')[0])
+                            }
+                          }
+                        }}
+                        max={budget.end_date || undefined}
                         className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                         required
                       />
@@ -1070,11 +1288,21 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                         </label>
                         <input
                           type="date"
-                          value={budget.end_date}
-                          onChange={(e) => updateCategoryBudget(index, 'end_date', e.target.value)}
-                          className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 text-sm bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          readOnly
-                        />
+                        value={budget.end_date}
+                        onChange={(e) => {
+                          const newEndDate = e.target.value
+                          // Validate that end_date is after start_date
+                          if (budget.start_date && newEndDate && new Date(newEndDate) <= new Date(budget.start_date)) {
+                            setError('תאריך הסיום חייב להיות אחרי תאריך ההתחלה')
+                            return
+                          }
+                          setError(null)
+                          updateCategoryBudget(index, 'end_date', newEndDate)
+                        }}
+                        min={budget.start_date || undefined}
+                        className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 text-sm bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        readOnly={budget.period_type === 'Annual'}
+                      />
                       </div>
                     )}
                   </div>

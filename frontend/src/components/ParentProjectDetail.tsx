@@ -17,8 +17,33 @@ import ProjectExpensePieChart from './charts/ProjectExpensePieChart'
 import ProjectTrendsChart from './charts/ProjectTrendsChart'
 import CreateProjectModal from './CreateProjectModal'
 import AddTransactionModal from './AddTransactionModal'
-import { normalizeCategoryForFilter } from '../utils/calculations'
 
+// Reverse mapping: Hebrew to English (for filtering)
+const CATEGORY_REVERSE_MAP: Record<string, string> = {
+  'ניקיון': 'CLEANING',
+  'חשמל': 'ELECTRICITY',
+  'ביטוח': 'INSURANCE',
+  'גינון': 'GARDENING',
+  'אחר': 'OTHER',
+  'תחזוקה': 'MAINTENANCE'
+}
+
+// Normalize category for comparison (handles both Hebrew and English)
+const normalizeCategoryForFilter = (category: string | null | undefined): string | null => {
+  if (!category) return null
+  const trimmed = String(category).trim()
+  if (trimmed.length === 0) return null
+  // If it's already in English (uppercase), return as is
+  if (trimmed === trimmed.toUpperCase()) {
+    return trimmed
+  }
+  // If it's in Hebrew, try to convert to English
+  if (CATEGORY_REVERSE_MAP[trimmed]) {
+    return CATEGORY_REVERSE_MAP[trimmed]
+  }
+  // Otherwise return as is (might be a custom category)
+  return trimmed
+}
 
 interface DateRange {
   start: string
@@ -291,22 +316,9 @@ const SubprojectCard: React.FC<{
   subproject: SubprojectFinancial
   imageUrl: string | null
   onViewClick: () => void
-  onEditClick?: () => void
-}> = ({ subproject, imageUrl, onViewClick, onEditClick }) => {
-  const handleCardClick = (e: React.MouseEvent) => {
-    // Don't navigate if clicking on buttons or interactive elements
-    const target = e.target as HTMLElement
-    if (target.closest('button') || target.closest('a')) {
-      return
-    }
-    onViewClick()
-  }
-
+}> = ({ subproject, imageUrl, onViewClick }) => {
   return (
-    <div 
-      onClick={handleCardClick}
-      className="bg-gradient-to-br from-white to-gray-50 dark:from-gray-700 dark:to-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 p-6 hover:shadow-md transition-shadow duration-200 cursor-pointer"
-    >
+    <div className="bg-gradient-to-br from-white to-gray-50 dark:from-gray-700 dark:to-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 p-6 hover:shadow-md transition-shadow duration-200">
       {imageUrl && (
         <div className="mb-4 rounded-lg overflow-hidden">
           <img
@@ -375,32 +387,15 @@ const SubprojectCard: React.FC<{
           </span>
         </div>
         
-        <div className="flex gap-2">
-          {onEditClick && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                onEditClick()
-              }}
-              className="flex-1 bg-green-600 hover:bg-green-700 text-white text-sm font-medium py-2 px-4 rounded-lg transition-colors duration-200 flex items-center justify-center gap-2"
-            >
-              <Edit className="w-4 h-4" />
-              <span>ערוך</span>
-            </button>
-          )}
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              onViewClick()
-            }}
-            className={`${onEditClick ? 'flex-1' : 'w-full'} bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2 px-4 rounded-lg transition-colors duration-200 flex items-center justify-center gap-2`}
-          >
-            <span>צפה בפרויקט</span>
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-          </button>
-        </div>
+        <button
+          onClick={onViewClick}
+          className="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2 px-4 rounded-lg transition-colors duration-200 flex items-center justify-center gap-2"
+        >
+          <span>צפה בפרויקט</span>
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
       </div>
     </div>
   )
@@ -409,8 +404,7 @@ const SubprojectCard: React.FC<{
 const SubprojectCardsList: React.FC<{
   subprojects: SubprojectFinancial[]
   onNavigate: (path: string) => void
-  onEditClick?: (subprojectId: number) => void
-}> = ({ subprojects, onNavigate, onEditClick }) => {
+}> = ({ subprojects, onNavigate }) => {
   const [subprojectImages, setSubprojectImages] = useState<Record<number, string | null>>({})
 
   useEffect(() => {
@@ -567,8 +561,8 @@ const ConsolidatedFinancialSummary: React.FC<{
               }
 
               return (
-              <div 
-                key={subproject.id} 
+              <div
+                key={subproject.id}
                 onClick={handleCardClick}
                 className="bg-gradient-to-br from-gray-50 to-white dark:from-gray-700 dark:to-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 p-5 hover:shadow-md transition-shadow cursor-pointer"
               >

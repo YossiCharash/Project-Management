@@ -98,6 +98,7 @@ async def list_transactions(project_id: int, db: DBSessionDep, user = Depends(ge
             'amount': float(tx.amount),
             'description': tx.description,
             'category': tx.category,
+            'category_id': tx.category_id,
             'payment_method': tx.payment_method,
             'notes': tx.notes,
             'is_exceptional': tx.is_exceptional,
@@ -207,6 +208,7 @@ async def create_transaction(db: DBSessionDep, data: TransactionCreate, user = D
         'amount': float(transaction.amount),
         'description': transaction.description,
         'category': transaction.category,
+        'category_id': transaction.category_id,
         'payment_method': transaction.payment_method,
         'notes': transaction.notes,
         'is_exceptional': transaction.is_exceptional,
@@ -261,6 +263,7 @@ async def upload_receipt(tx_id: int, db: DBSessionDep, file: UploadFile = File(.
         'amount': float(result.amount),
         'description': result.description,
         'category': result.category,
+        'category_id': result.category_id,
         'payment_method': result.payment_method,
         'notes': result.notes,
         'is_exceptional': result.is_exceptional,
@@ -437,10 +440,26 @@ async def update_transaction(tx_id: int, db: DBSessionDep, data: TransactionUpda
             raise HTTPException(status_code=400, detail="Cannot update transaction with inactive supplier")
     
     update_data = data.model_dump(exclude_unset=True)
-    # Normalize category if provided
-    if 'category' in update_data:
+    
+    # Validate category if being updated (unless it's a cash register transaction)
+    from_fund = update_data.get('from_fund', tx.from_fund if hasattr(tx, 'from_fund') else False)
+    category_name = update_data.pop('category', None) if 'category' in update_data else None
+    category_id = update_data.get('category_id') if 'category_id' in update_data else None
+
+    if category_id is not None or category_name is not None:
         service = TransactionService(db)
-        update_data['category'] = service._normalize_category(update_data['category'])
+        resolved_category = await service._resolve_category(
+            category_id=category_id,
+            category_name=category_name,
+            allow_missing=from_fund
+        )
+        update_data['category_id'] = resolved_category.id if resolved_category else None
+    elif ('category' in data.model_dump(exclude_unset=False) and category_name is None) or ('category_id' in update_data and update_data['category_id'] is None):
+        if not from_fund:
+            raise HTTPException(
+                status_code=400,
+                detail="לא ניתן להסיר קטגוריה מעסקה רגילה. רק עסקאות קופה יכולות להיות ללא קטגוריה."
+            )
     
     for k, v in update_data.items():
         setattr(tx, k, v)
@@ -473,6 +492,7 @@ async def update_transaction(tx_id: int, db: DBSessionDep, data: TransactionUpda
         'amount': float(updated_tx.amount),
         'description': updated_tx.description,
         'category': updated_tx.category,
+        'category_id': updated_tx.category_id,
         'payment_method': updated_tx.payment_method,
         'notes': updated_tx.notes,
         'is_exceptional': updated_tx.is_exceptional,

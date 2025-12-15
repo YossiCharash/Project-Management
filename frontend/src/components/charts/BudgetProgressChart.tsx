@@ -16,18 +16,18 @@ const CustomTooltip = ({ active, payload }: any) => {
       <div className="space-y-1 text-sm">
           <div className="flex justify-between gap-4">
             <span className="text-gray-600 dark:text-gray-400">תקציב:</span>
-            <span className="font-semibold text-gray-900 dark:text-white">{data.budget.toLocaleString()} ₪</span>
+            <span className="font-semibold text-gray-900 dark:text-white">{Number(data.budget ?? 0).toLocaleString()} ₪</span>
           </div>
           <div className="flex justify-between gap-4">
             <span className="text-gray-600 dark:text-gray-400">הוצא:</span>
             <span className={`font-semibold ${data.spent > data.budget ? 'text-red-600' : 'text-blue-600'}`}>
-              {data.spent.toLocaleString()} ₪
+              {Number(data.spent ?? 0).toLocaleString()} ₪
             </span>
           </div>
           <div className="flex justify-between gap-4">
             <span className="text-gray-600 dark:text-gray-400">נותר:</span>
             <span className={`font-semibold ${data.remaining < 0 ? 'text-red-600' : 'text-green-600'}`}>
-              {data.remaining.toLocaleString()} ₪
+              {Number(data.remaining ?? 0).toLocaleString()} ₪
             </span>
           </div>
           <div className="flex justify-between gap-4 border-t border-gray-200 dark:border-gray-700 pt-2 mt-2">

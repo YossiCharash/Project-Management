@@ -9,9 +9,7 @@ class CategoryRepository:
 
     async def list(self, include_inactive: bool = False) -> list[Category]:
         """List all categories, optionally including inactive ones"""
-        query = select(Category)
-        if not include_inactive:
-            query = query.where(Category.is_active == True)
+        query = select(Category)            
         query = query.order_by(Category.name)
         result = await self.db.execute(query)
         return list(result.scalars().all())
@@ -40,7 +38,7 @@ class CategoryRepository:
         return category
 
     async def delete(self, category: Category) -> None:
-        """Delete a category (soft delete by setting is_active=False)"""
-        category.is_active = False
+        """Permanently delete a category"""
+        await self.db.delete(category)
         await self.db.commit()
 

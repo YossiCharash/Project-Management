@@ -76,28 +76,22 @@ async def update_category(
     db: DBSessionDep,
     user = Depends(require_admin())
 ):
-    """Update a category - Admin only"""
+    """Update a category - Admin only (only is_active can be updated, name cannot be changed)"""
     repo = CategoryRepository(db)
     category = await repo.get(category_id)
     if not category:
         raise HTTPException(status_code=404, detail="Category not found")
     
-    # Validate that updated category name doesn't already exist
-    if data.name and data.name != category.name:
-        existing = await repo.get_by_name(data.name)
-        if existing:
-            raise HTTPException(
-                status_code=422,
-                detail=[{
-                    "type": "value_error",
-                    "loc": ["body", "name"],
-                    "msg": "קטגוריה עם שם זה כבר קיימת",
-                    "input": data.name
-                }]
-            )
-    
-    # Update fields
+    # Only allow updating is_active, name cannot be changed
+    # Check if name was provided in the request (even though it's not in the schema)
     update_data = data.model_dump(exclude_unset=True)
+    if 'name' in update_data:
+        raise HTTPException(
+            status_code=400,
+            detail="לא ניתן לערוך את שם הקטגוריה. אם צריך לשנות את השם, יש למחוק את הקטגוריה הישנה וליצור חדשה."
+        )
+    
+    # Update fields (only is_active)
     for key, value in update_data.items():
         setattr(category, key, value)
     
@@ -121,13 +115,13 @@ async def delete_category(
     db: DBSessionDep,
     user = Depends(require_admin())
 ):
-    """Delete a category (soft delete) - Admin only"""
+    """Delete a category (hard delete) - Admin only"""
     repo = CategoryRepository(db)
     category = await repo.get(category_id)
     if not category:
         raise HTTPException(status_code=404, detail="Category not found")
     
-    # Log delete action before soft delete
+    # Log delete action before removal
     await AuditService(db).log_action(
         user_id=user.id,
         action='delete',

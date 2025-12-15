@@ -52,6 +52,18 @@ def create_app() -> FastAPI:
         redirect_slashes=False,  # Disable automatic 307 redirects between /route and /route/
     )
 
+    # Add CORS middleware FIRST, before any other middleware
+    # This ensures CORS headers are set for all requests including preflight
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.CORS_ORIGINS,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"],
+        allow_headers=["*"],
+        expose_headers=["*"],
+        max_age=3600,  # Cache preflight requests for 1 hour
+    )
+
     @app.middleware("http")
     async def resolve_trailing_slash(request, call_next):
         """
@@ -70,18 +82,76 @@ def create_app() -> FastAPI:
                 request.scope["path"] = alt_path
         response = await call_next(request)
         return response
-
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=settings.CORS_ORIGINS,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-        expose_headers=["*"],
-    )
+    
+    @app.middleware("http")
+    async def add_cors_debug_headers(request, call_next):
+        """
+        Debug middleware to log CORS-related information and ensure CORS headers are set
+        """
+        origin = request.headers.get("origin")
+        method = request.method
+        
+        if origin:
+            print(f"🔍 CORS Request: {method} {request.url.path} from origin: {origin}")
+            print(f"🔍 Allowed origins: {settings.CORS_ORIGINS}")
+            
+            # Check if origin is in allowed list (with or without www)
+            origin_normalized = origin.rstrip("/")
+            origin_with_www = origin_normalized.replace("https://ziposystem.co.il", "https://www.ziposystem.co.il")
+            origin_without_www = origin_normalized.replace("https://www.ziposystem.co.il", "https://ziposystem.co.il")
+            
+            is_allowed = (
+                origin_normalized in settings.CORS_ORIGINS or
+                origin_with_www in settings.CORS_ORIGINS or
+                origin_without_www in settings.CORS_ORIGINS
+            )
+            
+            if is_allowed:
+                print(f"✅ Origin {origin} is in allowed list")
+            else:
+                print(f"❌ Origin {origin} is NOT in allowed list")
+        
+        response = await call_next(request)
+        
+        # Ensure CORS headers are set for allowed origins
+        if origin:
+            origin_normalized = origin.rstrip("/")
+            origin_with_www = origin_normalized.replace("https://ziposystem.co.il", "https://www.ziposystem.co.il")
+            origin_without_www = origin_normalized.replace("https://www.ziposystem.co.il", "https://ziposystem.co.il")
+            
+            is_allowed = (
+                origin_normalized in settings.CORS_ORIGINS or
+                origin_with_www in settings.CORS_ORIGINS or
+                origin_without_www in settings.CORS_ORIGINS
+            )
+            
+            if is_allowed:
+                # Ensure CORS headers are present
+                if "Access-Control-Allow-Origin" not in response.headers:
+                    response.headers["Access-Control-Allow-Origin"] = origin_normalized
+                if "Access-Control-Allow-Credentials" not in response.headers:
+                    response.headers["Access-Control-Allow-Credentials"] = "true"
+                if "Access-Control-Allow-Methods" not in response.headers:
+                    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH, HEAD"
+                if "Access-Control-Allow-Headers" not in response.headers:
+                    response.headers["Access-Control-Allow-Headers"] = "*"
+        
+        # Log response headers for debugging
+        if origin and method == "OPTIONS":
+            cors_headers = {
+                "Access-Control-Allow-Origin": response.headers.get("Access-Control-Allow-Origin"),
+                "Access-Control-Allow-Methods": response.headers.get("Access-Control-Allow-Methods"),
+                "Access-Control-Allow-Headers": response.headers.get("Access-Control-Allow-Headers"),
+            }
+            print(f"🔍 CORS Preflight Response Headers: {cors_headers}")
+        
+        return response
 
     @app.on_event("startup")
     async def on_startup() -> None:
+        # Debug: Print CORS origins on startup
+        print(f"🌐 CORS Origins configured: {settings.CORS_ORIGINS}")
+        
         # Initialize database - creates all tables, enums, indexes, and foreign keys
         await init_database(engine)
 

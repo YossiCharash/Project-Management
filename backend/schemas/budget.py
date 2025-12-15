@@ -1,6 +1,6 @@
 from datetime import date, datetime
-from pydantic import BaseModel, Field, field_validator
-from typing import Optional, Union
+from pydantic import BaseModel, Field, model_validator
+from typing import Optional
 
 
 class BudgetBase(BaseModel):
@@ -29,7 +29,7 @@ class BudgetUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
-class BudgetOut(BudgetBase):
+class BudgetOut(BaseModel):
     id: int
     project_id: int
     is_active: bool
@@ -42,7 +42,12 @@ class BudgetOut(BudgetBase):
 
 class BudgetWithSpending(BudgetOut):
     """Budget with calculated spending information"""
+    category: str = Field(..., description="Expense category name")
+    amount: float = Field(..., description="Effective budget amount (base + income)")
     base_amount: float = 0.0
+    period_type: str = Field(default="Annual", description="'Annual' or 'Monthly'")
+    start_date: str = Field(..., description="Budget period start date (ISO format)")
+    end_date: Optional[str] = Field(None, description="Budget period end date (ISO format)")
     spent_amount: float = 0.0
     expense_amount: float = 0.0
     income_amount: float = 0.0

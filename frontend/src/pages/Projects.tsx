@@ -250,7 +250,7 @@ export default function Projects() {
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [cityFilter, setCityFilter] = useState('')
-  const [projectTypeFilter, setProjectTypeFilter] = useState('')
+  const [projectTypeFilter, setProjectTypeFilter] = useState('') // Default: show parent projects and regular projects without subprojects
   const [archiveFilter, setArchiveFilter] = useState<'active' | 'archived' | 'all'>('active')
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [showCreateModal, setShowCreateModal] = useState(false)
@@ -450,7 +450,7 @@ export default function Projects() {
     if (project.relation_project) {
       return false
     }
-    
+
     const matchesSearch = project.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          project.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          project.address?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -466,7 +466,7 @@ export default function Projects() {
       matchesType = false // Subprojects are never shown on this page
     }
     // If no filter is selected, show both parent and regular projects (but not subprojects)
-    
+
     // Filter by archive status
     let matchesArchive = true
     if (archiveFilter === 'active') {
