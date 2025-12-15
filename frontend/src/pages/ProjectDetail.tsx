@@ -2,7 +2,7 @@ import { useEffect, useState, ChangeEvent, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import api from '../lib/api'
-import { ReportAPI, BudgetAPI, ProjectAPI } from '../lib/apiClient'
+import { ReportAPI, BudgetAPI, ProjectAPI, CategoryAPI } from '../lib/apiClient'
 import { ExpenseCategory, BudgetWithSpending } from '../types/api'
 import ProjectTrendsChart from '../components/charts/ProjectTrendsChart'
 import BudgetCard from '../components/charts/BudgetCard'
@@ -12,7 +12,7 @@ import CreateTransactionModal from '../components/CreateTransactionModal'
 import CreateProjectModal from '../components/CreateProjectModal'
 import { useAppDispatch, useAppSelector } from '../utils/hooks'
 import { fetchSuppliers } from '../store/slices/suppliersSlice'
-import { ChevronDown, History, Download, Edit } from 'lucide-react'
+import { ChevronDown, History, Download, Edit, ChevronLeft } from 'lucide-react'
 import {
   CATEGORY_LABELS,
   normalizeCategoryForFilter,
@@ -142,14 +142,6 @@ export default function ProjectDetail() {
     loadCategories()
   }, [])
   
-  // Get all unique categories from transactions (for filtering)
-  const allCategoriesFromTransactions = Array.from(new Set(
-    txs
-      .map(t => t.category)
-      .filter((cat): cat is string => cat !== null && cat !== undefined && cat !== '')
-      .map(cat => cat.trim())
-  ))
-  
   // Use only categories from database (settings) - these are the only valid options
   const allCategoryOptions = availableCategories
   
@@ -182,7 +174,7 @@ export default function ProjectDetail() {
   } | null>(null)
   const [hasFund, setHasFund] = useState(false)
   const [fundLoading, setFundLoading] = useState(false)
-  const [fundCategoryFilter, setFundCategoryFilter] = useState<string>('all')
+  const [fundCategoryFilter] = useState<string>('all')
   const [transactionsExpandedId, setTransactionsExpandedId] = useState<number | null>(null)
   const [showFundTransactionsModal, setShowFundTransactionsModal] = useState(false)
   const [showCreateFundModal, setShowCreateFundModal] = useState(false)
@@ -1691,7 +1683,7 @@ const formatDate = (value: string | null) => {
                 e.preventDefault()
                 setCreatingFund(true)
                 try {
-                  const response = await api.post(`/projects/${id}/fund?monthly_amount=${monthlyFundAmount}`)
+                  await api.post(`/projects/${id}/fund?monthly_amount=${monthlyFundAmount}`)
                   // Success - reload data
                   await loadProjectInfo()
                   await loadFundData()
