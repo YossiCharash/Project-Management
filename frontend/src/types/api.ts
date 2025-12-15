@@ -158,6 +158,7 @@ export interface DashboardSnapshot {
     budget_warning: number[]
     missing_proof: number[]
     unpaid_recurring: number[]
+    negative_fund_balance: number[]
     category_budget_alerts: CategoryBudgetAlert[]
   }
   summary: {

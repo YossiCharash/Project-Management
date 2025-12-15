@@ -17,33 +17,8 @@ import ProjectExpensePieChart from './charts/ProjectExpensePieChart'
 import ProjectTrendsChart from './charts/ProjectTrendsChart'
 import CreateProjectModal from './CreateProjectModal'
 import AddTransactionModal from './AddTransactionModal'
+import { normalizeCategoryForFilter } from '../utils/calculations'
 
-// Reverse mapping: Hebrew to English (for filtering)
-const CATEGORY_REVERSE_MAP: Record<string, string> = {
-  'ניקיון': 'CLEANING',
-  'חשמל': 'ELECTRICITY',
-  'ביטוח': 'INSURANCE',
-  'גינון': 'GARDENING',
-  'אחר': 'OTHER',
-  'תחזוקה': 'MAINTENANCE'
-}
-
-// Normalize category for comparison (handles both Hebrew and English)
-const normalizeCategoryForFilter = (category: string | null | undefined): string | null => {
-  if (!category) return null
-  const trimmed = String(category).trim()
-  if (trimmed.length === 0) return null
-  // If it's already in English (uppercase), return as is
-  if (trimmed === trimmed.toUpperCase()) {
-    return trimmed
-  }
-  // If it's in Hebrew, try to convert to English
-  if (CATEGORY_REVERSE_MAP[trimmed]) {
-    return CATEGORY_REVERSE_MAP[trimmed]
-  }
-  // Otherwise return as is (might be a custom category)
-  return trimmed
-}
 
 interface DateRange {
   start: string
@@ -316,9 +291,22 @@ const SubprojectCard: React.FC<{
   subproject: SubprojectFinancial
   imageUrl: string | null
   onViewClick: () => void
-}> = ({ subproject, imageUrl, onViewClick }) => {
+  onEditClick?: () => void
+}> = ({ subproject, imageUrl, onViewClick, onEditClick }) => {
+  const handleCardClick = (e: React.MouseEvent) => {
+    // Don't navigate if clicking on buttons or interactive elements
+    const target = e.target as HTMLElement
+    if (target.closest('button') || target.closest('a')) {
+      return
+    }
+    onViewClick()
+  }
+
   return (
-    <div className="bg-gradient-to-br from-white to-gray-50 dark:from-gray-700 dark:to-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 p-6 hover:shadow-md transition-shadow duration-200">
+    <div 
+      onClick={handleCardClick}
+      className="bg-gradient-to-br from-white to-gray-50 dark:from-gray-700 dark:to-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 p-6 hover:shadow-md transition-shadow duration-200 cursor-pointer"
+    >
       {imageUrl && (
         <div className="mb-4 rounded-lg overflow-hidden">
           <img
@@ -387,15 +375,32 @@ const SubprojectCard: React.FC<{
           </span>
         </div>
         
-        <button
-          onClick={onViewClick}
-          className="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2 px-4 rounded-lg transition-colors duration-200 flex items-center justify-center gap-2"
-        >
-          <span>צפה בפרויקט</span>
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-          </svg>
-        </button>
+        <div className="flex gap-2">
+          {onEditClick && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                onEditClick()
+              }}
+              className="flex-1 bg-green-600 hover:bg-green-700 text-white text-sm font-medium py-2 px-4 rounded-lg transition-colors duration-200 flex items-center justify-center gap-2"
+            >
+              <Edit className="w-4 h-4" />
+              <span>ערוך</span>
+            </button>
+          )}
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onViewClick()
+            }}
+            className={`${onEditClick ? 'flex-1' : 'w-full'} bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2 px-4 rounded-lg transition-colors duration-200 flex items-center justify-center gap-2`}
+          >
+            <span>צפה בפרויקט</span>
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -404,7 +409,8 @@ const SubprojectCard: React.FC<{
 const SubprojectCardsList: React.FC<{
   subprojects: SubprojectFinancial[]
   onNavigate: (path: string) => void
-}> = ({ subprojects, onNavigate }) => {
+  onEditClick?: (subprojectId: number) => void
+}> = ({ subprojects, onNavigate, onEditClick }) => {
   const [subprojectImages, setSubprojectImages] = useState<Record<number, string | null>>({})
 
   useEffect(() => {
@@ -441,6 +447,7 @@ const SubprojectCardsList: React.FC<{
           subproject={subproject}
           imageUrl={subprojectImages[subproject.id] || null}
           onViewClick={() => onNavigate(`/projects/${subproject.id}`)}
+          onEditClick={onEditClick ? () => onEditClick(subproject.id) : undefined}
         />
       ))}
     </div>
@@ -451,7 +458,9 @@ const ConsolidatedFinancialSummary: React.FC<{
   summary: FinancialSummary
   subprojects: SubprojectFinancial[]
   onAddTransaction?: (subprojectId: number) => void
-}> = ({ summary, subprojects, onAddTransaction }) => {
+  onEditSubproject?: (subprojectId: number) => void
+  onNavigateSubproject?: (subprojectId: number) => void
+}> = ({ summary, subprojects, onAddTransaction, onEditSubproject, onNavigateSubproject }) => {
   // Filter out parent project from subprojects (if it's included with "(ראשי)" in the name)
   const actualSubprojects = subprojects.filter(sp => !sp.name.includes('(ראשי)'))
   
@@ -545,8 +554,24 @@ const ConsolidatedFinancialSummary: React.FC<{
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {actualSubprojects.map((subproject) => (
-              <div key={subproject.id} className="bg-gradient-to-br from-gray-50 to-white dark:from-gray-700 dark:to-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 p-5 hover:shadow-md transition-shadow">
+            {actualSubprojects.map((subproject) => {
+              const handleCardClick = (e: React.MouseEvent) => {
+                // Don't navigate if clicking on buttons or interactive elements
+                const target = e.target as HTMLElement
+                if (target.closest('button') || target.closest('a')) {
+                  return
+                }
+                if (onNavigateSubproject) {
+                  onNavigateSubproject(subproject.id)
+                }
+              }
+
+              return (
+              <div 
+                key={subproject.id} 
+                onClick={handleCardClick}
+                className="bg-gradient-to-br from-gray-50 to-white dark:from-gray-700 dark:to-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 p-5 hover:shadow-md transition-shadow cursor-pointer"
+              >
                 <div className="flex items-start justify-between mb-4">
                   <h5 className="font-semibold text-gray-900 dark:text-white text-lg flex-1">
                     {subproject.name}
@@ -554,12 +579,28 @@ const ConsolidatedFinancialSummary: React.FC<{
                   <div className="flex items-center gap-2">
                     {onAddTransaction && (
                       <button
-                        onClick={() => onAddTransaction(subproject.id)}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onAddTransaction(subproject.id)
+                        }}
                         className="px-3 py-1.5 text-xs bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors flex items-center gap-1.5"
                         title="הוסף עסקה לתת-פרויקט"
                       >
                         <Plus className="w-3 h-3" />
                         הוסף עסקה
+                      </button>
+                    )}
+                    {onEditSubproject && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onEditSubproject(subproject.id)
+                        }}
+                        className="px-3 py-1.5 text-xs bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors flex items-center gap-1.5"
+                        title="ערוך תת-פרויקט"
+                      >
+                        <Edit className="w-3 h-3" />
+                        ערוך
                       </button>
                     )}
                     <div className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusBgClass(subproject.status)} ${getStatusColorClass(subproject.status)}`}>
@@ -607,7 +648,8 @@ const ConsolidatedFinancialSummary: React.FC<{
                   </div>
                 </div>
               </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>
@@ -906,6 +948,8 @@ export default function ParentProjectDetail() {
   const [error, setError] = useState<string | null>(null)
   const [showCreateSubprojectModal, setShowCreateSubprojectModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
+  const [showEditSubprojectModal, setShowEditSubprojectModal] = useState(false)
+  const [editingSubproject, setEditingSubproject] = useState<Project | null>(null)
   const [showAddTransactionModal, setShowAddTransactionModal] = useState(false)
   const [selectedSubprojectForTransaction, setSelectedSubprojectForTransaction] = useState<number | null>(null)
   
@@ -1305,6 +1349,17 @@ export default function ParentProjectDetail() {
     })
   }
 
+  const handleEditSubproject = async (subprojectId: number) => {
+    try {
+      // Load subproject data for editing
+      const { data } = await api.get(`/projects/${subprojectId}`)
+      setEditingSubproject(data)
+      setShowEditSubprojectModal(true)
+    } catch (err: any) {
+      alert(err.response?.data?.detail || 'שגיאה בטעינת נתוני תת-פרויקט')
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -1486,6 +1541,10 @@ export default function ParentProjectDetail() {
             setSelectedSubprojectForTransaction(subprojectId)
             setShowAddTransactionModal(true)
           }}
+          onEditSubproject={handleEditSubproject}
+          onNavigateSubproject={(subprojectId) => {
+            navigate(`/projects/${subprojectId}`)
+          }}
         />
       ) : (
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-8">
@@ -1580,6 +1639,24 @@ export default function ParentProjectDetail() {
             loadParentProjectData()
           }}
           editingProject={parentProject}
+        />
+      )}
+
+      {/* Edit Subproject Modal */}
+      {editingSubproject && (
+        <CreateProjectModal
+          isOpen={showEditSubprojectModal}
+          onClose={() => {
+            setShowEditSubprojectModal(false)
+            setEditingSubproject(null)
+          }}
+          onSuccess={(project: Project) => {
+            setShowEditSubprojectModal(false)
+            setEditingSubproject(null)
+            loadParentProjectData()
+          }}
+          editingProject={editingSubproject}
+          parentProjectId={id ? parseInt(id) : undefined}
         />
       )}
 

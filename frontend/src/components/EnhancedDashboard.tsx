@@ -109,6 +109,7 @@ const ProjectCard: React.FC<ProjectCardProps> = ({ project, onProjectClick, onPr
             onClick={(e) => {
               e.stopPropagation()
               onProjectEdit(project)
+              onProjectEdit(project)
             }}
             className="w-full px-3 py-2 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors"
           >
@@ -146,6 +147,9 @@ const AlertsStrip: React.FC<AlertsStripProps> = ({ alerts, projects }) => {
   const unpaidRecurringProjects = projects.filter(p => 
     alerts.unpaid_recurring.includes(p.id) && !dismissedProjects.has(p.id)
   )
+  const negativeFundBalanceProjects = projects.filter(p => 
+    (alerts.negative_fund_balance || []).includes(p.id) && !dismissedProjects.has(p.id)
+  )
   const categoryBudgetAlerts = (alerts.category_budget_alerts || []).filter(alert => 
     !dismissedProjects.has(alert.project_id)
   )
@@ -168,6 +172,7 @@ const AlertsStrip: React.FC<AlertsStripProps> = ({ alerts, projects }) => {
                      budgetWarningProjects.length +
                      missingProofProjects.length + 
                      unpaidRecurringProjects.length + 
+                     negativeFundBalanceProjects.length +
                      categoryBudgetAlerts.length +
                      unprofitableProjects.length
 
@@ -200,7 +205,7 @@ const AlertsStrip: React.FC<AlertsStripProps> = ({ alerts, projects }) => {
       {isExpanded && (
         <div className="mt-3 space-y-3 border-t border-gray-200 dark:border-gray-700 pt-3">
           {/* Section 1: Project-Level Alerts */}
-          {(budgetOverrunProjects.length > 0 || budgetWarningProjects.length > 0 || missingProofProjects.length > 0 || unpaidRecurringProjects.length > 0) && (
+          {(budgetOverrunProjects.length > 0 || budgetWarningProjects.length > 0 || missingProofProjects.length > 0 || unpaidRecurringProjects.length > 0 || negativeFundBalanceProjects.length > 0) && (
             <div className="bg-blue-50 dark:bg-blue-900/20 border-l-4 border-blue-500 rounded p-3">
               <div className="flex items-center gap-2 mb-2">
                 <span className="text-lg">🏢</span>
@@ -307,6 +312,30 @@ const AlertsStrip: React.FC<AlertsStripProps> = ({ alerts, projects }) => {
                           <button
                             onClick={() => handleDismissProject(project.id)}
                             className="ml-2 text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200 opacity-0 group-hover:opacity-100 transition-opacity text-xs px-2 py-1 rounded hover:bg-blue-100 dark:hover:bg-blue-900/50"
+                            title="החריג פרויקט"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Negative Fund Balance */}
+                {negativeFundBalanceProjects.length > 0 && (
+                  <div className="bg-white dark:bg-gray-800 rounded p-2 border border-red-200 dark:border-red-800">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-sm">💰</span>
+                      <span className="font-medium text-xs text-red-900 dark:text-red-200">יתרה שלילית בקופה:</span>
+                    </div>
+                    <div className="space-y-1.5">
+                      {negativeFundBalanceProjects.map(project => (
+                        <div key={project.id} className="bg-red-50 dark:bg-red-900/30 rounded p-2 flex items-center justify-between group">
+                          <span className="font-medium text-sm text-red-900 dark:text-red-100">{project.name}</span>
+                          <button
+                            onClick={() => handleDismissProject(project.id)}
+                            className="ml-2 text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-200 opacity-0 group-hover:opacity-100 transition-opacity text-xs px-2 py-1 rounded hover:bg-red-100 dark:hover:bg-red-900/50"
                             title="החריג פרויקט"
                           >
                             ✕

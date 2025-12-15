@@ -493,8 +493,8 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
         }
       }
 
-      // Upload contract if one was selected
-      if (selectedContractFile) {
+      // Upload contract if one was selected (only for non-parent projects)
+      if (selectedContractFile && !isParentProject && !isParentProjectCreation) {
         try {
           result = await ProjectAPI.uploadProjectContract(result.id, selectedContractFile)
         } catch (contractErr: any) {
@@ -714,47 +714,49 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                 </div>
           </div>
 
-          {/* Contract upload */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              חוזה עם הבניין
-            </label>
-            <div className="space-y-2">
-              <input
-                type="file"
-                accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png"
-                onChange={handleContractChange}
-                className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-blue-900/20 dark:file:text-blue-300"
-              />
-              {selectedContractFile ? (
-                <div className="flex items-center justify-between text-sm text-gray-700 dark:text-gray-300">
-                  <span>קובץ שנבחר: {selectedContractFile.name}</span>
-                  <button
-                    type="button"
-                    onClick={handleClearContractSelection}
-                    className="text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 text-xs"
-                  >
-                    הסר קובץ
-                  </button>
-                </div>
-              ) : existingContractUrl ? (
-                <div className="text-sm">
-                  <a
-                    href={existingContractUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-600 dark:text-blue-400 hover:underline"
-                  >
-                    צפייה בחוזה שכבר שמור
-                  </a>
-                </div>
-              ) : (
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  ניתן לצרף מסמך PDF / Word או תמונת חוזה חתום.
-                </p>
-              )}
+          {/* Contract upload - Only for subprojects, regular project creation, or editing non-parent projects */}
+          {(parentProjectId || (editingProject && !isParentProject) || isRegularProjectCreation) && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                חוזה עם הבניין
+              </label>
+              <div className="space-y-2">
+                <input
+                  type="file"
+                  accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png"
+                  onChange={handleContractChange}
+                  className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-blue-900/20 dark:file:text-blue-300"
+                />
+                {selectedContractFile ? (
+                  <div className="flex items-center justify-between text-sm text-gray-700 dark:text-gray-300">
+                    <span>קובץ שנבחר: {selectedContractFile.name}</span>
+                    <button
+                      type="button"
+                      onClick={handleClearContractSelection}
+                      className="text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 text-xs"
+                    >
+                      הסר קובץ
+                    </button>
+                  </div>
+                ) : existingContractUrl ? (
+                  <div className="text-sm">
+                    <a
+                      href={existingContractUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 dark:text-blue-400 hover:underline"
+                    >
+                      צפייה בחוזה שכבר שמור
+                    </a>
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    ניתן לצרף מסמך PDF / Word או תמונת חוזה חתום.
+                  </p>
+                )}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Show address and city for subprojects, regular project creation, or editing non-parent projects */}
           {(parentProjectId || (editingProject && !isParentProject) || isRegularProjectCreation) && (

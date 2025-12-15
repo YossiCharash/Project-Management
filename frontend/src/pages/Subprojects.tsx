@@ -52,12 +52,22 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
     }
   }
 
+  const handleCardClick = (e: React.MouseEvent) => {
+    // Don't navigate if clicking on buttons or interactive elements
+    const target = e.target as HTMLElement
+    if (target.closest('button') || target.closest('a')) {
+      return
+    }
+    onProjectClick?.(project)
+  }
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       whileHover={{ y: -2 }}
-      className="bg-white dark:bg-gray-800 rounded-xl shadow-md hover:shadow-lg transition-all duration-200 border border-gray-200 dark:border-gray-700"
+      onClick={handleCardClick}
+      className="bg-white dark:bg-gray-800 rounded-xl shadow-md hover:shadow-lg transition-all duration-200 border border-gray-200 dark:border-gray-700 cursor-pointer"
     >
       <div className="p-6">
         <div className="flex justify-between items-start mb-4">
@@ -132,7 +142,10 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
         <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
           <div className="flex gap-2">
             <button
-              onClick={() => onProjectClick?.(project)}
+              onClick={(e) => {
+                e.stopPropagation()
+                onProjectClick?.(project)
+              }}
               className="flex-1 px-3 py-2 text-sm bg-blue-100 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded-lg hover:bg-blue-200 dark:hover:bg-blue-900/40 transition-colors flex items-center justify-center gap-2"
             >
               <Eye className="w-4 h-4" />
@@ -140,7 +153,10 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
             </button>
             {onProjectEdit && (
               <button
-                onClick={() => onProjectEdit(project)}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onProjectEdit(project)
+                }}
                 className="px-3 py-2 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
               >
                 <Edit className="w-4 h-4" />
@@ -148,7 +164,10 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
             )}
             {onProjectArchive && (
               <button
-                onClick={() => onProjectArchive(project)}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onProjectArchive(project)
+                }}
                 className="px-3 py-2 text-sm bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-300 rounded-lg hover:bg-red-200 dark:hover:bg-red-900/40 transition-colors"
               >
                 <Archive className="w-4 h-4" />

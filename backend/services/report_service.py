@@ -8,6 +8,7 @@ from backend.models.transaction import Transaction
 from backend.models.project import Project
 from backend.models.budget import Budget
 from backend.services.budget_service import BudgetService
+from backend.services.fund_service import FundService
 from backend.services.project_service import calculate_start_date, calculate_monthly_income_amount
 
 
@@ -71,6 +72,7 @@ class ReportService:
                     "budget_warning": [],
                     "missing_proof": [],
                     "unpaid_recurring": [],
+                    "negative_fund_balance": [],
                     "category_budget_alerts": []
                 },
                 "summary": {
@@ -86,6 +88,7 @@ class ReportService:
 
         # Initialize budget service for category budget alerts
         budget_service = BudgetService(self.db)
+        fund_service = FundService(self.db)
         
         # Calculate financial data for each project
         projects_with_finance = []
@@ -95,6 +98,7 @@ class ReportService:
         budget_warning_projects = []  # Projects approaching budget limit (70%+)
         missing_proof_projects = []
         unpaid_recurring_projects = []
+        negative_fund_balance_projects = []  # Projects with negative fund balance
         category_budget_alerts = []  # Store category budget alerts
 
         for project in projects:
@@ -307,6 +311,19 @@ class ReportService:
                     pass
                 # Continue without budget alerts for this project
 
+            # Check for negative fund balance
+            try:
+                fund = await fund_service.get_fund_by_project(project.id)
+                if fund and float(fund.current_balance) < 0:
+                    negative_fund_balance_projects.append(project.id)
+            except Exception:
+                # If fund check fails, rollback and continue
+                try:
+                    await self.db.rollback()
+                except Exception:
+                    pass
+                # Continue without fund balance check for this project
+
             # Build project data
             project_data = {
                 "id": project.id,
@@ -397,6 +414,7 @@ class ReportService:
                 "budget_warning": budget_warning_projects,
                 "missing_proof": missing_proof_projects,
                 "unpaid_recurring": unpaid_recurring_projects,
+                "negative_fund_balance": negative_fund_balance_projects,
                 "category_budget_alerts": category_budget_alerts
             },
             "summary": {

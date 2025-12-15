@@ -9,7 +9,7 @@ from backend.repositories.user_repository import UserRepository
 from backend.models.user import UserRole
 
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/token/;")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/token")
 
 
 DBSessionDep = Annotated[AsyncSession, Depends(get_db)]

@@ -65,6 +65,9 @@ const AlertsStrip: React.FC<AlertsStripProps> = ({ alerts, projects }) => {
   const unpaidRecurringProjects = allProjectsFlat.filter(p => 
     alerts.unpaid_recurring.includes(p.id) && !dismissedProjects.has(p.id)
   )
+  const negativeFundBalanceProjects = allProjectsFlat.filter(p => 
+    (alerts.negative_fund_balance || []).includes(p.id) && !dismissedProjects.has(p.id)
+  )
   const categoryBudgetAlerts = (alerts.category_budget_alerts || []).filter(alert => 
     !dismissedProjects.has(alert.project_id)
   )
@@ -87,6 +90,7 @@ const AlertsStrip: React.FC<AlertsStripProps> = ({ alerts, projects }) => {
                      budgetWarningProjects.length +
                      missingProofProjects.length + 
                      unpaidRecurringProjects.length + 
+                     negativeFundBalanceProjects.length +
                      categoryBudgetAlerts.length +
                      unprofitableProjects.length
 
@@ -109,6 +113,7 @@ const AlertsStrip: React.FC<AlertsStripProps> = ({ alerts, projects }) => {
   const allBudgetWarningIds = alerts.budget_warning || []
   const allMissingProofIds = alerts.missing_proof || []
   const allUnpaidRecurringIds = alerts.unpaid_recurring || []
+  const allNegativeFundBalanceIds = alerts.negative_fund_balance || []
   const allCategoryBudgetAlertIds = (alerts.category_budget_alerts || []).map(a => a.project_id)
   const allUnprofitableIds = allProjectsFlat.filter(p => p.status_color === 'red' && p.profit_percent < 0).map(p => p.id)
   
@@ -117,6 +122,7 @@ const AlertsStrip: React.FC<AlertsStripProps> = ({ alerts, projects }) => {
     ...allBudgetWarningIds.filter(id => dismissedProjects.has(id)),
     ...allMissingProofIds.filter(id => dismissedProjects.has(id)),
     ...allUnpaidRecurringIds.filter(id => dismissedProjects.has(id)),
+    ...allNegativeFundBalanceIds.filter(id => dismissedProjects.has(id)),
     ...allCategoryBudgetAlertIds.filter(id => dismissedProjects.has(id)),
     ...allUnprofitableIds.filter(id => dismissedProjects.has(id))
   ]).size
@@ -161,7 +167,7 @@ const AlertsStrip: React.FC<AlertsStripProps> = ({ alerts, projects }) => {
       {isExpanded && (
         <div className="mt-3 space-y-3 border-t border-gray-200 dark:border-gray-700 pt-3">
           {/* Section 1: Project-Level Alerts */}
-          {(budgetOverrunProjects.length > 0 || budgetWarningProjects.length > 0 || missingProofProjects.length > 0 || unpaidRecurringProjects.length > 0) && (
+          {(budgetOverrunProjects.length > 0 || budgetWarningProjects.length > 0 || missingProofProjects.length > 0 || unpaidRecurringProjects.length > 0 || negativeFundBalanceProjects.length > 0) && (
             <div className="bg-blue-50 dark:bg-blue-900/20 border-l-4 border-blue-500 rounded p-3">
               <div className="flex items-center gap-2 mb-3">
                 <span className="text-lg">🏢</span>
@@ -276,6 +282,32 @@ const AlertsStrip: React.FC<AlertsStripProps> = ({ alerts, projects }) => {
                             <button
                               onClick={() => handleDismissProject(project.id)}
                               className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200 text-xs px-1.5 py-0.5 rounded hover:bg-blue-100 dark:hover:bg-blue-900/50 opacity-0 group-hover:opacity-100 transition-opacity"
+                              title="החריג פרויקט"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Negative Fund Balance */}
+                {negativeFundBalanceProjects.length > 0 && (
+                  <div className="bg-white dark:bg-gray-800 rounded-lg p-3 border border-red-200 dark:border-red-800 shadow-sm">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-sm">💰</span>
+                      <span className="font-medium text-xs text-red-900 dark:text-red-200">יתרה שלילית בקופה</span>
+                    </div>
+                    <div className="space-y-2">
+                      {negativeFundBalanceProjects.map(project => (
+                        <div key={project.id} className="bg-red-50 dark:bg-red-900/30 rounded p-2 border border-red-200 dark:border-red-800 relative group">
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium text-sm text-red-900 dark:text-red-100">{project.name}</span>
+                            <button
+                              onClick={() => handleDismissProject(project.id)}
+                              className="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-200 text-xs px-1.5 py-0.5 rounded hover:bg-red-100 dark:hover:bg-red-900/50 opacity-0 group-hover:opacity-100 transition-opacity"
                               title="החריג פרויקט"
                             >
                               ✕
