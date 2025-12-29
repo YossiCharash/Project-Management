@@ -1,6 +1,6 @@
 import uvicorn
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.openapi.utils import get_openapi
@@ -278,6 +278,36 @@ def create_app() -> FastAPI:
     @app.get("/health")
     async def health_check():
         return {"status": "healthy", "message": "Project Management System is running"}
+
+    # Serve Frontend (SPA) in Production/Docker
+    # This assumes the frontend build artifacts are located at /app/static
+    static_dir = "/app/static"
+    
+    if os.path.exists(static_dir):
+        # Serve assets (JS/CSS)
+        # We mount /assets to serve files from /app/static/assets
+        if os.path.exists(os.path.join(static_dir, "assets")):
+            app.mount("/assets", StaticFiles(directory=os.path.join(static_dir, "assets")), name="assets")
+        
+        # Serve other static files (like favicon.ico, logo.png) if they exist in root of static_dir
+        # and fallback to index.html for SPA routing
+        @app.get("/{full_path:path}")
+        async def serve_frontend(full_path: str):
+            # Check if file exists in static_dir
+            file_path = os.path.join(static_dir, full_path)
+            if os.path.exists(file_path) and os.path.isfile(file_path):
+                return FileResponse(file_path)
+            
+            # For API requests that weren't matched, return 404 instead of index.html
+            if full_path.startswith("api/") or full_path.startswith("docs") or full_path.startswith("openapi.json"):
+                 return JSONResponse(status_code=404, content={"detail": "Not Found"})
+
+            # Fallback to index.html for SPA
+            index_path = os.path.join(static_dir, "index.html")
+            if os.path.exists(index_path):
+                return FileResponse(index_path)
+            
+            return JSONResponse(status_code=404, content={"detail": "Frontend not found"})
 
     return app
 
