@@ -2136,6 +2136,50 @@ const formatDate = (value: string | null) => {
               </div>
             )}
           </div>
+
+          {/* Transaction Type Filter */}
+          <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                סוג עסקה
+              </label>
+              <div className="flex flex-wrap gap-4">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="transactionType"
+                    value="all"
+                    checked={transactionTypeFilter === 'all'}
+                    onChange={() => setTransactionTypeFilter('all')}
+                    className="w-4 h-4 text-blue-600"
+                  />
+                  <span className="text-sm text-gray-700 dark:text-gray-300">הכל</span>
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="transactionType"
+                    value="regular"
+                    checked={transactionTypeFilter === 'regular'}
+                    onChange={() => setTransactionTypeFilter('regular')}
+                    className="w-4 h-4 text-blue-600"
+                  />
+                  <span className="text-sm text-gray-700 dark:text-gray-300">רגיל</span>
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="transactionType"
+                    value="recurring"
+                    checked={transactionTypeFilter === 'recurring'}
+                    onChange={() => setTransactionTypeFilter('recurring')}
+                    className="w-4 h-4 text-blue-600"
+                  />
+                  <span className="text-sm text-gray-700 dark:text-gray-300">מחזורי</span>
+                </label>
+              </div>
+            </div>
+          </div>
         </div>
 
         {loading ? (
