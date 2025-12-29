@@ -20,10 +20,6 @@ const CreateRecurringTransactionModal: React.FC<CreateRecurringTransactionModalP
 }) => {
   const dispatch = useAppDispatch()
   const { items: suppliers } = useAppSelector(s => s.suppliers)
-  const { items: projects } = useAppSelector(s => s.projects)
-  const project = projects.find(p => p.id === projectId)
-  
-  const [useProjectStartDate, setUseProjectStartDate] = useState(false)
   
   const [formData, setFormData] = useState<RecurringTransactionTemplateCreate>({
     project_id: projectId,
@@ -47,12 +43,10 @@ const CreateRecurringTransactionModal: React.FC<CreateRecurringTransactionModalP
   const [showDescriptionModal, setShowDescriptionModal] = useState(false)
   const [uploadedDocuments, setUploadedDocuments] = useState<Array<{id: number, fileName: string, description: string}>>([])
   const [selectedTransactionForDocuments, setSelectedTransactionForDocuments] = useState<any | null>(null)
-  const [availableCategories, setAvailableCategories] = useState<Category[]>([])
 
   useEffect(() => {
     if (isOpen) {
       dispatch(fetchSuppliers())
-      loadCategories()
       // Reset form when modal opens
       setFormData({
         project_id: projectId,

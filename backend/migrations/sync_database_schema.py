@@ -31,7 +31,7 @@ async def check_and_add_column(session, table_name: str, column_name: str, colum
     exists = result.scalar() is not None
     
     if exists:
-        print(f"  ✓ Column {table_name}.{column_name} already exists")
+        print(f"  [OK] Column {table_name}.{column_name} already exists")
         return False
     
     # Build ALTER TABLE statement
@@ -40,7 +40,7 @@ async def check_and_add_column(session, table_name: str, column_name: str, colum
     alter_query = f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type} {nullable_str}{default_str}"
     
     await session.execute(text(alter_query))
-    print(f"  ✓ Added column {table_name}.{column_name}")
+    print(f"  [OK] Added column {table_name}.{column_name}")
     return True
 
 
@@ -55,12 +55,12 @@ async def check_and_create_index(session, index_name: str, table_name: str, colu
     exists = result.scalar() is not None
     
     if exists:
-        print(f"  ✓ Index {index_name} already exists")
+        print(f"  [OK] Index {index_name} already exists")
         return False
     
     create_index_query = f"CREATE INDEX {index_name} ON {table_name}({column_name})"
     await session.execute(text(create_index_query))
-    print(f"  ✓ Created index {index_name}")
+    print(f"  [OK] Created index {index_name}")
     return True
 
 
@@ -75,7 +75,7 @@ async def check_and_add_foreign_key(session, constraint_name: str, table_name: s
     exists = result.scalar() is not None
     
     if exists:
-        print(f"  ✓ Foreign key {constraint_name} already exists")
+        print(f"  [OK] Foreign key {constraint_name} already exists")
         return False
     
     alter_query = f"""
@@ -84,7 +84,7 @@ async def check_and_add_foreign_key(session, constraint_name: str, table_name: s
         FOREIGN KEY ({column_name}) REFERENCES {referenced_table}({referenced_column})
     """
     await session.execute(text(alter_query))
-    print(f"  ✓ Added foreign key {constraint_name}")
+    print(f"  [OK] Added foreign key {constraint_name}")
     return True
 
 
@@ -99,13 +99,13 @@ async def check_and_create_enum(session, enum_name: str, enum_values: list[str])
     exists = result.scalar() is not None
     
     if exists:
-        print(f"  ✓ Enum {enum_name} already exists")
+        print(f"  [OK] Enum {enum_name} already exists")
         return False
     
     values_str = ", ".join([f"'{v}'" for v in enum_values])
     create_enum_query = f"CREATE TYPE {enum_name} AS ENUM ({values_str})"
     await session.execute(text(create_enum_query))
-    print(f"  ✓ Created enum {enum_name}")
+    print(f"  [OK] Created enum {enum_name}")
     return True
 
 
@@ -192,7 +192,7 @@ async def sync_database_schema():
             table_exists = result.scalar() is not None
             
             if not table_exists:
-                print("  ⚠ Table recurring_transaction_templates does not exist. Creating it...")
+                print("  [WARN] Table recurring_transaction_templates does not exist. Creating it...")
                 # Create the table with all columns
                 create_table_query = text("""
                     CREATE TABLE recurring_transaction_templates (
@@ -201,7 +201,8 @@ async def sync_database_schema():
                         description TEXT NOT NULL,
                         type VARCHAR(20) NOT NULL,
                         amount NUMERIC(14, 2) NOT NULL,
-                        category TEXT,
+                        category_id INTEGER,
+                        supplier_id INTEGER,
                         notes TEXT,
                         frequency recurring_frequency DEFAULT 'Monthly',
                         day_of_month INTEGER DEFAULT 1,
@@ -213,7 +214,11 @@ async def sync_database_schema():
                         created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                         updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                         CONSTRAINT recurring_transaction_templates_project_id_fkey 
-                            FOREIGN KEY (project_id) REFERENCES projects(id)
+                            FOREIGN KEY (project_id) REFERENCES projects(id),
+                        CONSTRAINT recurring_transaction_templates_category_id_fkey 
+                            FOREIGN KEY (category_id) REFERENCES categories(id),
+                        CONSTRAINT recurring_transaction_templates_supplier_id_fkey 
+                            FOREIGN KEY (supplier_id) REFERENCES suppliers(id)
                     )
                 """)
                 await session.execute(create_table_query)
@@ -228,21 +233,28 @@ async def sync_database_schema():
             else:
                 # Table exists, check for missing columns
                 changes_made |= await check_and_add_column(session, "recurring_transaction_templates", "updated_at", "TIMESTAMP WITHOUT TIME ZONE", nullable=False, default="CURRENT_TIMESTAMP")
+                changes_made |= await check_and_add_column(session, "recurring_transaction_templates", "category_id", "INTEGER", nullable=True)
+                changes_made |= await check_and_add_column(session, "recurring_transaction_templates", "supplier_id", "INTEGER", nullable=True)
+                
+                if changes_made:
+                    await check_and_create_index(session, "ix_recurring_transaction_templates_supplier_id", "recurring_transaction_templates", "supplier_id")
+                    await check_and_add_foreign_key(session, "recurring_transaction_templates_category_id_fkey", "recurring_transaction_templates", "category_id", "categories")
+                    await check_and_add_foreign_key(session, "recurring_transaction_templates_supplier_id_fkey", "recurring_transaction_templates", "supplier_id", "suppliers")
             
             # Commit all changes
             if changes_made:
                 await session.commit()
                 print("\n" + "=" * 60)
-                print("✅ Database schema sync completed successfully!")
+                print("[OK] Database schema sync completed successfully!")
                 print("=" * 60)
             else:
                 print("\n" + "=" * 60)
-                print("✓ Database schema is already in sync. No changes needed.")
+                print("[OK] Database schema is already in sync. No changes needed.")
                 print("=" * 60)
                 
         except Exception as e:
             await session.rollback()
-            print(f"\n❌ Error syncing database schema: {e}")
+            print(f"\n[ERROR] Error syncing database schema: {e}")
             import traceback
             traceback.print_exc()
             raise

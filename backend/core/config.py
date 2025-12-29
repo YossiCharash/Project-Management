@@ -14,7 +14,7 @@ if not env_path.exists():
     env_path = root_dir / ".env"
 
 if env_path.exists():
-    load_dotenv(dotenv_path=env_path)
+    load_dotenv(dotenv_path=env_path, encoding='utf-8')
     print(f"[OK] Loaded .env file from: {env_path}")
     # Debug: Check if SMTP variables are loaded
     smtp_user = os.getenv("SMTP_USERNAME")
@@ -61,19 +61,20 @@ class Settings(BaseModel):
     def ensure_ziposystem_domains(self):
         """Ensure both www and non-www versions of ziposystem.co.il are included"""
         ziposystem_domains = ["https://www.ziposystem.co.il", "https://ziposystem.co.il"]
+        # Use simple string checks to avoid codec issues during list comprehension/append
         for domain in ziposystem_domains:
-            if domain not in self.CORS_ORIGINS:
-                self.CORS_ORIGINS.append(domain)
+             if domain not in self.CORS_ORIGINS:
+                 self.CORS_ORIGINS.append(domain)
         return self
 
     @model_validator(mode='after')
     def check_security_settings(self):
         """Warn if using default insecure settings in production"""
         if self.JWT_SECRET_KEY == "change_me":
-            print("⚠️ WARNING: Using default JWT_SECRET_KEY. This is insecure for production!")
+            print("[WARNING] Using default JWT_SECRET_KEY. This is insecure for production!")
         
         if self.SUPER_ADMIN_PASSWORD == "c98C98@98":
-            print("⚠️ WARNING: Using default SUPER_ADMIN_PASSWORD. Change this in production!")
+            print("[WARNING] Using default SUPER_ADMIN_PASSWORD. Change this in production!")
             
         return self
 

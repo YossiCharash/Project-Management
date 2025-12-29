@@ -624,7 +624,7 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
     const today = new Date().toISOString().split('T')[0]
     // Use project start date if set, otherwise today
     const defaultStartDate = formData.start_date || today
-    
+
     // Calculate default end date for Annual period
     let defaultEndDate: string | null = null
     if (defaultStartDate) {
@@ -639,8 +639,8 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
       category: availableCategories[0],
       amount: 0,
       period_type: 'Annual',
-      start_date: defaultStartDate,
-      end_date: defaultEndDate
+      start_date: today,
+      end_date: null
     }
     setCategoryBudgets([...categoryBudgets, newBudget])
   }
