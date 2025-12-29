@@ -34,7 +34,8 @@ async def create_budget(
         # Convert category name to category_id
         from backend.repositories.category_repository import CategoryRepository
         category_repo = CategoryRepository(db)
-        category_obj = await category_repo.get_by_name(budget.category)
+        # Use get_by_name_global to find any category with this name, even subcategories
+        category_obj = await category_repo.get_by_name_global(budget.category)
         if not category_obj:
             raise HTTPException(
                 status_code=400, 

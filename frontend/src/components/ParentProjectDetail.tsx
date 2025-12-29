@@ -850,6 +850,11 @@ const ConsolidatedTransactionsTable: React.FC<{
                     }`}>
                       {transaction.type === 'Income' ? 'הכנסה' : 'הוצאה'}
                     </span>
+                    {transaction.is_generated && (
+                      <span className="mr-2 px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700 border border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800">
+                        מחזורי
+                      </span>
+                    )}
                   </td>
                   <td className="p-3 text-gray-700 dark:text-gray-300">
                     {new Date(transaction.tx_date).toLocaleDateString('he-IL')}

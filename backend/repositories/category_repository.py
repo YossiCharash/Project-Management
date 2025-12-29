@@ -49,6 +49,12 @@ class CategoryRepository:
         result = await self.db.execute(query)
         return result.scalar_one_or_none()
 
+    async def get_by_name_global(self, name: str) -> Category | None:
+        """Get the first category with the given name, regardless of parent"""
+        query = select(Category).where(Category.name == name).limit(1)
+        result = await self.db.execute(query)
+        return result.scalar_one_or_none()
+
     async def create(self, category: Category) -> Category:
         """Create a new category"""
         self.db.add(category)

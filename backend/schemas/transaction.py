@@ -15,6 +15,7 @@ class TransactionBase(BaseModel):
     is_exceptional: bool = False
     supplier_id: int | None = None
     from_fund: bool = False
+    allow_duplicate: bool = False
 
 
 class TransactionCreate(TransactionBase):
@@ -32,6 +33,7 @@ class TransactionUpdate(BaseModel):
     is_exceptional: bool | None = None
     supplier_id: int | None = None
     from_fund: bool | None = None
+    allow_duplicate: bool = False
 
 
 class TransactionOut(BaseModel):

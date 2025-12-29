@@ -43,10 +43,13 @@ class RecurringTransactionService:
     async def create_template(self, data: RecurringTransactionTemplateCreate) -> RecurringTransactionTemplate:
         """Create a new recurring transaction template"""
         template_data = data.model_dump()
+        
+        if template_data.get('category_id') is None:
+             raise ValueError("קטגוריה היא שדה חובה לעסקאות מחזוריות.")
 
         resolved_category = await self._resolve_category(
             category_id=template_data.get('category_id'),
-            allow_missing=True
+            allow_missing=False
         )
         template_data['category_id'] = resolved_category.id if resolved_category else None
 
@@ -69,13 +72,47 @@ class RecurringTransactionService:
         update_data = data.model_dump(exclude_unset=True)
 
         if 'category_id' in update_data:
+            if update_data['category_id'] is None:
+                raise ValueError("לא ניתן להסיר קטגוריה מעסקה מחזורית.")
+                
             resolved_category = await self._resolve_category(
                 category_id=update_data.get('category_id'),
-                allow_missing=True
+                allow_missing=False
             )
             update_data['category_id'] = resolved_category.id if resolved_category else None
         
-        return await self.recurring_repo.update(template, update_data)
+        # Update the template
+        updated_template = await self.recurring_repo.update(template, update_data)
+        
+        # Propagate non-financial changes (category, description, notes, supplier) to existing generated transactions
+        # We do NOT update amount or date for past transactions to preserve financial history
+        # unless specifically requested (which isn't implemented here yet)
+        propagate_fields = {}
+        if 'category_id' in update_data:
+            propagate_fields['category_id'] = update_data['category_id']
+        if 'supplier_id' in update_data:
+            propagate_fields['supplier_id'] = update_data['supplier_id']
+        if 'description' in update_data:
+            propagate_fields['description'] = update_data['description']
+        if 'notes' in update_data:
+            propagate_fields['notes'] = update_data['notes']
+            
+        if propagate_fields:
+            try:
+                from sqlalchemy import update
+                stmt = (
+                    update(Transaction)
+                    .where(Transaction.recurring_template_id == template_id)
+                    .where(Transaction.is_generated == True)
+                    .values(**propagate_fields)
+                )
+                await self.db.execute(stmt)
+                await self.db.commit()
+            except Exception as e:
+                print(f"Warning: Failed to propagate recurring template updates to transactions: {e}")
+                # Don't fail the request, just log it
+        
+        return updated_template
 
     async def delete_template(self, template_id: int) -> bool:
         """Delete a recurring transaction template"""
@@ -137,6 +174,11 @@ class RecurringTransactionService:
                 
                 if not should_create:
                     continue
+                
+                # Check if template has a category - mandatory for generation
+                if not template.category_id:
+                     print(f"Skipping recurring transaction generation for template {template.id}: Missing category")
+                     continue
 
                 # Create new transaction
                 transaction_data = {

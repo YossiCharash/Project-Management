@@ -59,6 +59,7 @@ export interface Transaction {
   file_path?: string | null
   supplier_id?: number | null
   created_at: string
+  from_fund?: boolean
 }
 
 export interface BudgetCreate {
@@ -104,6 +105,7 @@ export interface TransactionCreate {
   is_exceptional?: boolean
   supplier_id?: number | null
   from_fund?: boolean
+  allow_duplicate?: boolean
 }
 
 // Dashboard-specific types

@@ -122,7 +122,7 @@ async def sync_database_schema():
             # 1. Create enums if needed
             print("\n[1/6] Checking enums...")
             await check_and_create_enum(session, "expense_category", ["ניקיון", "חשמל", "ביטוח", "גינון", "אחר"])
-            await check_and_create_enum(session, "payment_method", ["הוראת קבע", "אשראי", "שיק", "מזומן", "העברה בנקאית"])
+            await check_and_create_enum(session, "payment_method", ["הוראת קבע", "אשראי", "שיק", "מזומן", "העברה בנקאית", "גבייה מרוכזת סוף שנה"])
             await check_and_create_enum(session, "recurring_frequency", ["Monthly"])
             await check_and_create_enum(session, "recurring_end_type", ["No End", "After Occurrences", "On Date"])
             

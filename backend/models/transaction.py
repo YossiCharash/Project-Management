@@ -28,6 +28,7 @@ class PaymentMethod(str, Enum):
     CHECK = "שיק"
     CASH = "מזומן"
     BANK_TRANSFER = "העברה בנקאית"
+    CENTRALIZED_YEAR_END = "גבייה מרוכזת סוף שנה"
 
 
 class Transaction(Base):

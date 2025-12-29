@@ -396,8 +396,10 @@ class ReportService:
                 earliest_start = project_start
         
         expense_categories_query = select(
-            Transaction.category,
+            Category.name.label('category'),
             func.coalesce(func.sum(Transaction.amount), 0).label('total_amount')
+        ).outerjoin(
+            Category, Transaction.category_id == Category.id
         ).where(
             and_(
                 Transaction.type == "Expense",
@@ -405,7 +407,7 @@ class ReportService:
                 Transaction.tx_date <= current_date,
                 Transaction.from_fund == False  # Exclude fund transactions
             )
-        ).group_by(Transaction.category)
+        ).group_by(Category.name)
         
         expense_categories = []
         try:

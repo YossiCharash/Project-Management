@@ -171,7 +171,10 @@ async def create_transaction(db: DBSessionDep, data: TransactionCreate, user = D
         transaction = await TransactionService(db).create(**transaction_data)
     except ValueError as e:
         # Convert ValueError from duplicate check to HTTPException
-        raise HTTPException(status_code=400, detail=str(e))
+        error_msg = str(e)
+        if "זוהתה עסקה כפולה" in error_msg:
+             raise HTTPException(status_code=409, detail=error_msg)
+        raise HTTPException(status_code=400, detail=error_msg)
     
     # Debug: Verify transaction was created with user_id
     print(f"DEBUG: Transaction created with id={transaction.id}, created_by_user_id={transaction.created_by_user_id}")
@@ -496,7 +499,32 @@ async def update_transaction(tx_id: int, db: DBSessionDep, data: TransactionUpda
         if not supplier.is_active:
             raise HTTPException(status_code=400, detail="Cannot update transaction with inactive supplier")
     
+    # Check for duplicates if allow_duplicate is False
+    if not data.allow_duplicate:
+        # Resolve new values or fallback to existing
+        new_date = data.tx_date if data.tx_date is not None else tx.tx_date
+        new_amount = data.amount if data.amount is not None else tx.amount
+        new_type = data.type if data.type is not None else tx.type
+        new_supplier_id = data.supplier_id if data.supplier_id is not None else tx.supplier_id
+        
+        service = TransactionService(db)
+        duplicates = await service.check_duplicate_transaction(
+            project_id=tx.project_id,
+            tx_date=new_date,
+            amount=new_amount,
+            supplier_id=new_supplier_id,
+            type=new_type
+        )
+        
+        # Filter out current transaction
+        duplicates = [d for d in duplicates if d.id != tx_id]
+        
+        if duplicates:
+             raise HTTPException(status_code=409, detail="זוהתה עסקה כפולה")
+    
     update_data = data.model_dump(exclude_unset=True)
+    if 'allow_duplicate' in update_data:
+        del update_data['allow_duplicate']
     
     # Validate category if being updated (unless it's a cash register transaction)
     from_fund = update_data.get('from_fund', tx.from_fund if hasattr(tx, 'from_fund') else False)

@@ -81,15 +81,16 @@ class BudgetRepository:
         start_date = budget.start_date
         end_date = budget.end_date if budget.end_date else as_of_date
         
-        # Get category_id from category name (Budget stores category as string name)
+        # Get category_ids from category name (Budget stores category as string name)
+        # Handle case where multiple categories might have the same name (due to removed unique constraint)
         from backend.models.category import Category
         category_result = await self.db.execute(
             select(Category.id).where(Category.name == budget.category)
         )
-        category_id = category_result.scalar_one_or_none()
+        category_ids = category_result.scalars().all()
         
         # If category not found, return zero spending
-        if not category_id:
+        if not category_ids:
             return 0.0, 0.0
         
         # Calculate expenses for transactions in this category within the period
@@ -97,7 +98,7 @@ class BudgetRepository:
             and_(
                 Transaction.project_id == budget.project_id,
                 Transaction.type == "Expense",
-                Transaction.category_id == category_id,  # Use category_id instead of category name
+                Transaction.category_id.in_(category_ids),  # Use IN for multiple IDs
                 Transaction.tx_date >= start_date,
                 Transaction.tx_date <= end_date,
                 Transaction.from_fund == False  # Exclude fund transactions
@@ -109,7 +110,7 @@ class BudgetRepository:
             and_(
                 Transaction.project_id == budget.project_id,
                 Transaction.type == "Income",
-                Transaction.category_id == category_id,  # Use category_id instead of category name
+                Transaction.category_id.in_(category_ids),  # Use IN for multiple IDs
                 Transaction.tx_date >= start_date,
                 Transaction.tx_date <= end_date,
                 Transaction.from_fund == False  # Exclude fund transactions

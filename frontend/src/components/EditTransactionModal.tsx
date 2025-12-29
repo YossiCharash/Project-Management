@@ -4,6 +4,7 @@ import { Transaction, TransactionCreate } from '../types/api'
 import { TransactionAPI } from '../lib/apiClient'
 import { useAppDispatch, useAppSelector } from '../utils/hooks'
 import { fetchSuppliers } from '../store/slices/suppliersSlice'
+import DuplicateWarningModal from './DuplicateWarningModal'
 
 interface EditTransactionModalProps {
   isOpen: boolean
@@ -38,6 +39,8 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   const [documents, setDocuments] = useState<any[]>([])
   const [documentsLoading, setDocumentsLoading] = useState(false)
   const [uploadingDocument, setUploadingDocument] = useState(false)
+  const [showDuplicateWarning, setShowDuplicateWarning] = useState(false)
+  const [pendingUpdateData, setPendingUpdateData] = useState<Partial<TransactionCreate> | null>(null)
 
   useEffect(() => {
     if (isOpen && transaction) {
@@ -164,6 +167,27 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     })
     setError(null)
     setDocuments([])
+    setShowDuplicateWarning(false)
+    setPendingUpdateData(null)
+  }
+
+  const handleConfirmDuplicate = async () => {
+    if (!transaction || !pendingUpdateData) return
+    
+    setLoading(true)
+    setError(null)
+    
+    try {
+      await TransactionAPI.updateTransaction(transaction.id, { ...pendingUpdateData, allow_duplicate: true })
+      setShowDuplicateWarning(false)
+      setPendingUpdateData(null)
+      onSuccess()
+      onClose()
+      resetForm()
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'שמירה נכשלה')
+      setLoading(false)
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -175,6 +199,11 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
       return
     }
 
+    if (formData.type === 'Expense' && !formData.category && !transaction.from_fund) {
+      setError('יש לבחור קטגוריה')
+      return
+    }
+
     if (!formData.supplier_id || formData.supplier_id === 0) {
       setError('יש לבחור ספק (חובה)')
       return
@@ -183,26 +212,31 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     setLoading(true)
     setError(null)
 
-    try {
-      const updateData: Partial<TransactionCreate> = {
-        tx_date: formData.tx_date!,
-        type: formData.type!,
-        amount: formData.amount!,
-        description: formData.description || undefined,
-        category: formData.category || undefined,
-        payment_method: formData.payment_method || undefined,
-        notes: formData.notes || undefined,
-        is_exceptional: formData.is_exceptional,
-        supplier_id: formData.supplier_id!
-      }
+    const updateData: Partial<TransactionCreate> = {
+      tx_date: formData.tx_date!,
+      type: formData.type!,
+      amount: formData.amount!,
+      description: formData.description || undefined,
+      category: formData.category || undefined,
+      payment_method: formData.payment_method || undefined,
+      notes: formData.notes || undefined,
+      is_exceptional: formData.is_exceptional,
+      supplier_id: formData.supplier_id!
+    }
 
+    try {
       await TransactionAPI.updateTransaction(transaction.id, updateData)
       onSuccess()
       onClose()
       resetForm()
     } catch (err: any) {
+      if (err.response?.status === 409) {
+        setPendingUpdateData(updateData)
+        setShowDuplicateWarning(true)
+        setLoading(false)
+        return
+      }
       setError(err.response?.data?.detail || 'שמירה נכשלה')
-    } finally {
       setLoading(false)
     }
   }
@@ -336,6 +370,7 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                 <option value="שיק">שיק</option>
                 <option value="מזומן">מזומן</option>
                 <option value="העברה בנקאית">העברה בנקאית</option>
+                <option value="גבייה מרוכזת סוף שנה">גבייה מרוכזת סוף שנה</option>
               </select>
             </div>
 
@@ -510,9 +545,18 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
           </div>
         </form>
       </div>
+      
+      <DuplicateWarningModal
+        isOpen={showDuplicateWarning}
+        onClose={() => {
+            setShowDuplicateWarning(false)
+            setPendingUpdateData(null)
+        }}
+        onConfirm={handleConfirmDuplicate}
+        isEdit={true}
+      />
     </div>
   )
 }
 
 export default EditTransactionModal
-

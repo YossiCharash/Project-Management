@@ -2,14 +2,16 @@ import { useEffect, useState, ChangeEvent, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import api from '../lib/api'
-import { ReportAPI, BudgetAPI, ProjectAPI, CategoryAPI } from '../lib/apiClient'
-import { ExpenseCategory, BudgetWithSpending } from '../types/api'
+import { ReportAPI, BudgetAPI, ProjectAPI, CategoryAPI, RecurringTransactionAPI } from '../lib/apiClient'
+import { ExpenseCategory, BudgetWithSpending, RecurringTransactionTemplate, RecurringTransactionTemplateUpdate } from '../types/api'
 import ProjectTrendsChart from '../components/charts/ProjectTrendsChart'
 import BudgetCard from '../components/charts/BudgetCard'
 import BudgetProgressChart from '../components/charts/BudgetProgressChart'
 import EditTransactionModal from '../components/EditTransactionModal'
 import CreateTransactionModal from '../components/CreateTransactionModal'
 import CreateProjectModal from '../components/CreateProjectModal'
+import EditRecurringTemplateModal from '../components/EditRecurringTemplateModal'
+import EditRecurringSelectionModal from '../components/EditRecurringSelectionModal'
 import { useAppDispatch, useAppSelector } from '../utils/hooks'
 import { fetchSuppliers } from '../store/slices/suppliersSlice'
 import { ChevronDown, History, Download, Edit, ChevronLeft } from 'lucide-react'
@@ -29,7 +31,9 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
   CASH: 'מזומן',
   'מזומן': 'מזומן',
   BANK_TRANSFER: 'העברה בנקאית',
-  'העברה בנקאית': 'העברה בנקאית'
+  'העברה בנקאית': 'העברה בנקאית',
+  CENTRALIZED_YEAR_END: 'גבייה מרוכזת סוף שנה',
+  'גבייה מרוכזת סוף שנה': 'גבייה מרוכזת סוף שנה'
 }
 
 interface Transaction {
@@ -46,12 +50,14 @@ interface Transaction {
   is_generated?: boolean
   supplier_id?: number | null
   created_by_user_id?: number | null
-  created_by_user?: {
-    id: number
-    full_name: string
-    email: string
-  } | null
-  from_fund?: boolean
+    created_by_user?: {
+        id: number
+        full_name: string
+        email: string
+    } | null
+    from_fund?: boolean
+    recurring_template_id?: number | null
+    file_path?: string | null
 }
 
 export default function ProjectDetail() {
@@ -92,6 +98,27 @@ export default function ProjectDetail() {
 
   const [editTransactionModalOpen, setEditTransactionModalOpen] = useState(false)
   const [selectedTransactionForEdit, setSelectedTransactionForEdit] = useState<any | null>(null)
+  const [transactionTypeFilter, setTransactionTypeFilter] = useState<'all' | 'regular' | 'recurring'>('all')
+  const [editTemplateModalOpen, setEditTemplateModalOpen] = useState(false)
+  const [selectedTemplateForEdit, setSelectedTemplateForEdit] = useState<RecurringTransactionTemplate | null>(null)
+  const [recurringTemplates, setRecurringTemplates] = useState<RecurringTransactionTemplate[]>([])
+
+  const loadRecurringTemplates = async () => {
+    if (!id) return
+    try {
+      const templates = await RecurringTransactionAPI.getProjectTemplates(parseInt(id))
+      setRecurringTemplates(templates)
+    } catch (err) {
+      console.error('Failed to load recurring templates', err)
+    }
+  }
+
+  useEffect(() => {
+    if (transactionTypeFilter === 'recurring') {
+      loadRecurringTemplates()
+    }
+  }, [transactionTypeFilter, id])
+  const [showRecurringSelectionModal, setShowRecurringSelectionModal] = useState(false)
   const [showCreateTransactionModal, setShowCreateTransactionModal] = useState(false)
   const [showDocumentsModal, setShowDocumentsModal] = useState(false)
   const [selectedTransactionForDocuments, setSelectedTransactionForDocuments] = useState<any | null>(null)
@@ -105,7 +132,7 @@ export default function ProjectDetail() {
   const [budgetSaving, setBudgetSaving] = useState(false)
   const [budgetFormError, setBudgetFormError] = useState<string | null>(null)
   const [newBudgetForm, setNewBudgetForm] = useState({
-    category: 'ניקיון',
+    category: '',
     amount: '',
     period_type: 'Annual' as 'Annual' | 'Monthly',
     start_date: new Date().toISOString().split('T')[0],
@@ -180,6 +207,7 @@ export default function ProjectDetail() {
   const [showCreateFundModal, setShowCreateFundModal] = useState(false)
   const [showEditFundModal, setShowEditFundModal] = useState(false)
   const [monthlyFundAmount, setMonthlyFundAmount] = useState<number>(0)
+  const [currentBalance, setCurrentBalance] = useState<number>(0)
   const [creatingFund, setCreatingFund] = useState(false)
   const [updatingFund, setUpdatingFund] = useState(false)
   
@@ -228,9 +256,10 @@ export default function ProjectDetail() {
       const [categoriesData, transactionsData, budgetsData] = await Promise.all([
         ReportAPI.getProjectExpenseCategories(parseInt(id)),
         ReportAPI.getProjectTransactions(parseInt(id)),
-        BudgetAPI.getProjectBudgets(parseInt(id)).catch(() => {
+        BudgetAPI.getProjectBudgets(parseInt(id)).catch((err) => {
+          console.error('Failed to load project budgets:', err)
           return []
-        }) // Don't fail if no budgets
+        })
       ])
       
       setExpenseCategories(categoriesData || [])
@@ -534,7 +563,7 @@ const formatDate = (value: string | null) => {
       await loadChartsData()
       setShowAddBudgetForm(false)
       setNewBudgetForm({
-        category: 'ניקיון',
+        category: '',
         amount: '',
         period_type: 'Annual',
         start_date: newBudgetForm.start_date,
@@ -601,9 +630,45 @@ const formatDate = (value: string | null) => {
   }
 
 
-  const handleEditAnyTransaction = (transaction: Transaction) => {
+  const handleEditAnyTransaction = async (transaction: Transaction) => {
+    // If it's a recurring transaction, ask the user whether to edit the instance or the template
+    if (transaction.is_generated && transaction.recurring_template_id) {
+       // Check if we want to edit the template (if in recurring filter or user choice)
+       if (transactionTypeFilter === 'recurring' || transaction.is_generated) {
+         setSelectedTransactionForEdit(transaction)
+         setShowRecurringSelectionModal(true)
+         return
+      }
+    }
+    
     setSelectedTransactionForEdit(transaction)
     setEditTransactionModalOpen(true)
+  }
+  
+  // Selection Modal Handler
+  const handleEditRecurringSelection = async (mode: 'instance' | 'series') => {
+      setShowRecurringSelectionModal(false)
+      
+      if (!selectedTransactionForEdit) return
+
+      if (mode === 'instance') {
+           setEditTransactionModalOpen(true)
+      } else {
+           // Series mode
+           try {
+             const templateId = selectedTransactionForEdit.recurring_template_id
+             if (!templateId) {
+                 alert('לא נמצא מזהה תבנית')
+                 return
+             }
+             const response = await api.get(`/recurring-transactions/${templateId}`)
+             setSelectedTemplateForEdit(response.data)
+             setEditTemplateModalOpen(true)
+           } catch (err) {
+             console.error('Failed to fetch template', err)
+             alert('שגיאה בטעינת פרטי המחזוריות')
+           }
+      }
   }
 
 
@@ -613,6 +678,14 @@ const formatDate = (value: string | null) => {
   const currentYear = currentDate.getFullYear()
 
   const filtered = txs.filter(t => {
+    // Filter by transaction type
+    if (transactionTypeFilter === 'regular' && t.is_generated) {
+      return false
+    }
+    if (transactionTypeFilter === 'recurring' && !t.is_generated) {
+      return false
+    }
+
     // Exclude fund transactions from the list
     if (t.from_fund === true) {
       return false
@@ -620,6 +693,9 @@ const formatDate = (value: string | null) => {
     
     const txDate = new Date(t.tx_date)
     
+    // Project date filtering removed to allow viewing all transactions
+    // The user can filter by date using the date filter controls
+    /*
     // First filter by current contract period (if project has start_date and end_date)
     let inCurrentContractPeriod = true
     if (projectStartDate && projectEndDate) {
@@ -632,6 +708,7 @@ const formatDate = (value: string | null) => {
     if (!inCurrentContractPeriod) {
       return false
     }
+    */
     
     let dateMatches = false
 
@@ -1040,7 +1117,15 @@ const formatDate = (value: string | null) => {
         className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6"
       >
         <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">סיכום פיננסי</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg text-center">
+            <div className="text-blue-600 dark:text-blue-400 font-semibold mb-1">
+              {projectBudget.budget_annual > 0 ? 'תקציב שנתי' : 'תקציב חודשי'}
+            </div>
+            <div className="text-2xl font-bold text-blue-700 dark:text-blue-300">
+              {formatCurrency(projectBudget.budget_annual > 0 ? projectBudget.budget_annual : projectBudget.budget_monthly)} ₪
+            </div>
+          </div>
           <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg text-center">
             <div className="text-green-600 dark:text-green-400 font-semibold mb-1">הכנסות</div>
             <div className="text-2xl font-bold text-green-700 dark:text-green-300">
@@ -1111,6 +1196,7 @@ const formatDate = (value: string | null) => {
                   <button
                     onClick={() => {
                       setMonthlyFundAmount(fundData.monthly_amount)
+                      setCurrentBalance(fundData.current_balance)
                       setShowEditFundModal(true)
                     }}
                     className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm flex items-center gap-2"
@@ -1409,6 +1495,11 @@ const formatDate = (value: string | null) => {
                                 <span className={`px-3 py-1 rounded-full text-xs font-semibold ${tx.type === 'Income' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                                   {tx.type === 'Income' ? 'הכנסה' : 'הוצאה'}
                                 </span>
+                                {tx.is_generated && (
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700 border border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800">
+                                    מחזורי
+                                  </span>
+                                )}
                                 <span className="text-sm text-gray-600 dark:text-gray-300">{tx.category ? (CATEGORY_LABELS[tx.category] || tx.category) : '-'}</span>
                               </div>
                               <div className="flex items-center gap-4">
@@ -1472,74 +1563,6 @@ const formatDate = (value: string | null) => {
                                     </svg>
                                     מסמכים
                                   </button>
-                                  <label className="px-3 py-1.5 text-xs bg-green-600 text-white rounded hover:bg-green-700 cursor-pointer flex items-center gap-1">
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                                    </svg>
-                                    העלה מסמכים
-                                    <input
-                                      type="file"
-                                      multiple
-                                      className="hidden"
-                                      onChange={async (e) => {
-                                        const files = Array.from(e.target.files || [])
-                                        if (files.length === 0) return
-
-                                        let successCount = 0
-                                        let errorCount = 0
-                                        const uploadedDocs: Array<{id: number, fileName: string, description: string}> = []
-                                        
-                                        for (let i = 0; i < files.length; i++) {
-                                          const file = files[i]
-                                          try {
-                                            const formData = new FormData()
-                                            formData.append('file', file)
-                                            const response = await api.post(`/transactions/${tx.id}/supplier-document`, formData, {
-                                              headers: { 'Content-Type': 'multipart/form-data' }
-                                            })
-                                            if (response.data && response.data.id) {
-                                              successCount++
-                                              uploadedDocs.push({
-                                                id: response.data.id,
-                                                fileName: file.name,
-                                                description: response.data.description || ''
-                                              })
-                                            }
-                                          } catch (err: any) {
-                                            errorCount++
-                                          }
-                                        }
-
-                                        if (successCount > 0 && uploadedDocs.length > 0) {
-                                          setUploadedDocuments(uploadedDocs)
-                                          setSelectedTransactionForDocuments(tx)
-                                          setShowDescriptionModal(true)
-
-                                          await load()
-                                          if (showDocumentsModal && selectedTransactionForDocuments?.id === tx.id) {
-                                            const { data } = await api.get(`/transactions/${tx.id}/documents`)
-                                            setTransactionDocuments(data || [])
-                                          }
-                                        } else if (successCount > 0) {
-                                          await load()
-                                          if (showDocumentsModal && selectedTransactionForDocuments?.id === tx.id) {
-                                            const { data } = await api.get(`/transactions/${tx.id}/documents`)
-                                            setTransactionDocuments(data || [])
-                                          }
-                                        }
-
-                                        if (errorCount > 0) {
-                                          if (successCount > 0) {
-                                            alert(`הועלו ${successCount} מסמכים, ${errorCount} נכשלו`)
-                                          } else {
-                                            alert(`שגיאה בהעלאת המסמכים`)
-                                          }
-                                        }
-
-                                        e.target.value = ''
-                                      }}
-                                    />
-                                  </label>
                                   <button
                                     onClick={() => handleEditAnyTransaction(tx)}
                                     className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
@@ -1582,6 +1605,7 @@ const formatDate = (value: string | null) => {
                 onClick={() => {
                   setShowEditFundModal(false)
                   setMonthlyFundAmount(0)
+                  setCurrentBalance(0)
                 }}
                 className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
               >
@@ -1596,11 +1620,12 @@ const formatDate = (value: string | null) => {
                 e.preventDefault()
                 setUpdatingFund(true)
                 try {
-                  await api.put(`/projects/${id}/fund?monthly_amount=${monthlyFundAmount}`)
+                  await api.put(`/projects/${id}/fund?monthly_amount=${monthlyFundAmount}&current_balance=${currentBalance}`)
                   // Reload fund data
                   await loadFundData()
                   setShowEditFundModal(false)
                   setMonthlyFundAmount(0)
+                  setCurrentBalance(0)
                 } catch (err: any) {
                   alert(err.response?.data?.detail || 'שגיאה בעדכון הקופה')
                 } finally {
@@ -1609,6 +1634,24 @@ const formatDate = (value: string | null) => {
               }}
               className="space-y-4"
             >
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  יתרה נוכחית (₪)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={currentBalance}
+                  onChange={(e) => setCurrentBalance(Number(e.target.value))}
+                  placeholder="הכנס יתרה נוכחית"
+                  className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-4 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  יתרת הקופה הנוכחית (ניתן לערוך ידנית)
+                </p>
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   סכום חודשי (₪)
@@ -1641,6 +1684,7 @@ const formatDate = (value: string | null) => {
                   onClick={() => {
                     setShowEditFundModal(false)
                     setMonthlyFundAmount(0)
+                    setCurrentBalance(0)
                   }}
                   disabled={updatingFund}
                   className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors disabled:opacity-50"
@@ -1978,8 +2022,8 @@ const formatDate = (value: string | null) => {
                       <p className="text-gray-500 dark:text-gray-400">
                         אין תקציבים לקטגוריות לפרויקט זה
                       </p>
-                      <p className="text-sm text-gray-400 dark:text-gray-500 mt-2">
-                        ניתן להוסיף תקציבים לקטגוריות בעת יצירה או עריכה של הפרויקט
+                      <p className="text-sm text-gray-400 dark:text-gray-500 mt-2 mb-4">
+                        הוסף תקציבים לקטגוריות כדי לעקוב אחר הוצאות מול תכנון
                       </p>
                     </div>
                   )}
@@ -2180,11 +2224,55 @@ const formatDate = (value: string | null) => {
               </div>
             </div>
           </div>
+
+          {/* Transaction Type Filter */}
+          <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                סוג עסקה
+              </label>
+              <div className="flex flex-wrap gap-4">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="transactionType"
+                    value="all"
+                    checked={transactionTypeFilter === 'all'}
+                    onChange={() => setTransactionTypeFilter('all')}
+                    className="w-4 h-4 text-blue-600"
+                  />
+                  <span className="text-sm text-gray-700 dark:text-gray-300">הכל</span>
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="transactionType"
+                    value="regular"
+                    checked={transactionTypeFilter === 'regular'}
+                    onChange={() => setTransactionTypeFilter('regular')}
+                    className="w-4 h-4 text-blue-600"
+                  />
+                  <span className="text-sm text-gray-700 dark:text-gray-300">רגיל</span>
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="transactionType"
+                    value="recurring"
+                    checked={transactionTypeFilter === 'recurring'}
+                    onChange={() => setTransactionTypeFilter('recurring')}
+                    className="w-4 h-4 text-blue-600"
+                  />
+                  <span className="text-sm text-gray-700 dark:text-gray-300">מחזורי</span>
+                </label>
+              </div>
+            </div>
+          </div>
         </div>
 
         {loading ? (
           <div className="text-center py-8 text-gray-500 dark:text-gray-400">טוען...</div>
-        ) : filtered.length === 0 ? (
+        ) : (transactionTypeFilter === 'recurring' ? recurringTemplates.length === 0 : filtered.length === 0) ? (
           <div className="text-center py-8 space-y-3">
             <div className="text-gray-500 dark:text-gray-400 font-medium">אין עסקאות להצגה</div>
             {txs.length > 0 && (
@@ -2233,7 +2321,9 @@ const formatDate = (value: string | null) => {
               <thead>
                 <tr className="bg-gray-50 dark:bg-gray-700 text-left">
                   <th className="p-3 font-medium text-gray-700 dark:text-gray-300">סוג</th>
-                  <th className="p-3 font-medium text-gray-700 dark:text-gray-300">תאריך</th>
+                  <th className="p-3 font-medium text-gray-700 dark:text-gray-300">
+                    {transactionTypeFilter === 'recurring' ? 'תדירות' : 'תאריך'}
+                  </th>
                   <th className="p-3 font-medium text-gray-700 dark:text-gray-300">סכום</th>
                   <th className="p-3 font-medium text-gray-700 dark:text-gray-300">קטגוריה</th>
                   <th className="p-3 font-medium text-gray-700 dark:text-gray-300">אמצעי תשלום</th>
@@ -2245,7 +2335,61 @@ const formatDate = (value: string | null) => {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map(t => {
+                {transactionTypeFilter === 'recurring' ? (
+                  recurringTemplates.map(template => (
+                    <tr key={template.id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700">
+                      <td className="p-3">
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          template.type === 'Income' 
+                            ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-300' 
+                            : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-300'
+                        }`}>
+                          {template.type === 'Income' ? 'הכנסה' : 'הוצאה'}
+                        </span>
+                      </td>
+                      <td className="p-3 text-gray-700 dark:text-gray-300">
+                        כל {template.day_of_month} בחודש
+                      </td>
+                      <td className={`p-3 font-semibold ${template.type === 'Income' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                        {Number(template.amount || 0).toFixed(2)} ₪
+                      </td>
+                      <td className="p-3 text-gray-700 dark:text-gray-300">
+                        {template.category ? (CATEGORY_LABELS[template.category] || template.category) : '-'}
+                      </td>
+                      <td className="p-3 text-gray-700 dark:text-gray-300">
+                        -
+                      </td>
+                      <td className="p-3 text-gray-700 dark:text-gray-300">
+                        {(() => {
+                          const supplierId = template.supplier_id
+                          if (!supplierId) {
+                            return '-'
+                          }
+                          const supplier = suppliers.find(s => s.id === supplierId)
+                          return supplier?.name ?? `[ספק ${supplierId}]`
+                        })()}
+                      </td>
+                      <td className="p-3 text-gray-700 dark:text-gray-300">
+                        מערכת (תבנית)
+                      </td>
+                      <td className="p-3 text-gray-700 dark:text-gray-300">{template.description}</td>
+                      <td className="p-3 text-gray-700 dark:text-gray-300">{template.notes || '-'}</td>
+                      <td className="p-3">
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => {
+                              setSelectedTemplateForEdit(template)
+                              setEditTemplateModalOpen(true)
+                            }}
+                            className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+                          >
+                            ערוך
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                ) : filtered.map(t => {
                   return (
                   <tr key={t.id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700">
                     <td className="p-3">
@@ -2331,81 +2475,6 @@ const formatDate = (value: string | null) => {
                         >
                           מסמכים
                         </button>
-                        <label className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 cursor-pointer">
-                          העלה מסמכים
-                          <input
-                            type="file"
-                            multiple
-                            className="hidden"
-                            onChange={async (e: ChangeEvent<HTMLInputElement>) => {
-                              const files = e.target.files
-                              if (!files || files.length === 0) return
-                              
-                              try {
-                                let successCount = 0
-                                let errorCount = 0
-                                const uploadedDocs: Array<{id: number, fileName: string, description: string}> = []
-                                
-                                // Upload each file
-                                for (let i = 0; i < files.length; i++) {
-                                  const file = files[i]
-                                  try {
-                                    const formData = new FormData()
-                                    formData.append('file', file)
-                                    const response = await api.post(`/transactions/${t.id}/supplier-document`, formData, {
-                                      headers: { 'Content-Type': 'multipart/form-data' }
-                                    })
-                                    
-                                    // Get document ID from response
-                                    if (response.data && response.data.id) {
-                                      successCount++
-                                      uploadedDocs.push({
-                                        id: response.data.id,
-                                        fileName: file.name,
-                                        description: response.data.description || ''
-                                      })
-                                    }
-                                  } catch (err: any) {
-                                    errorCount++
-                                  }
-                                }
-                                
-                                // If some files were uploaded successfully, show description modal
-                                if (successCount > 0 && uploadedDocs.length > 0) {
-                                  setUploadedDocuments(uploadedDocs)
-                                  setSelectedTransactionForDocuments(t)
-                                  setShowDescriptionModal(true)
-                                  
-                                  await loadChartsData()
-                                  // Reload documents in modal if it's open
-                                  if (showDocumentsModal && selectedTransactionForDocuments?.id === t.id) {
-                                    const { data } = await api.get(`/transactions/${t.id}/documents`)
-                                    setTransactionDocuments(data || [])
-                                  }
-                                } else if (successCount > 0) {
-                                  // Files uploaded but no IDs received - just reload
-                                  await loadChartsData()
-                                  if (showDocumentsModal && selectedTransactionForDocuments?.id === t.id) {
-                                    const { data } = await api.get(`/transactions/${t.id}/documents`)
-                                    setTransactionDocuments(data || [])
-                                  }
-                                }
-                                
-                                // Show result message if there were errors
-                                if (errorCount > 0) {
-                                  if (successCount > 0) {
-                                    alert(`הועלו ${successCount} מסמכים, ${errorCount} נכשלו`)
-                                  } else {
-                                    alert(`שגיאה בהעלאת המסמכים`)
-                                  }
-                                }
-                              } catch (err: any) {
-                                alert(err.response?.data?.detail ?? 'שגיאה בהעלאת מסמכים')
-                              }
-                              e.target.value = ''
-                            }}
-                          />
-                        </label>
                       </div>
                     </td>
                   </tr>
@@ -2451,6 +2520,34 @@ const formatDate = (value: string | null) => {
           await loadChartsData()
         }}
         transaction={selectedTransactionForEdit}
+      />
+
+      <EditRecurringSelectionModal 
+        isOpen={showRecurringSelectionModal}
+        onClose={() => {
+            setShowRecurringSelectionModal(false)
+            setSelectedTransactionForEdit(null)
+        }}
+        onEditInstance={() => handleEditRecurringSelection('instance')}
+        onEditSeries={() => handleEditRecurringSelection('series')}
+      />
+
+      <EditRecurringTemplateModal
+        isOpen={editTemplateModalOpen}
+        onClose={() => {
+          setEditTemplateModalOpen(false)
+          setSelectedTemplateForEdit(null)
+        }}
+        onSuccess={async () => {
+          setEditTemplateModalOpen(false)
+          setSelectedTemplateForEdit(null)
+          await load()
+          await loadChartsData()
+          if (transactionTypeFilter === 'recurring') {
+            await loadRecurringTemplates()
+          }
+        }}
+        template={selectedTemplateForEdit}
       />
 
       <CreateProjectModal

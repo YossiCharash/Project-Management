@@ -1080,10 +1080,11 @@ async def create_project_fund(
 async def update_project_fund(
     db: DBSessionDep,
     project_id: int,
-    monthly_amount: float = Query(0, description="Monthly amount to add to fund"),
+    monthly_amount: Optional[float] = Query(None, description="Monthly amount to add to fund"),
+    current_balance: Optional[float] = Query(None, description="Current balance of the fund"),
     user = Depends(get_current_user)
 ):
-    """Update fund monthly amount for a project"""
+    """Update fund monthly amount and/or balance for a project"""
     # Check if project exists
     project_repo = ProjectRepository(db)
     project = await project_repo.get_by_id(project_id)
@@ -1096,8 +1097,15 @@ async def update_project_fund(
     if not fund:
         raise HTTPException(status_code=404, detail="Fund not found for this project")
     
-    # Update fund monthly amount
-    await fund_service.update_fund(fund, monthly_amount=monthly_amount)
+    # Update fund
+    update_data = {}
+    if monthly_amount is not None:
+        update_data['monthly_amount'] = monthly_amount
+    if current_balance is not None:
+        update_data['current_balance'] = current_balance
+    
+    if update_data:
+        await fund_service.update_fund(fund, **update_data)
     
     return {
         'id': fund.id,

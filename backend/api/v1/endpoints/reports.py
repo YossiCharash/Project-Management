@@ -68,6 +68,8 @@ async def get_project_transactions(project_id: int, db: DBSessionDep, user = Dep
                 has_recurring_fields = True
             except Exception:
                 # If columns don't exist, query without them
+                # Rollback the failed transaction first
+                await db.rollback()
                 query = text("""
                     SELECT 
                         t.id, t.project_id, t.tx_date, t.type, t.amount, t.description, t.category, t.notes,
@@ -154,6 +156,9 @@ async def get_project_transactions(project_id: int, db: DBSessionDep, user = Dep
         except Exception:
             # If raw SQL fails (e.g., columns don't exist), try fallback method
             try:
+                # Rollback the failed transaction first
+                await db.rollback()
+                
                 from backend.repositories.transaction_repository import TransactionRepository
                 from backend.schemas.transaction import TransactionOut
 
@@ -195,6 +200,7 @@ async def get_project_transactions(project_id: int, db: DBSessionDep, user = Dep
                         continue
                 return result
             except Exception as e2:
+                import traceback
                 traceback.print_exc()
                 return []
     except Exception as e:

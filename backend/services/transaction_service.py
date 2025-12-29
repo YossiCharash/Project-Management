@@ -77,13 +77,16 @@ class TransactionService:
                 category_id=category_id,
                 allow_missing=from_fund
             )
-        elif not from_fund and data.get('type') == 'Expense':
-            raise ValueError("קטגוריה היא שדה חובה לעסקאות הוצאה. יש לבחור קטגוריה מהרשימה או לסמן 'הוריד מהקופה'.")
+        elif not from_fund:
+            raise ValueError("קטגוריה היא שדה חובה. יש לבחור קטגוריה מהרשימה.")
         
         data['category_id'] = resolved_category.id if resolved_category else None
         
         # Check for duplicate transactions (for invoice payments)
-        if data.get('type') == 'Expense' and not from_fund:
+        # Skip check if allow_duplicate is True
+        allow_duplicate = data.pop('allow_duplicate', False)
+        
+        if data.get('type') == 'Expense' and not from_fund and not allow_duplicate:
             duplicates = await self.check_duplicate_transaction(
                 project_id=data['project_id'],
                 tx_date=data['tx_date'],

@@ -43,6 +43,18 @@ const CreateRecurringTransactionModal: React.FC<CreateRecurringTransactionModalP
   const [showDescriptionModal, setShowDescriptionModal] = useState(false)
   const [uploadedDocuments, setUploadedDocuments] = useState<Array<{id: number, fileName: string, description: string}>>([])
   const [selectedTransactionForDocuments, setSelectedTransactionForDocuments] = useState<any | null>(null)
+  
+  const [availableCategories, setAvailableCategories] = useState<any[]>([])
+  const [useProjectStartDate, setUseProjectStartDate] = useState(false)
+  const [project, setProject] = useState<any>(null)
+
+  useEffect(() => {
+    if (isOpen && projectId) {
+      import('../lib/apiClient').then(({ ProjectAPI }) => {
+        ProjectAPI.getProject(projectId).then(setProject).catch(console.error)
+      })
+    }
+  }, [isOpen, projectId])
 
   useEffect(() => {
     if (isOpen) {
@@ -142,6 +154,7 @@ const CreateRecurringTransactionModal: React.FC<CreateRecurringTransactionModalP
       const templateData = {
         ...formData,
         category: formData.category || undefined,
+        category_id: formData.category_id || undefined,
         notes: formData.notes || undefined,
         end_date: formData.end_type === 'On Date' ? formData.end_date : undefined,
         max_occurrences: formData.end_type === 'After Occurrences' ? formData.max_occurrences : undefined
@@ -349,16 +362,19 @@ const CreateRecurringTransactionModal: React.FC<CreateRecurringTransactionModalP
               <select
                 value={formData.category || ''}
               onChange={(e) => {
-                const newCategory = e.target.value || ''
+                const newCategoryName = e.target.value || ''
+                const selectedCategory = availableCategories.find(c => c.name === newCategoryName)
+                
                 const candidates = suppliers.filter(
-                  s => s.is_active && s.category === newCategory
+                  s => s.is_active && s.category === newCategoryName
                 )
                 setFormData({
                   ...formData,
-                  category: newCategory,
+                  category: newCategoryName,
+                  category_id: selectedCategory ? selectedCategory.id : null,
                   // auto-select only supplier if exactly one exists
                   supplier_id:
-                    newCategory && candidates.length === 1 ? candidates[0].id : 0,
+                    newCategoryName && candidates.length === 1 ? candidates[0].id : 0,
                 })
               }}
                 className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"

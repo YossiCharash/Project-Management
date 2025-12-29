@@ -25,7 +25,7 @@ const EditTransactionInstanceModal: React.FC<EditTransactionInstanceModalProps> 
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [availableCategories, setAvailableCategories] = useState<string[]>([])
+  const [availableCategories, setAvailableCategories] = useState<any[]>([])
 
   useEffect(() => {
     if (isOpen) {
@@ -36,6 +36,7 @@ const EditTransactionInstanceModal: React.FC<EditTransactionInstanceModalProps> 
         tx_date: transaction.tx_date,
         amount: transaction.amount,
         category: transaction.category || '',
+        category_id: transaction.category_id || null,
         notes: transaction.notes || ''
       })
     }
@@ -44,8 +45,16 @@ const EditTransactionInstanceModal: React.FC<EditTransactionInstanceModalProps> 
   const loadCategories = async () => {
     try {
       const categories = await CategoryAPI.getCategories()
-      const categoryNames = categories.filter(cat => cat.is_active).map(cat => cat.name)
-      setAvailableCategories(categoryNames)
+      const activeCategories = categories.filter(cat => cat.is_active)
+      setAvailableCategories(activeCategories)
+      
+      // If we have transaction and category name but no ID, try to find it
+      if (transaction && transaction.category && !transaction.category_id) {
+          const cat = activeCategories.find(c => c.name === transaction.category)
+          if (cat) {
+              setFormData(prev => ({ ...prev, category_id: cat.id }))
+          }
+      }
     } catch (err) {
       console.error('Error loading categories:', err)
       setAvailableCategories([])
@@ -66,6 +75,11 @@ const EditTransactionInstanceModal: React.FC<EditTransactionInstanceModalProps> 
     e.preventDefault()
     if (!transaction) return
 
+    if (!formData.category) {
+       setError('יש לבחור קטגוריה')
+       return
+    }
+
     setLoading(true)
     setError(null)
 
@@ -73,6 +87,7 @@ const EditTransactionInstanceModal: React.FC<EditTransactionInstanceModalProps> 
       const updateData = {
         ...formData,
         category: formData.category || undefined,
+        category_id: formData.category_id || undefined,
         notes: formData.notes || undefined
       }
 
@@ -174,8 +189,16 @@ const EditTransactionInstanceModal: React.FC<EditTransactionInstanceModalProps> 
               קטגוריה
             </label>
             <select
-              value={formData.category}
-              onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+              value={formData.category || ''}
+              onChange={(e) => {
+                  const newCategoryName = e.target.value
+                  const selectedCategory = availableCategories.find(c => c.name === newCategoryName)
+                  setFormData({ 
+                      ...formData, 
+                      category: newCategoryName,
+                      category_id: selectedCategory ? selectedCategory.id : null
+                  })
+              }}
               className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
             >
               <option value="">בחר קטגוריה</option>

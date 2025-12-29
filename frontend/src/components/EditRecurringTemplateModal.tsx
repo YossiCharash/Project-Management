@@ -35,7 +35,9 @@ const EditRecurringTemplateModal: React.FC<EditRecurringTemplateModalProps> = ({
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [availableCategories, setAvailableCategories] = useState<string[]>([])
+  const [availableCategories, setAvailableCategories] = useState<any[]>([])
+  const [showConfirmation, setShowConfirmation] = useState(false)
+  const [changesSummary, setChangesSummary] = useState<string[]>([])
 
   useEffect(() => {
     if (isOpen) {
@@ -43,10 +45,14 @@ const EditRecurringTemplateModal: React.FC<EditRecurringTemplateModalProps> = ({
       loadCategories()
     }
     if (template && isOpen) {
+      // Find category ID from name if needed, but we rely on availableCategories having IDs
+      // Since template might only have category name, we might need to resolve ID when categories load
+      
       setFormData({
         description: template.description,
         amount: template.amount,
         category: template.category || '',
+        category_id: template.category_id || null,
         notes: template.notes || '',
         supplier_id: template.supplier_id || null,
         day_of_month: template.day_of_month,
@@ -57,6 +63,25 @@ const EditRecurringTemplateModal: React.FC<EditRecurringTemplateModalProps> = ({
       })
     }
   }, [template, isOpen, dispatch])
+
+  const loadCategories = async () => {
+    try {
+      const categories = await CategoryAPI.getCategories()
+      const activeCategories = categories.filter(cat => cat.is_active)
+      setAvailableCategories(activeCategories)
+      
+      // If we have template and category name but no ID, try to find it
+      if (template && template.category && !template.category_id) {
+          const cat = activeCategories.find(c => c.name === template.category)
+          if (cat) {
+              setFormData(prev => ({ ...prev, category_id: cat.id }))
+          }
+      }
+    } catch (err) {
+      console.error('Error loading categories:', err)
+      setAvailableCategories([])
+    }
+  }
 
   const resetForm = () => {
     setFormData({
@@ -78,6 +103,41 @@ const EditRecurringTemplateModal: React.FC<EditRecurringTemplateModalProps> = ({
     e.preventDefault()
     if (!template) return
 
+    // Calculate changes for summary
+    const changes: string[] = []
+    if (formData.description !== template.description) changes.push(`תיאור: ${template.description} -> ${formData.description}`)
+    if (formData.amount !== template.amount) changes.push(`סכום: ${template.amount} -> ${formData.amount}`)
+    if (formData.category !== template.category) changes.push(`קטגוריה: ${template.category || 'ללא'} -> ${formData.category || 'ללא'}`)
+    
+    if (!formData.category && formData.amount > 0) {
+       setError('יש לבחור קטגוריה')
+       return
+    }
+
+    if (formData.supplier_id !== template.supplier_id) {
+       const oldSupplier = suppliers.find(s => s.id === template.supplier_id)?.name || 'ללא'
+       const newSupplier = suppliers.find(s => s.id === formData.supplier_id)?.name || 'ללא'
+       changes.push(`ספק: ${oldSupplier} -> ${newSupplier}`)
+    }
+    if (formData.day_of_month !== template.day_of_month) changes.push(`יום בחודש: ${template.day_of_month} -> ${formData.day_of_month}`)
+    
+    // Add other relevant changes...
+    
+    if (changes.length === 0) {
+        // No changes detected, but maybe they just clicked save. 
+        // We can either save anyway or show "No changes".
+        // Let's proceed to confirmation even if "no changes" just to be consistent with "save".
+        // Or actually, if no changes, we can just close?
+        // Let's assume there might be subtle changes or just show a generic message.
+    }
+    
+    setChangesSummary(changes)
+    setShowConfirmation(true)
+  }
+
+  const handleConfirmSave = async () => {
+    if (!template) return
+    
     setLoading(true)
     setError(null)
 
@@ -97,6 +157,7 @@ const EditRecurringTemplateModal: React.FC<EditRecurringTemplateModalProps> = ({
       resetForm()
     } catch (err: any) {
       setError(err.response?.data?.detail || 'שמירה נכשלה')
+      setShowConfirmation(false) // Go back to form on error
     } finally {
       setLoading(false)
     }
@@ -105,9 +166,62 @@ const EditRecurringTemplateModal: React.FC<EditRecurringTemplateModalProps> = ({
   const handleClose = () => {
     onClose()
     resetForm()
+    setShowConfirmation(false)
   }
 
   if (!isOpen || !template) return null
+
+  if (showConfirmation) {
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-md">
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
+            אישור שמירת שינויים
+          </h2>
+          
+          <div className="mb-6">
+            <p className="text-gray-600 dark:text-gray-300 mb-4">
+              האם אתה בטוח שברצונך לשמור את השינויים הבאים בתבנית העסקה המחזורית?
+            </p>
+            
+            {changesSummary.length > 0 ? (
+              <div className="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg text-sm space-y-2">
+                {changesSummary.map((change, idx) => (
+                  <div key={idx} className="flex items-start gap-2">
+                    <span className="text-blue-500">•</span>
+                    <span className="text-gray-700 dark:text-gray-300">{change}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+               <p className="text-gray-500 italic text-sm">לא זוהו שינויים (ייתכן ששינית שדות לא במעקב או ללא שינוי ערך)</p>
+            )}
+            
+            <p className="mt-4 text-sm text-red-600 dark:text-red-400 font-medium">
+              שים לב: שינויים אלו יחולו על כל העסקאות העתידיות שייווצרו מתבנית זו.
+            </p>
+          </div>
+
+          <div className="flex justify-end gap-3">
+            <button
+              onClick={() => setShowConfirmation(false)}
+              className="px-4 py-2 text-gray-700 dark:text-gray-300 bg-gray-200 dark:bg-gray-600 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500"
+              disabled={loading}
+            >
+              חזור לעריכה
+            </button>
+            <button
+              onClick={handleConfirmSave}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+              disabled={loading}
+            >
+              {loading ? 'שומר...' : 'אשר ושמור'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -166,18 +280,21 @@ const EditRecurringTemplateModal: React.FC<EditRecurringTemplateModalProps> = ({
               קטגוריה
             </label>
             <select
-              value={formData.category}
+              value={formData.category || ''}
               onChange={(e) => {
-                const newCategory = e.target.value
+                const newCategoryName = e.target.value
+                const selectedCategory = availableCategories.find(c => c.name === newCategoryName)
+                
                 const candidates = suppliers.filter(
-                  s => s.is_active && s.category === newCategory
+                  s => s.is_active && s.category === newCategoryName
                 )
                 setFormData({
                   ...formData,
-                  category: newCategory,
+                  category: newCategoryName,
+                  category_id: selectedCategory ? selectedCategory.id : null,
                   // auto-select only supplier if exactly one exists
                   supplier_id:
-                    newCategory && candidates.length === 1 ? candidates[0].id : null,
+                    newCategoryName && candidates.length === 1 ? candidates[0].id : null,
                 })
               }}
               className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"

@@ -5,6 +5,7 @@ import { TransactionAPI, RecurringTransactionAPI, CategoryAPI, Category } from '
 import api from '../lib/api'
 import { useAppDispatch, useAppSelector } from '../utils/hooks'
 import { fetchSuppliers } from '../store/slices/suppliersSlice'
+import DuplicateWarningModal from './DuplicateWarningModal'
 
 interface CreateTransactionModalProps {
   isOpen: boolean
@@ -65,6 +66,8 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
   
   const [subprojects, setSubprojects] = useState<Array<{id: number, name: string}>>([])
   const [showDescriptionModal, setShowDescriptionModal] = useState(false)
+  const [showDuplicateWarning, setShowDuplicateWarning] = useState(false)
+  const [pendingPayload, setPendingPayload] = useState<TransactionCreate | null>(null)
   const [uploadedDocuments, setUploadedDocuments] = useState<Array<{id: number, fileName: string, description: string}>>([])
   const [selectedTransactionForDocuments, setSelectedTransactionForDocuments] = useState<any | null>(null)
   const [availableCategories, setAvailableCategories] = useState<Category[]>([])
@@ -164,8 +167,67 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
     
     setError(null)
     setShowDescriptionModal(false)
+    setShowDuplicateWarning(false)
+    setPendingPayload(null)
     setUploadedDocuments([])
     setSelectedTransactionForDocuments(null)
+  }
+
+  const handleTransactionSuccess = async (transactionData: any) => {
+    const newTransactionId = transactionData?.id
+
+    // If files were selected, upload them
+    if (filesToUpload.length > 0 && newTransactionId) {
+      try {
+        let successCount = 0
+        let errorCount = 0
+        const uploadedDocs: Array<{id: number, fileName: string, description: string}> = []
+        
+        for (let i = 0; i < filesToUpload.length; i++) {
+          const file = filesToUpload[i]
+          try {
+            const formData = new FormData()
+            formData.append('file', file)
+            const uploadResponse = await api.post(`/transactions/${newTransactionId}/supplier-document`, formData, {
+              headers: { 'Content-Type': 'multipart/form-data' }
+            })
+            
+            if (uploadResponse.data && uploadResponse.data.id) {
+              successCount++
+              uploadedDocs.push({
+                id: uploadResponse.data.id,
+                fileName: file.name,
+                description: uploadResponse.data.description || ''
+              })
+            }
+          } catch (err: any) {
+            errorCount++
+          }
+        }
+        
+        if (successCount > 0 && uploadedDocs.length > 0) {
+          setUploadedDocuments(uploadedDocs)
+          setSelectedTransactionForDocuments({ id: newTransactionId })
+          setShowDescriptionModal(true)
+        }
+        
+        if (errorCount > 0) {
+          if (successCount > 0) {
+            alert(`הועלו ${successCount} מסמכים, ${errorCount} נכשלו`)
+          } else {
+            alert(`שגיאה בהעלאת המסמכים`)
+          }
+        }
+      } catch (err: any) {
+        alert('העסקה נוצרה בהצלחה אך הייתה שגיאה בהעלאת חלק מהמסמכים')
+      }
+    }
+
+    if (!showDescriptionModal && !(filesToUpload.length > 0 && newTransactionId)) {
+      onSuccess()
+      onClose()
+      resetForms()
+    }
   }
 
   const handleCreateRegularTransaction = async (e: FormEvent) => {
@@ -178,6 +240,11 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
 
     if (amount === '' || Number(amount) <= 0) {
       setError('סכום חיובי נדרש')
+      return
+    }
+
+    if (!fromFund && !categoryId) {
+      setError('יש לבחור קטגוריה')
       return
     }
 
@@ -209,64 +276,40 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
         from_fund: fromFund && type === 'Expense' ? true : false,
       }
 
-      const response = await api.post('/transactions/', payload)
-      const newTransactionId = response.data?.id
-
-      // If files were selected, upload them
-      if (filesToUpload.length > 0 && newTransactionId) {
-        try {
-          let successCount = 0
-          let errorCount = 0
-          const uploadedDocs: Array<{id: number, fileName: string, description: string}> = []
-          
-          for (let i = 0; i < filesToUpload.length; i++) {
-            const file = filesToUpload[i]
-            try {
-              const formData = new FormData()
-              formData.append('file', file)
-              const uploadResponse = await api.post(`/transactions/${newTransactionId}/supplier-document`, formData, {
-                headers: { 'Content-Type': 'multipart/form-data' }
-              })
-              
-              if (uploadResponse.data && uploadResponse.data.id) {
-                successCount++
-                uploadedDocs.push({
-                  id: uploadResponse.data.id,
-                  fileName: file.name,
-                  description: uploadResponse.data.description || ''
-                })
-              }
-            } catch (err: any) {
-              errorCount++
-            }
-          }
-          
-          if (successCount > 0 && uploadedDocs.length > 0) {
-            setUploadedDocuments(uploadedDocs)
-            setSelectedTransactionForDocuments({ id: newTransactionId })
-            setShowDescriptionModal(true)
-          }
-          
-          if (errorCount > 0) {
-            if (successCount > 0) {
-              alert(`הועלו ${successCount} מסמכים, ${errorCount} נכשלו`)
-            } else {
-              alert(`שגיאה בהעלאת המסמכים`)
-            }
-          }
-        } catch (err: any) {
-          alert('העסקה נוצרה בהצלחה אך הייתה שגיאה בהעלאת חלק מהמסמכים')
+      let response
+      try {
+        response = await api.post('/transactions/', payload)
+      } catch (e: any) {
+        if (e.response?.status === 409) {
+          setPendingPayload(payload)
+          setShowDuplicateWarning(true)
+          setLoading(false)
+          return
+        } else {
+          throw e
         }
       }
 
-      if (!showDescriptionModal) {
-        onSuccess()
-        onClose()
-        resetForms()
-      }
+      await handleTransactionSuccess(response.data)
     } catch (e: any) {
       setError(e.response?.data?.detail ?? 'שמירה נכשלה')
-    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleConfirmDuplicate = async () => {
+    if (!pendingPayload) return
+    
+    setLoading(true)
+    setError(null)
+    
+    try {
+      const response = await api.post('/transactions/', { ...pendingPayload, allow_duplicate: true })
+      setShowDuplicateWarning(false)
+      setPendingPayload(null)
+      await handleTransactionSuccess(response.data)
+    } catch (e: any) {
+      setError(e.response?.data?.detail ?? 'שמירה נכשלה')
       setLoading(false)
     }
   }
@@ -276,6 +319,11 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
 
     if (!recurringFormData.description || recurringFormData.amount <= 0) {
       setError('יש למלא תיאור וסכום חיובי')
+      return
+    }
+
+    if (!recurringFormData.category) {
+      setError('יש לבחור קטגוריה')
       return
     }
 
@@ -584,6 +632,7 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
                       <option value="שיק">שיק</option>
                       <option value="מזומן">מזומן</option>
                       <option value="העברה בנקאית">העברה בנקאית</option>
+                      <option value="גבייה מרוכזת סוף שנה">גבייה מרוכזת סוף שנה</option>
                     </select>
                   </div>
 
@@ -1005,6 +1054,16 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
           </div>
         </motion.div>
       </motion.div>
+
+      <DuplicateWarningModal
+        isOpen={showDuplicateWarning}
+        onClose={() => {
+          setShowDuplicateWarning(false)
+          setPendingPayload(null)
+        }}
+        onConfirm={handleConfirmDuplicate}
+        isEdit={false}
+      />
 
       {/* Description Modal for Uploaded Documents */}
       {showDescriptionModal && selectedTransactionForDocuments && uploadedDocuments.length > 0 && (

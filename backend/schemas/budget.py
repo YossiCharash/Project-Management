@@ -32,6 +32,11 @@ class BudgetUpdate(BaseModel):
 class BudgetOut(BaseModel):
     id: int
     project_id: int
+    category: str
+    amount: float
+    period_type: str
+    start_date: date
+    end_date: Optional[date]
     is_active: bool
     created_at: datetime
     updated_at: datetime
@@ -46,8 +51,8 @@ class BudgetWithSpending(BudgetOut):
     amount: float = Field(..., description="Effective budget amount (base + income)")
     base_amount: float = 0.0
     period_type: str = Field(default="Annual", description="'Annual' or 'Monthly'")
-    start_date: str = Field(..., description="Budget period start date (ISO format)")
-    end_date: Optional[str] = Field(None, description="Budget period end date (ISO format)")
+    start_date: date = Field(..., description="Budget period start date")
+    end_date: Optional[date] = Field(None, description="Budget period end date")
     spent_amount: float = 0.0
     expense_amount: float = 0.0
     income_amount: float = 0.0
