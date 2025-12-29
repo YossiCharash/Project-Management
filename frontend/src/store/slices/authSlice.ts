@@ -65,8 +65,20 @@ export const registerAdmin = createAsyncThunk(
   'auth/registerAdmin',
   async (payload: { email: string; full_name: string; password: string }, { rejectWithValue, dispatch }) => {
     try {
-      // axios interceptor will automatically add the token from localStorage
-      const { data } = await api.post('/auth/register-admin', payload)
+      // First try to register as super admin (if no admin exists)
+      // If that fails with 403, try regular admin registration (requires existing admin)
+      let data
+      try {
+        data = (await api.post('/auth/register-super-admin', payload)).data
+      } catch (superAdminError: any) {
+        // If super admin registration fails because admin exists, try regular admin registration
+        if (superAdminError.response?.status === 403) {
+          // axios interceptor will automatically add the token from localStorage
+          data = (await api.post('/auth/register-admin', payload)).data
+        } else {
+          throw superAdminError
+        }
+      }
       
       // Auto login after successful registration
       const loginResult = await dispatch(login({ 

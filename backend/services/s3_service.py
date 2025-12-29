@@ -50,4 +50,30 @@ class S3Service:
         # Default S3 URL
         return f"https://{self._bucket}.s3.{settings.AWS_REGION}.amazonaws.com/{key}"
 
+    def delete_file(self, file_url: str) -> None:
+        """Delete a file from S3 given its URL"""
+        # Extract the key from the URL
+        key = None
+        
+        # Try to extract from base_url format
+        if self._base_url and file_url.startswith(self._base_url):
+            key = file_url.replace(self._base_url + "/", "")
+        # Try to extract from default S3 URL format
+        elif f"https://{self._bucket}.s3." in file_url:
+            # Extract key from URL like: https://bucket.s3.region.amazonaws.com/key
+            parts = file_url.split(f"https://{self._bucket}.s3.{settings.AWS_REGION}.amazonaws.com/")
+            if len(parts) > 1:
+                key = parts[1]
+        
+        if not key:
+            # If we can't extract the key, try to use the file_path as-is (might be a relative path)
+            # In this case, we can't delete from S3, so we'll just skip
+            return
+        
+        try:
+            self._s3.delete_object(Bucket=self._bucket, Key=key)
+        except Exception as e:
+            # Log error but don't fail the deletion - the database record will still be deleted
+            print(f"Warning: Failed to delete file from S3: {e}")
+
 

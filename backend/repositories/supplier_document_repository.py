@@ -25,3 +25,11 @@ class SupplierDocumentRepository:
         await self.db.commit()
         await self.db.refresh(doc)
         return doc
+
+    async def get_by_id(self, doc_id: int) -> SupplierDocument | None:
+        res = await self.db.execute(select(SupplierDocument).where(SupplierDocument.id == doc_id))
+        return res.scalar_one_or_none()
+
+    async def delete(self, doc: SupplierDocument) -> None:
+        await self.db.delete(doc)
+        await self.db.commit()

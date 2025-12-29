@@ -53,6 +53,7 @@ class TransactionOut(BaseModel):
     created_at: datetime
     created_by_user: dict | None = None  # Will contain user info if loaded
     from_fund: bool = False
+    recurring_template_id: int | None = None
 
     class Config:
         from_attributes = True

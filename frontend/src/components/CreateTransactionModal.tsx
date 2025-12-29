@@ -1,7 +1,7 @@
 import React, { useState, useEffect, FormEvent, ChangeEvent } from 'react'
 import { motion } from 'framer-motion'
 import { TransactionCreate, RecurringTransactionTemplateCreate } from '../types/api'
-import { TransactionAPI, RecurringTransactionAPI, CategoryAPI } from '../lib/apiClient'
+import { TransactionAPI, RecurringTransactionAPI, CategoryAPI, Category } from '../lib/apiClient'
 import api from '../lib/api'
 import { useAppDispatch, useAppSelector } from '../utils/hooks'
 import { fetchSuppliers } from '../store/slices/suppliersSlice'
@@ -32,10 +32,10 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
   
   // Regular transaction states
   const [type, setType] = useState<'Income' | 'Expense'>('Expense')
-  const [txDate, setTxDate] = useState('')
+  const [txDate, setTxDate] = useState(new Date().toISOString().split('T')[0])
   const [amount, setAmount] = useState<number | ''>('')
   const [desc, setDesc] = useState('')
-  const [category, setCategory] = useState('')
+  const [categoryId, setCategoryId] = useState<number | ''>('')
   const [paymentMethod, setPaymentMethod] = useState('')
   const [notes, setNotes] = useState('')
   const [subprojectId, setSubprojectId] = useState<number | ''>('')
@@ -67,7 +67,7 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
   const [showDescriptionModal, setShowDescriptionModal] = useState(false)
   const [uploadedDocuments, setUploadedDocuments] = useState<Array<{id: number, fileName: string, description: string}>>([])
   const [selectedTransactionForDocuments, setSelectedTransactionForDocuments] = useState<any | null>(null)
-  const [availableCategories, setAvailableCategories] = useState<string[]>([])
+  const [availableCategories, setAvailableCategories] = useState<Category[]>([])
 
   useEffect(() => {
     if (isOpen) {
@@ -82,8 +82,8 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
   const loadCategories = async () => {
     try {
       const categories = await CategoryAPI.getCategories()
-      const categoryNames = categories.filter(cat => cat.is_active).map(cat => cat.name)
-      setAvailableCategories(categoryNames)
+      const activeCategories = categories.filter(cat => cat.is_active)
+      setAvailableCategories(activeCategories)
     } catch (err) {
       console.error('Error loading categories:', err)
       setAvailableCategories([])
@@ -132,10 +132,10 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
   const resetForms = () => {
     // Reset regular transaction form
     setType('Expense')
-    setTxDate('')
+    setTxDate(new Date().toISOString().split('T')[0])
     setAmount('')
     setDesc('')
-    setCategory('')
+    setCategoryId('')
     setPaymentMethod('')
     setNotes('')
     // If this is a subproject, set subprojectId to current projectId automatically
@@ -151,7 +151,7 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
       description: '',
       type: 'Expense',
       amount: 0,
-      category: '',
+      category: '', // Keep for recurring transactions compatibility
       notes: '',
       supplier_id: 0,
       frequency: 'Monthly',
@@ -182,7 +182,9 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
     }
 
     // Supplier is required only if not from fund and category is not "אחר"
-    if (!fromFund && type === 'Expense' && category !== 'אחר' && (supplierId === '' || !supplierId)) {
+    const selectedCategory = categoryId ? availableCategories.find(cat => cat.id === categoryId) : null
+    const isOtherCategory = selectedCategory?.name === 'אחר'
+    if (!fromFund && type === 'Expense' && !isOtherCategory && (supplierId === '' || !supplierId)) {
       setError('יש לבחור ספק (חובה)')
       return
     }
@@ -205,7 +207,7 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
         type,
         amount: Number(amount),
         description: desc || undefined,
-        category: fromFund ? undefined : (category || undefined), // Don't set category if from fund
+        category_id: fromFund ? undefined : (categoryId ? Number(categoryId) : undefined), // Use category_id instead of category name
         payment_method: paymentMethod || undefined,
         notes: notes || undefined,
         supplier_id: supplierId ? Number(supplierId) : undefined,
@@ -525,21 +527,24 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">קטגוריה</label>
                     <select
                       className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      value={fromFund ? '__FUND__' : category}
+                      value={fromFund ? '__FUND__' : (categoryId === '' ? '' : String(categoryId))}
                       onChange={e => {
                         if (e.target.value === '__FUND__') {
                           setFromFund(true)
-                          setCategory('')
+                          setCategoryId('')
                           setSupplierId('')
                         } else {
                           setFromFund(false)
-                          const newCategory = e.target.value
-                          setCategory(newCategory)
+                          const newCategoryId = e.target.value === '' ? '' : Number(e.target.value)
+                          setCategoryId(newCategoryId)
+                          // Get category name for supplier filtering
+                          const selectedCategory = newCategoryId ? availableCategories.find(cat => cat.id === newCategoryId) : null
+                          const categoryName = selectedCategory?.name || ''
                           // reset supplier when category changes
                           setSupplierId('')
                           // If there is exactly one active supplier in this category, select it automatically
                           const candidates = suppliers.filter(
-                            s => s.is_active && s.category === newCategory
+                            s => s.is_active && s.category === categoryName
                           )
                           if (candidates.length === 1) {
                             setSupplierId(candidates[0].id)
@@ -554,7 +559,7 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
                         </option>
                       )}
                       {availableCategories.map((cat) => (
-                        <option key={cat} value={cat}>{cat}</option>
+                        <option key={cat.id} value={cat.id}>{cat.name}</option>
                       ))}
                     </select>
                     {fromFund && type === 'Expense' && (
@@ -610,28 +615,33 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
                     )}
                   </div>
 
-                  {!fromFund && type === 'Expense' && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        ספק {category !== 'אחר' && <span className="text-red-500">* (חובה)</span>}
-                      </label>
-                      <select
-                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        value={supplierId}
-                        onChange={e => setSupplierId(e.target.value === '' ? '' : Number(e.target.value))}
-                        required={category !== 'אחר'}
-                      >
-                        <option value="">
-                          {category ? (category === 'אחר' ? 'בחר ספק (אופציונלי)' : 'בחר ספק') : 'בחר קודם קטגוריה'}
-                        </option>
-                        {suppliers
-                          .filter(s => s.is_active && !!category && s.category === category)
-                          .map(s => (
-                          <option key={s.id} value={s.id}>{s.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
+                  {!fromFund && type === 'Expense' && (() => {
+                    const selectedCategory = categoryId ? availableCategories.find(cat => cat.id === categoryId) : null
+                    const categoryName = selectedCategory?.name || ''
+                    const isOtherCategory = categoryName === 'אחר'
+                    return (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          ספק {!isOtherCategory && <span className="text-red-500">* (חובה)</span>}
+                        </label>
+                        <select
+                          className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          value={supplierId}
+                          onChange={e => setSupplierId(e.target.value === '' ? '' : Number(e.target.value))}
+                          required={!isOtherCategory}
+                        >
+                          <option value="">
+                            {categoryName ? (isOtherCategory ? 'בחר ספק (אופציונלי)' : 'בחר ספק') : 'בחר קודם קטגוריה'}
+                          </option>
+                          {suppliers
+                            .filter(s => s.is_active && !!categoryName && s.category === categoryName)
+                            .map(s => (
+                            <option key={s.id} value={s.id}>{s.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )
+                  })()}
 
                   <div className="md:col-span-2">
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">תיאור</label>
@@ -813,7 +823,7 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
                     >
                       <option value="">בחר קטגוריה</option>
                       {availableCategories.map((cat) => (
-                        <option key={cat} value={cat}>{cat}</option>
+                        <option key={cat.id} value={cat.name}>{cat.name}</option>
                       ))}
                     </select>
                   </div>

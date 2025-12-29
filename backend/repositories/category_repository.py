@@ -2,7 +2,8 @@ from __future__ import annotations
 from typing import List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
- 
+from sqlalchemy.orm import selectinload
+
 from backend.models import Category
 
 
@@ -12,7 +13,6 @@ class CategoryRepository:
 
     async def list(self, include_inactive: bool = False) -> List[Category]:
         """List all categories, optionally including inactive ones"""
-        from sqlalchemy.orm import selectinload
         query = select(Category).options(selectinload(Category.children))
         if not include_inactive:
             query = query.where(Category.is_active == True)
@@ -22,7 +22,6 @@ class CategoryRepository:
     
     async def list_tree(self, include_inactive: bool = False) -> List[Category]:
         """List categories as a tree structure (only top-level parents)"""
-        from sqlalchemy.orm import selectinload
         query = select(Category).where(Category.parent_id.is_(None)).options(selectinload(Category.children))
         if not include_inactive:
             query = query.where(Category.is_active == True)
@@ -32,7 +31,11 @@ class CategoryRepository:
 
     async def get(self, category_id: int) -> Category | None:
         """Get category by ID"""
-        result = await self.db.execute(select(Category).where(Category.id == category_id))
+        result = await self.db.execute(
+            select(Category)
+            .options(selectinload(Category.children))
+            .where(Category.id == category_id)
+        )
         return result.scalar_one_or_none()
 
     async def get_by_name(self, name: str, parent_id: int | None = None) -> Category | None:
@@ -51,13 +54,16 @@ class CategoryRepository:
         self.db.add(category)
         await self.db.commit()
         await self.db.refresh(category)
+        # Explicitly set empty children list to avoid lazy loading error
+        # since we know a new category has no children
+        setattr(category, 'children', [])
         return category
 
     async def update(self, category: Category) -> Category:
         """Update an existing category"""
         await self.db.commit()
-        await self.db.refresh(category)
-        return category
+        # Re-fetch with children loaded to support response model
+        return await self.get(category.id)
 
     async def delete(self, category: Category) -> None:
         """Permanently delete a category"""

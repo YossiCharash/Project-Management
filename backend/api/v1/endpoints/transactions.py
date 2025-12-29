@@ -107,7 +107,8 @@ async def list_transactions(project_id: int, db: DBSessionDep, user = Depends(ge
             'created_by_user_id': getattr(tx, 'created_by_user_id', None),
             'created_at': tx.created_at,
             'created_by_user': None,
-            'from_fund': tx.from_fund if hasattr(tx, 'from_fund') else False
+            'from_fund': tx.from_fund if hasattr(tx, 'from_fund') else False,
+            'recurring_template_id': recurring_template_id
         }
         
         # Load user info if exists
@@ -226,7 +227,8 @@ async def create_transaction(db: DBSessionDep, data: TransactionCreate, user = D
         'created_by_user_id': transaction.created_by_user_id,
         'created_at': transaction.created_at,
         'created_by_user': None,
-        'from_fund': transaction.from_fund if hasattr(transaction, 'from_fund') else False
+        'from_fund': transaction.from_fund if hasattr(transaction, 'from_fund') else False,
+        'recurring_template_id': getattr(transaction, 'recurring_template_id', None)
     }
     
     # Load user info if exists
@@ -280,7 +282,8 @@ async def upload_receipt(tx_id: int, db: DBSessionDep, file: UploadFile = File(.
         'supplier_id': result.supplier_id,
         'created_by_user_id': result.created_by_user_id,
         'created_at': result.created_at,
-        'created_by_user': None
+        'created_by_user': None,
+        'recurring_template_id': getattr(result, 'recurring_template_id', None)
     }
     
     # Load user info if exists
@@ -417,6 +420,51 @@ async def upload_supplier_document(tx_id: int, db: DBSessionDep, file: UploadFil
     }
 
 
+@router.delete("/{tx_id}/documents/{doc_id}")
+async def delete_transaction_document(
+    tx_id: int, 
+    doc_id: int, 
+    db: DBSessionDep, 
+    user = Depends(get_current_user)
+):
+    """Delete document from transaction - accessible to all authenticated users"""
+    from sqlalchemy import select, and_
+    import asyncio
+    
+    # Verify transaction exists
+    tx = await TransactionRepository(db).get_by_id(tx_id)
+    if not tx:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    
+    # Get the document
+    doc_repo = SupplierDocumentRepository(db)
+    doc = await doc_repo.get_by_id(doc_id)
+    
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    if doc.transaction_id != tx_id:
+        raise HTTPException(status_code=400, detail="Document does not belong to this transaction")
+    
+    # Store file path before deletion
+    file_path = doc.file_path
+    
+    # Delete the document from database
+    await doc_repo.delete(doc)
+    
+    # Try to delete from S3 if file_path is an S3 URL
+    if file_path and ("s3" in file_path.lower() or "amazonaws.com" in file_path or settings.AWS_S3_BASE_URL and file_path.startswith(settings.AWS_S3_BASE_URL)):
+        try:
+            s3 = S3Service()
+            # Run in thread to avoid blocking
+            await asyncio.to_thread(s3.delete_file, file_path)
+        except Exception as e:
+            # Log but don't fail - document is already deleted from DB
+            print(f"Warning: Failed to delete file from S3: {e}")
+    
+    return {"ok": True}
+
+
 @router.put("/{tx_id}", response_model=TransactionOut)
 async def update_transaction(tx_id: int, db: DBSessionDep, data: TransactionUpdate, user = Depends(get_current_user)):
     """Update transaction - accessible to all authenticated users"""
@@ -514,7 +562,8 @@ async def update_transaction(tx_id: int, db: DBSessionDep, data: TransactionUpda
         'supplier_id': updated_tx.supplier_id,
         'created_by_user_id': updated_tx.created_by_user_id,
         'created_at': updated_tx.created_at,
-        'created_by_user': None
+        'created_by_user': None,
+        'recurring_template_id': getattr(updated_tx, 'recurring_template_id', None)
     }
     
     # Load user info if exists

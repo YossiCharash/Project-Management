@@ -20,6 +20,24 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@router.get("/check-admin")
+async def check_admin(db: DBSessionDep):
+    """Check if any admin user exists in the system - public endpoint for initial setup"""
+    auth_service = AuthService(db)
+    admin_exists = await auth_service.check_admin_exists()
+    
+    # Also check if super admin from settings exists
+    super_admin_email = settings.SUPER_ADMIN_EMAIL
+    super_admin_user = await auth_service.get_user_by_email(super_admin_email)
+    
+    return {
+        "admin_exists": admin_exists,
+        "super_admin_email": super_admin_email,
+        "super_admin_exists": super_admin_user is not None,
+        "super_admin_active": super_admin_user.is_active if super_admin_user else False
+    }
+
+
 @router.post("/login", response_model=Token)
 async def login(db: DBSessionDep, login_data: LoginInput):
     """Login endpoint - accepts email and password"""

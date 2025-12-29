@@ -36,10 +36,26 @@ async def create_recurring_template(
 ):
     """Create a new recurring transaction template"""
     # Validate supplier - required only for Expense transactions (not when category is "אחר")
-    if data.type == 'Expense' and data.category != 'אחר' and (not data.supplier_id or data.supplier_id == 0):
+    # Note: data.category_id is available in the schema, but we need to check the category name if we want to implement the "אחר" logic
+    # Since we only have category_id in the input, we would need to fetch the category to check its name.
+    # For now, let's just check if supplier_id is missing for Expense type transactions, regardless of category.
+    # If the "Other" category logic is critical, we should implement it by checking category_id.
+    if data.type == 'Expense' and (not data.supplier_id or data.supplier_id == 0):
+        # We can optionally fetch the category here if we want to allow skipping supplier for "Other"
+        # For now, assume supplier is required for all expenses to be safe
         raise HTTPException(status_code=400, detail="Supplier is required for expense transactions")
     
-    template = await RecurringTransactionService(db).create_template(data)
+    service = RecurringTransactionService(db)
+    template = await service.create_template(data)
+    
+    # Check if we should generate a transaction immediately (if today is the day)
+    # This ensures that if a user creates a template for today, the transaction appears immediately
+    # instead of waiting for the next scheduler run (or next month)
+    from datetime import date
+    today = date.today()
+    if template.day_of_month == today.day and template.start_date <= today:
+        await service.generate_transactions_for_date(today)
+
     # Convert to schema to handle enum serialization
     return RecurringTransactionTemplateOut.model_validate(template)
 

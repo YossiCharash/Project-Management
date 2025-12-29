@@ -4,6 +4,7 @@ import { useSelector, useDispatch } from 'react-redux'
 import type { RootState } from './store'
 import { motion, AnimatePresence } from 'framer-motion'
 import Login from './pages/Login'
+import Register from './pages/Register'
 import AdminRegister from './pages/AdminRegister'
 import AdminInviteRegister from './pages/AdminInviteRegister'
 import AdminInviteManagement from './pages/AdminInviteManagement'
@@ -79,6 +80,7 @@ function AppContent() {
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
           <Route path="/admin-register" element={<AdminRegister />} />
           <Route path="/admin-invite" element={<AdminInviteRegister />} />
           <Route path="/email-register" element={<EmailVerificationRegister />} />

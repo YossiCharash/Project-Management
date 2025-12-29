@@ -622,12 +622,25 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
       return
     }
     const today = new Date().toISOString().split('T')[0]
+    // Use project start date if set, otherwise today
+    const defaultStartDate = formData.start_date || today
+    
+    // Calculate default end date for Annual period
+    let defaultEndDate: string | null = null
+    if (defaultStartDate) {
+      const startDate = new Date(defaultStartDate)
+      const endDate = new Date(startDate)
+      endDate.setFullYear(endDate.getFullYear() + 1)
+      endDate.setDate(endDate.getDate() - 1)
+      defaultEndDate = endDate.toISOString().split('T')[0]
+    }
+
     const newBudget: BudgetCreate = {
       category: availableCategories[0],
       amount: 0,
       period_type: 'Annual',
-      start_date: today,
-      end_date: null
+      start_date: defaultStartDate,
+      end_date: defaultEndDate
     }
     setCategoryBudgets([...categoryBudgets, newBudget])
   }
@@ -1252,9 +1265,20 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                     </div>
 
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                        תאריך התחלה *
-                      </label>
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">
+                          תאריך התחלה *
+                        </label>
+                        {formData.start_date && (
+                          <button
+                            type="button"
+                            onClick={() => updateCategoryBudget(index, 'start_date', formData.start_date)}
+                            className="text-[10px] text-blue-600 dark:text-blue-400 hover:underline"
+                          >
+                            לפי תחילת פרויקט
+                          </button>
+                        )}
+                      </div>
                       <input
                         type="date"
                         value={budget.start_date}

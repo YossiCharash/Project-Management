@@ -20,6 +20,10 @@ const CreateRecurringTransactionModal: React.FC<CreateRecurringTransactionModalP
 }) => {
   const dispatch = useAppDispatch()
   const { items: suppliers } = useAppSelector(s => s.suppliers)
+  const { items: projects } = useAppSelector(s => s.projects)
+  const project = projects.find(p => p.id === projectId)
+  
+  const [useProjectStartDate, setUseProjectStartDate] = useState(false)
   
   const [formData, setFormData] = useState<RecurringTransactionTemplateCreate>({
     project_id: projectId,
@@ -43,10 +47,12 @@ const CreateRecurringTransactionModal: React.FC<CreateRecurringTransactionModalP
   const [showDescriptionModal, setShowDescriptionModal] = useState(false)
   const [uploadedDocuments, setUploadedDocuments] = useState<Array<{id: number, fileName: string, description: string}>>([])
   const [selectedTransactionForDocuments, setSelectedTransactionForDocuments] = useState<any | null>(null)
+  const [availableCategories, setAvailableCategories] = useState<Category[]>([])
 
   useEffect(() => {
     if (isOpen) {
       dispatch(fetchSuppliers())
+      loadCategories()
       // Reset form when modal opens
       setFormData({
         project_id: projectId,
@@ -63,6 +69,7 @@ const CreateRecurringTransactionModal: React.FC<CreateRecurringTransactionModalP
         end_date: null,
         max_occurrences: null
       })
+      setUseProjectStartDate(false)
       setError(null)
       setFilesToUpload([])
       setShowDescriptionModal(false)
@@ -70,6 +77,17 @@ const CreateRecurringTransactionModal: React.FC<CreateRecurringTransactionModalP
       setSelectedTransactionForDocuments(null)
     }
   }, [isOpen, projectId, dispatch])
+
+  const loadCategories = async () => {
+    try {
+      const categories = await CategoryAPI.getCategories()
+      const activeCategories = categories.filter(cat => cat.is_active)
+      setAvailableCategories(activeCategories)
+    } catch (err) {
+      console.error('Error loading categories:', err)
+      setAvailableCategories([])
+    }
+  }
 
   const resetForm = () => {
     setFormData({
@@ -87,6 +105,7 @@ const CreateRecurringTransactionModal: React.FC<CreateRecurringTransactionModalP
       end_date: null,
       max_occurrences: null
     })
+    setUseProjectStartDate(false)
     setError(null)
     setFilesToUpload([])
     setShowDescriptionModal(false)
@@ -413,9 +432,36 @@ const CreateRecurringTransactionModal: React.FC<CreateRecurringTransactionModalP
                 type="date"
                 required
                 value={formData.start_date}
-                onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
-                className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                onChange={(e) => {
+                  setFormData({ ...formData, start_date: e.target.value })
+                  setUseProjectStartDate(false)
+                }}
+                disabled={useProjectStartDate}
+                className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500"
               />
+              <div className="flex items-center mt-2">
+                <input
+                  type="checkbox"
+                  id="useProjectStartDate"
+                  checked={useProjectStartDate}
+                  onChange={(e) => {
+                    const checked = e.target.checked
+                    setUseProjectStartDate(checked)
+                    if (checked && project?.start_date) {
+                      setFormData({
+                        ...formData,
+                        start_date: project.start_date.split('T')[0]
+                      })
+                    }
+                  }}
+                  disabled={!project?.start_date}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded ml-2"
+                />
+                <label htmlFor="useProjectStartDate" className={`text-sm ${!project?.start_date ? 'text-gray-400' : 'text-gray-700 dark:text-gray-300'}`}>
+                  לפי תאריך חוזה הפרויקט
+                  {project?.start_date && <span className="text-xs mr-1 ltr">({project.start_date.split('T')[0]})</span>}
+                </label>
+              </div>
             </div>
 
             <div className="md:col-span-2">

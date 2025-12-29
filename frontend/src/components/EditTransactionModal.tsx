@@ -35,13 +35,17 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [availableCategories, setAvailableCategories] = useState<string[]>([])
+  const [documents, setDocuments] = useState<any[]>([])
+  const [documentsLoading, setDocumentsLoading] = useState(false)
+  const [uploadingDocument, setUploadingDocument] = useState(false)
 
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && transaction) {
       dispatch(fetchSuppliers())
       loadCategories()
+      loadDocuments()
     }
-  }, [isOpen, dispatch])
+  }, [isOpen, dispatch, transaction?.id])
 
   const loadCategories = async () => {
     try {
@@ -51,6 +55,80 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     } catch (err) {
       console.error('Error loading categories:', err)
       setAvailableCategories([])
+    }
+  }
+
+  const loadDocuments = async () => {
+    if (!transaction) return
+    setDocumentsLoading(true)
+    try {
+      const docs = await TransactionAPI.getTransactionDocuments(transaction.id)
+      console.log('Loaded documents:', docs)
+      setDocuments(docs || [])
+    } catch (err) {
+      console.error('Error loading documents:', err)
+      setDocuments([])
+    } finally {
+      setDocumentsLoading(false)
+    }
+  }
+
+  const getFileName = (filePath: string): string => {
+    if (!filePath) return 'מסמך'
+    try {
+      // Try to parse as URL first
+      const url = new URL(filePath)
+      const pathParts = url.pathname.split('/')
+      const fileName = pathParts[pathParts.length - 1] || 'מסמך'
+      // Remove query parameters if any
+      return fileName.split('?')[0] || 'מסמך'
+    } catch {
+      // If not a valid URL, treat as path
+      const pathParts = filePath.split('/')
+      const fileName = pathParts[pathParts.length - 1] || 'מסמך'
+      // Remove query parameters if any
+      return fileName.split('?')[0] || 'מסמך'
+    }
+  }
+
+  const handleUploadDocument = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!transaction || !e.target.files || e.target.files.length === 0) return
+
+    const file = e.target.files[0]
+    setUploadingDocument(true)
+    setError(null)
+
+    try {
+      console.log('Uploading document:', file.name, 'for transaction:', transaction.id)
+      const result = await TransactionAPI.uploadTransactionDocument(transaction.id, file)
+      console.log('Upload result:', result)
+      // Reload documents list after successful upload
+      await loadDocuments()
+    } catch (err: any) {
+      console.error('Upload error:', err)
+      const errorMessage = err.response?.data?.detail || err.message || 'העלאת מסמך נכשלה'
+      setError(errorMessage)
+    } finally {
+      setUploadingDocument(false)
+      // Reset file input
+      if (e.target) {
+        e.target.value = ''
+      }
+    }
+  }
+
+  const handleDeleteDocument = async (docId: number) => {
+    if (!transaction) return
+
+    if (!confirm('האם אתה בטוח שברצונך למחוק את המסמך הזה?')) {
+      return
+    }
+
+    try {
+      await TransactionAPI.deleteTransactionDocument(transaction.id, docId)
+      await loadDocuments() // Reload documents list
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'מחיקת מסמך נכשלה')
     }
   }
 
@@ -67,6 +145,8 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
         is_exceptional: transaction.is_exceptional || false,
         supplier_id: (transaction as any).supplier_id || undefined
       })
+      // Load documents when transaction changes
+      loadDocuments()
     }
   }, [transaction, isOpen])
 
@@ -83,6 +163,7 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
       supplier_id: undefined
     })
     setError(null)
+    setDocuments([])
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -329,6 +410,71 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
               </p>
             </div>
           )}
+
+          {/* Documents Section */}
+          <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+            <div className="flex items-center justify-between mb-3">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                מסמכים
+              </label>
+              <label className="px-3 py-1.5 text-sm bg-green-600 text-white rounded-md hover:bg-green-700 cursor-pointer">
+                {uploadingDocument ? 'מעלה...' : 'הוסף מסמך'}
+                <input
+                  type="file"
+                  onChange={handleUploadDocument}
+                  disabled={uploadingDocument}
+                  className="hidden"
+                  accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                />
+              </label>
+            </div>
+
+            {documentsLoading ? (
+              <div className="text-sm text-gray-500 dark:text-gray-400 text-center py-2">
+                טוען מסמכים...
+              </div>
+            ) : documents.length === 0 ? (
+              <div className="text-sm text-gray-500 dark:text-gray-400 text-center py-2">
+                אין מסמכים
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {documents.map((doc) => {
+                  const fileName = getFileName(doc.file_path || '')
+                  const displayName = doc.description || fileName
+                  return (
+                    <div
+                      key={doc.id}
+                      className="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-700 rounded-md"
+                    >
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <span className="text-sm text-gray-700 dark:text-gray-300 truncate" title={displayName}>
+                          📄 {displayName}
+                        </span>
+                        {doc.file_path && (
+                          <a
+                            href={doc.file_path}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-blue-600 dark:text-blue-400 hover:underline ml-2 whitespace-nowrap"
+                          >
+                            צפה
+                          </a>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteDocument(doc.id)}
+                        className="px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700 ml-2 whitespace-nowrap"
+                      >
+                        מחק
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
 
           {error && (
             <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md p-3">

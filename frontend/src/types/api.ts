@@ -55,6 +55,7 @@ export interface Transaction {
   notes?: string | null
   is_exceptional: boolean
   is_generated?: boolean
+  recurring_template_id?: number | null
   file_path?: string | null
   supplier_id?: number | null
   created_at: string

@@ -226,6 +226,27 @@ export class TransactionAPI {
   static async deleteTransaction(transactionId: number): Promise<void> {
     await api.delete(`/transactions/${transactionId}`)
   }
+
+  // Get transaction documents
+  static async getTransactionDocuments(transactionId: number): Promise<any[]> {
+    const { data } = await api.get<any[]>(`/transactions/${transactionId}/documents`)
+    return data
+  }
+
+  // Upload document to transaction
+  static async uploadTransactionDocument(transactionId: number, file: File): Promise<any> {
+    const formData = new FormData()
+    formData.append('file', file)
+    const { data } = await api.post<any>(`/transactions/${transactionId}/supplier-document`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+    return data
+  }
+
+  // Delete transaction document
+  static async deleteTransactionDocument(transactionId: number, documentId: number): Promise<void> {
+    await api.delete(`/transactions/${transactionId}/documents/${documentId}`)
+  }
 }
 
 export class DashboardAPI {

@@ -15,7 +15,7 @@ if not env_path.exists():
 
 if env_path.exists():
     load_dotenv(dotenv_path=env_path)
-    print(f"✅ Loaded .env file from: {env_path}")
+    print(f"[OK] Loaded .env file from: {env_path}")
     # Debug: Check if SMTP variables are loaded
     smtp_user = os.getenv("SMTP_USERNAME")
     smtp_pass = os.getenv("SMTP_PASSWORD")
