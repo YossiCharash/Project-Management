@@ -132,6 +132,7 @@ async def sync_database_schema():
             if changes_made:
                 await check_and_create_index(session, "ix_users_group_id", "users", "group_id")
             changes_made |= await check_and_add_column(session, "users", "requires_password_change", "BOOLEAN", nullable=False, default="FALSE")
+            changes_made |= await check_and_add_column(session, "users", "last_login", "TIMESTAMP WITHOUT TIME ZONE", nullable=True)
             
             # 3. Sync projects table
             print("\n[3/6] Syncing projects table...")

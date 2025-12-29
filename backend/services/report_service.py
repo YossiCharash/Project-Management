@@ -9,6 +9,7 @@ from backend.models.category import Category
 from backend.models.project import Project
 from backend.models.budget import Budget
 from backend.services.budget_service import BudgetService
+from backend.services.fund_service import FundService
 from backend.services.project_service import calculate_start_date, calculate_monthly_income_amount
 
 
@@ -51,15 +52,13 @@ class ReportService:
 
     async def get_dashboard_snapshot(self) -> Dict[str, Any]:
         """Get comprehensive dashboard snapshot with real-time financial data"""
-        print("🚀 get_dashboard_snapshot called")
-
         # Rollback any failed transaction before starting
         try:
             await self.db.rollback()
         except Exception:
-            pass
-
-        # Get all active projects with eager loading to prevent lazy loads
+            pass  # Ignore if there's no transaction to rollback
+        
+        # Get all active projects
         projects_query = select(Project).where(Project.is_active == True)
         projects_result = await self.db.execute(projects_query)
         projects = list(projects_result.scalars().all())
@@ -73,6 +72,7 @@ class ReportService:
                     "budget_warning": [],
                     "missing_proof": [],
                     "unpaid_recurring": [],
+                    "negative_fund_balance": [],
                     "category_budget_alerts": []
                 },
                 "summary": {
@@ -119,6 +119,9 @@ class ReportService:
                 continue
 
         # Initialize result collections
+        fund_service = FundService(self.db)
+
+        # Calculate financial data for each project
         projects_with_finance = []
         total_income = 0
         total_expense = 0
@@ -126,6 +129,8 @@ class ReportService:
         budget_warning_projects = []
         missing_proof_projects = []
         unpaid_recurring_projects = []
+        negative_fund_balance_projects = []  # Projects with negative fund balance
+        category_budget_alerts = []  # Store category budget alerts
         category_budget_alerts = []
 
         # Process each project using pre-loaded data
@@ -186,35 +191,46 @@ class ReportService:
                     pass
                 yearly_expense = 0.0
 
-            # Calculate budget values
-            budget_annual = float(project_budget_annual if project_budget_annual is not None else 0)
-            budget_monthly = float(project_budget_monthly if project_budget_monthly is not None else 0)
-
-            # Calculate income from monthly budget
+            # Budget is NOT income - only actual transactions count
+            # Calculate budget separately for budget overrun warnings (not for income calculation)
+            # Access budget fields directly - they should already be loaded
+            try:
+                budget_annual = float(project.budget_annual if project.budget_annual is not None else 0)
+                budget_monthly = float(project.budget_monthly if project.budget_monthly is not None else 0)
+            except (AttributeError, ValueError) as e:
+                # If there's an issue accessing budget fields, use defaults
+                budget_annual = 0.0
+                budget_monthly = 0.0
+            
+            # Calculate income from the monthly budget (treated as expected monthly income)
+            # Calculate from project start date (or created_at if start_date not available)
             project_income = 0.0
-            monthly_income = float(budget_monthly or 0)
+            monthly_income = float(project.budget_monthly or 0)
             if monthly_income > 0:
-                if project_start_date:
-                    income_calculation_start = project_start_date
-                elif project_created_at:
-                    income_calculation_start = project_created_at.date() if hasattr(project_created_at,
-                                                                                    'date') else project_created_at
+                # Use project start_date if available, otherwise use created_at date
+                if project.start_date:
+                    income_calculation_start = project.start_date
+                elif hasattr(project, 'created_at') and project.created_at:
+                    income_calculation_start = project.created_at.date() if hasattr(project.created_at, 'date') else project.created_at
                 else:
+                    # Fallback: use calculation_start_date (which is already 1 year ago if no start_date)
                     income_calculation_start = calculation_start_date
                 project_income = calculate_monthly_income_amount(monthly_income, income_calculation_start, current_date)
                 yearly_income = 0.0
-
-            # Calculate totals
+            
+            # Income = actual transactions + project income (from monthly budget)
+            # Budget is NOT included in income
             project_total_income = yearly_income + project_income
+            
             profit = project_total_income - yearly_expense
-
-            # Calculate profit percentage
+            
+            # Calculate profit percentage based on total income
             if project_total_income > 0:
                 profit_percent = (profit / project_total_income * 100)
             else:
                 profit_percent = 0
 
-            # Determine status color
+            # Determine status color based on profit percentage
             if profit_percent >= 10:
                 status_color = "green"
             elif profit_percent <= -10:
@@ -222,11 +238,14 @@ class ReportService:
             else:
                 status_color = "yellow"
 
-            # Calculate expected budget for the period
+            # Check for budget overrun and warnings
+            # Calculate expected budget for the period (same logic as budget_income)
             yearly_budget = 0.0
+            # Prioritize monthly budget if both are set
             if budget_monthly > 0:
-                if project_start_date:
-                    start_month = date(project_start_date.year, project_start_date.month, 1)
+                # Same logic as budget_income calculation
+                if project.start_date:
+                    start_month = date(project.start_date.year, project.start_date.month, 1)
                 else:
                     start_month = date(calculation_start_date.year, calculation_start_date.month, 1)
                 end_month = date(current_date.year, current_date.month, 1)
@@ -240,76 +259,89 @@ class ReportService:
                         temp_month = date(temp_month.year, temp_month.month + 1, 1)
                 yearly_budget = budget_monthly * month_count
             elif budget_annual > 0:
+                # If only annual budget is set (and no monthly), calculate proportionally
                 days_in_period = (current_date - calculation_start_date).days + 1
                 days_in_year = 365
                 yearly_budget = (budget_annual / days_in_year) * days_in_period
-
-            # Check for budget alerts
-            if yearly_budget > 0:
+            if yearly_budget > 0:  # Only check if there's a budget
                 budget_percentage = (yearly_expense / yearly_budget) * 100
                 if yearly_expense > yearly_budget:
-                    budget_overrun_projects.append(project_id)
-                elif budget_percentage >= 70:
-                    budget_warning_projects.append(project_id)
+                    budget_overrun_projects.append(project.id)
+                elif budget_percentage >= 70:  # Approaching budget (70% or more)
+                    budget_warning_projects.append(project.id)
 
-            # Check for missing proof
-            try:
-                missing_proof_query = select(func.count(Transaction.id)).where(
-                    and_(
-                        Transaction.project_id == project_id,
-                        Transaction.file_path.is_(None),
-                        Transaction.tx_date >= calculation_start_date,
-                        Transaction.tx_date <= current_date,
-                        Transaction.from_fund == False
-                    )
+            # Check for missing proof (transactions without file_path, excluding fund transactions)
+            missing_proof_query = select(func.count(Transaction.id)).where(
+                and_(
+                    Transaction.project_id == project.id,
+                    Transaction.file_path.is_(None),
+                    Transaction.tx_date >= calculation_start_date,
+                    Transaction.tx_date <= current_date,
+                    Transaction.from_fund == False  # Exclude fund transactions
                 )
+            )
+            try:
                 missing_proof_count = (await self.db.execute(missing_proof_query)).scalar_one()
                 if missing_proof_count > 0:
-                    missing_proof_projects.append(project_id)
-            except Exception as e:
-                print(f"⚠️ Error checking missing proof for project {project_id}: {e}")
+                    missing_proof_projects.append(project.id)
+            except Exception:
+                # If query fails, rollback and continue
                 try:
                     await self.db.rollback()
                 except Exception:
                     pass
 
-            # Check for unpaid recurring expenses
-            try:
-                unpaid_recurring_query = select(func.count(Transaction.id)).where(
-                    and_(
-                        Transaction.project_id == project_id,
-                        Transaction.type == "Expense",
-                        Transaction.is_exceptional == False,
-                        Transaction.tx_date < current_date,
-                        Transaction.file_path.is_(None),
-                        Transaction.from_fund == False
-                    )
+            # Check for unpaid recurring expenses (simplified - could be enhanced, excluding fund transactions)
+            unpaid_recurring_query = select(func.count(Transaction.id)).where(
+                and_(
+                    Transaction.project_id == project.id,
+                    Transaction.type == "Expense",
+                    Transaction.is_exceptional == False,
+                    Transaction.tx_date < current_date,
+                    Transaction.file_path.is_(None),
+                    Transaction.from_fund == False  # Exclude fund transactions
                 )
+            )
+            try:
                 unpaid_recurring_count = (await self.db.execute(unpaid_recurring_query)).scalar_one()
                 if unpaid_recurring_count > 0:
-                    unpaid_recurring_projects.append(project_id)
-            except Exception as e:
-                print(f"⚠️ Error checking unpaid recurring for project {project_id}: {e}")
+                    unpaid_recurring_projects.append(project.id)
+            except Exception:
+                # If query fails, rollback and continue
                 try:
                     await self.db.rollback()
                 except Exception:
                     pass
-
+            
             # Check for category budget alerts
             try:
                 project_budget_alerts = await budget_service.check_category_budget_alerts(
-                    project_id,
+                    project.id, 
                     current_date
                 )
                 category_budget_alerts.extend(project_budget_alerts)
-            except Exception as e:
-                print(f"⚠️ Error checking category budgets for project {project_id}: {e}")
+            except Exception:
+                # If budget checking fails, rollback and continue without it
+                # This prevents the transaction from being in a failed state
                 try:
                     await self.db.rollback()
                 except Exception:
                     pass
 
-            # Build project data dictionary using pre-loaded values
+            # Check for negative fund balance
+            try:
+                fund = await fund_service.get_fund_by_project(project.id)
+                if fund and float(fund.current_balance) < 0:
+                    negative_fund_balance_projects.append(project.id)
+            except Exception:
+                # If fund check fails, rollback and continue
+                try:
+                    await self.db.rollback()
+                except Exception:
+                    pass
+                # Continue without fund balance check for this project
+
+            # Build project data
             project_data = {
                 "id": project_id,
                 "name": proj_data["name"],
@@ -332,11 +364,13 @@ class ReportService:
                 "expense_month_to_date": yearly_expense,
                 "profit_percent": round(profit_percent, 1),
                 "status_color": status_color,
+                "budget_monthly": float(project.budget_monthly or 0),
+                "budget_annual": float(project.budget_annual or 0),
                 "children": []
             }
 
             projects_with_finance.append(project_data)
-            total_income += project_total_income
+            total_income += project_total_income  # project_total_income includes budgets
             total_expense += yearly_expense
 
         # Build project hierarchy
@@ -353,57 +387,51 @@ class ReportService:
         # Calculate total profit
         total_profit = total_income - total_expense
 
-        # Get expense categories breakdown
+        # Get expense categories breakdown (from earliest project start_date or 1 year ago)
+        # Calculate the earliest calculation_start_date across all projects
         earliest_start = date.today() - relativedelta(years=1)
-        for proj_data in projects_data:
-            if proj_data["start_date"]:
-                project_start = calculate_start_date(proj_data["start_date"])
-                if project_start < earliest_start:
-                    earliest_start = project_start
-
+        for project in projects:
+            project_start = calculate_start_date(project.start_date)
+            if project_start < earliest_start:
+                earliest_start = project_start
+        
+        expense_categories_query = select(
+            Transaction.category,
+            func.coalesce(func.sum(Transaction.amount), 0).label('total_amount')
+        ).where(
+            and_(
+                Transaction.type == "Expense",
+                Transaction.tx_date >= earliest_start,
+                Transaction.tx_date <= current_date,
+                Transaction.from_fund == False  # Exclude fund transactions
+            )
+        ).group_by(Transaction.category)
+        
         expense_categories = []
         try:
-            expense_categories_query = (
-                select(
-                    Category.name.label('category_name'),
-                    func.coalesce(func.sum(Transaction.amount), 0).label('total_amount')
-                )
-                .select_from(Transaction)
-                .outerjoin(Category, Transaction.category_id == Category.id)
-                .where(
-                    and_(
-                        Transaction.type == "Expense",
-                        Transaction.tx_date >= earliest_start,
-                        Transaction.tx_date <= current_date,
-                        Transaction.from_fund == False
-                    )
-                )
-                .group_by(Category.name)
-            )
-
             expense_categories_result = await self.db.execute(expense_categories_query)
             for row in expense_categories_result:
-                if row.total_amount > 0:
-                    category_name = row.category_name or "אחר"
+                if row.total_amount > 0:  # Only include categories with expenses
                     expense_categories.append({
-                        "category": category_name,
+                        "category": row.category or "אחר",
                         "amount": float(row.total_amount),
-                        "color": self._get_category_color(category_name)
+                        "color": self._get_category_color(row.category)
                     })
-        except Exception as e:
-            print(f"⚠️ Error getting expense categories: {e}")
+        except Exception:
+            # If query fails, rollback and continue with empty categories
             try:
                 await self.db.rollback()
             except Exception:
                 pass
 
         return {
-            "projects": projects_with_finance,
+            "projects": projects_with_finance,  # Return all projects, not just root ones
             "alerts": {
                 "budget_overrun": budget_overrun_projects,
                 "budget_warning": budget_warning_projects,
                 "missing_proof": missing_proof_projects,
                 "unpaid_recurring": unpaid_recurring_projects,
+                "negative_fund_balance": negative_fund_balance_projects,
                 "category_budget_alerts": category_budget_alerts
             },
             "summary": {

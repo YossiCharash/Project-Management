@@ -89,12 +89,22 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
 
   const imageUrl = getImageUrl(project.image_url)
 
+  const handleCardClick = (e: React.MouseEvent) => {
+    // Don't navigate if clicking on buttons or interactive elements
+    const target = e.target as HTMLElement
+    if (target.closest('button') || target.closest('a')) {
+      return
+    }
+    onProjectClick?.(project)
+  }
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       whileHover={{ y: -2 }}
-      className={`bg-white dark:bg-gray-800 rounded-xl shadow-md hover:shadow-lg transition-all duration-200 border ${
+      onClick={handleCardClick}
+      className={`bg-white dark:bg-gray-800 rounded-xl shadow-md hover:shadow-lg transition-all duration-200 border cursor-pointer ${
         project.is_active === false 
           ? 'border-gray-300 dark:border-gray-600 opacity-75' 
           : 'border-gray-200 dark:border-gray-700'
@@ -161,7 +171,10 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
           <div className="flex flex-col gap-2">
             <div className="flex gap-1.5">
               <button
-                onClick={() => onProjectClick?.(project)}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onProjectClick?.(project)
+                }}
                 className="flex-1 px-2.5 py-1.5 text-xs bg-blue-100 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded-lg hover:bg-blue-200 dark:hover:bg-blue-900/40 transition-colors flex items-center justify-center gap-1.5"
               >
                 <Eye className="w-4 h-4" />
@@ -169,7 +182,10 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
               </button>
               {onProjectEdit && project.is_active !== false && (
                 <button
-                  onClick={() => onProjectEdit(project)}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onProjectEdit(project)
+                  }}
                   className="px-2.5 py-1.5 text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
                 >
                   <Edit className="w-4 h-4" />
@@ -177,7 +193,10 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
               )}
               {onProjectArchive && project.is_active !== false && (
                 <button
-                  onClick={() => onProjectArchive(project)}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onProjectArchive(project)
+                  }}
                   className="px-2.5 py-1.5 text-xs bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-300 rounded-lg hover:bg-red-200 dark:hover:bg-red-900/40 transition-colors"
                   title="ארכב פרויקט"
                 >
@@ -186,7 +205,10 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
               )}
               {onProjectRestore && project.is_active === false && (
                 <button
-                  onClick={() => onProjectRestore(project)}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onProjectRestore(project)
+                  }}
                   className="px-2.5 py-1.5 text-xs bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300 rounded-lg hover:bg-green-200 dark:hover:bg-green-900/40 transition-colors"
                   title="שחזר פרויקט"
                 >
@@ -197,7 +219,10 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
             {/* Show "Create Subproject" button for parent projects */}
             {isParentProject && onCreateSubproject && project.is_active !== false && (
               <button
-                onClick={() => onCreateSubproject(project)}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onCreateSubproject(project)
+                }}
                 className="w-full px-2.5 py-1.5 text-xs bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-lg hover:from-blue-600 hover:to-purple-700 transition-colors flex items-center justify-center gap-1.5"
               >
                 <Plus className="w-4 h-4" />
@@ -420,6 +445,12 @@ export default function Projects() {
   }
 
   const filteredProjects = dashboardData?.projects?.filter((project: any) => {
+    // Always exclude subprojects (projects with relation_project set)
+    // Only show parent projects and regular projects (projects without a parent)
+    if (project.relation_project) {
+      return false
+    }
+
     const matchesSearch = project.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          project.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          project.address?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -427,34 +458,15 @@ export default function Projects() {
     const matchesStatus = !statusFilter || project.status_color === statusFilter
     const matchesCity = !cityFilter || project.city?.toLowerCase().includes(cityFilter.toLowerCase())
     
-    // Filter by project type (parent projects vs subprojects)
-    // Default (empty): show parent projects AND regular projects without subprojects
+    // Filter by project type (parent projects vs regular projects)
     let matchesType = true
     if (projectTypeFilter === 'parent') {
-      // Show only parent projects (projects with is_parent_project === true)
-      matchesType = project.is_parent_project === true
+      matchesType = project.is_parent_project === true // Only parent projects
     } else if (projectTypeFilter === 'subproject') {
-      // Show only subprojects (projects with relation_project set)
-      matchesType = !!project.relation_project
-    } else if (projectTypeFilter === '') {
-      // Default: show parent projects AND regular projects without subprojects
-      const isParentProject = project.is_parent_project === true
-      const isSubproject = !!project.relation_project
-      
-      if (isSubproject) {
-        // Don't show subprojects in default view
-        matchesType = false
-      } else if (isParentProject) {
-        // Show parent projects
-        matchesType = true
-      } else {
-        // Regular project - check if it has subprojects
-        const hasSubprojects = dashboardData?.projects?.some((p: any) => p.relation_project === project.id)
-        // Show only if it doesn't have subprojects
-        matchesType = !hasSubprojects
-      }
+      matchesType = false // Subprojects are never shown on this page
     }
-    
+    // If no filter is selected, show both parent and regular projects (but not subprojects)
+
     // Filter by archive status
     let matchesArchive = true
     if (archiveFilter === 'active') {
@@ -653,7 +665,7 @@ export default function Projects() {
                 project={project}
                 projectChart={projectCharts[project.id]}
                 onProjectClick={handleProjectClick}
-                onProjectEdit={isAdmin ? handleProjectEdit : undefined}
+                onProjectEdit={handleProjectEdit}
                 onProjectArchive={isAdmin ? handleProjectArchive : undefined}
                 onProjectRestore={isAdmin ? handleProjectRestore : undefined}
                 onCreateSubproject={isAdmin ? handleCreateSubproject : undefined}

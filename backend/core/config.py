@@ -23,7 +23,7 @@ if env_path.exists():
     print(f"   SMTP_PASSWORD: {'SET' if smtp_pass else 'NOT SET'}")
 else:
     load_dotenv()  # Try default location
-    print("⚠️  .env file not found, using default load_dotenv()")
+    print("[WARNING] .env file not found, using default load_dotenv()")
 
 
 class Settings(BaseModel):
@@ -35,6 +35,18 @@ class Settings(BaseModel):
         )
     )
     JWT_SECRET_KEY: str = Field(default=os.getenv("JWT_SECRET_KEY", "change_me"))
+    
+    @property
+    def is_production(self) -> bool:
+        return os.getenv("ENVIRONMENT", "development").lower() == "production"
+
+    def validate_security(self):
+        if self.is_production:
+            if self.JWT_SECRET_KEY == "change_me":
+                raise ValueError("CRITICAL: JWT_SECRET_KEY must be changed in production!")
+            if self.SUPER_ADMIN_PASSWORD == "c98C98@98":
+                raise ValueError("CRITICAL: Default SUPER_ADMIN_PASSWORD must be changed in production!")
+
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24
 

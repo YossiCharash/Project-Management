@@ -25,6 +25,8 @@ class AuthService:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
         if not user.is_active:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User is inactive")
+        
+        await self.update_last_login(user.id)
         return create_access_token(user.id)
 
     async def authenticate_user(self, email: str, password: str) -> User | None:
@@ -34,6 +36,8 @@ class AuthService:
             return None
         if not user.is_active:
             return None
+        
+        await self.update_last_login(user.id)
         return user
 
     async def register(self, email: str, full_name: str, password: str, role: str = UserRole.MEMBER.value, group_id: int | None = None, email_verified: bool = False) -> User:                                                                  
@@ -79,8 +83,10 @@ class AuthService:
 
     async def update_last_login(self, user_id: int) -> None:
         """Update user's last login timestamp"""
-        # TODO: Add last_login column to database
-        pass
+        user = await self.users.get_by_id(user_id)
+        if user:
+            user.last_login = datetime.now(timezone.utc).replace(tzinfo=None)  # Use naive UTC for DB
+            await self.users.update(user)
 
     async def update_password(self, user_id: int, new_password: str) -> None:
         """Update user's password"""

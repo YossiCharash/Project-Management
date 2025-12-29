@@ -189,13 +189,7 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
       return
     }
 
-    // If from fund, validate fund balance
-    if (fromFund && type === 'Expense' && fundBalance !== null) {
-      if (Number(amount) > fundBalance) {
-        setError(`יתרה לא מספיקה בקופה. יתרה נוכחית: ${fundBalance.toLocaleString('he-IL')} ₪`)
-        return
-      }
-    }
+    // Allow negative fund balance - removed validation that prevented it
 
     setLoading(true)
     setError(null)
@@ -568,8 +562,9 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
                           ⚠️ עסקה זו תרד מהקופה ולא תיכלל בחישובי ההוצאות הרגילות
                         </p>
                         {fundBalance !== null && (
-                          <p className="text-xs text-blue-600 dark:text-blue-400">
+                          <p className={`text-xs ${fundBalance < 0 ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-blue-600 dark:text-blue-400'}`}>
                             יתרה בקופה: {fundBalance.toLocaleString('he-IL')} ₪
+                            {fundBalance < 0 && ' (מינוס!)'}
                           </p>
                         )}
                       </div>

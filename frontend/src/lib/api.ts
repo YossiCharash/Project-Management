@@ -1,20 +1,9 @@
 import axios from 'axios'
 
-// Support runtime configuration via window.ENV (for Docker/K8s)
-declare global {
-  interface Window {
-    ENV?: {
-      API_URL?: string;
-    }
-  }
-}
-
+// ההגדרה של baseURL - משתמשת ב-relative path ב-production (עבור nginx proxy)
+// וב-localhost ב-development (או דרך vite proxy)
 const api = axios.create({
-  // Order of precedence:
-  // 1. Runtime config (window.ENV.API_URL)
-  // 2. Build-time env var (VITE_API_URL)
-  // 3. Fallback to localhost
-  baseURL: window.ENV?.API_URL || import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1",
+  baseURL: "https://project-menager-1-1-0.onrender.com/api/v1",
   timeout: 30000, // avoid ECONNABORTED on heavy endpoints during dev
   withCredentials: false,
 })
@@ -30,7 +19,7 @@ api.interceptors.request.use((config) => {
 })
 api.interceptors.response.use(
   (res) => {
-    return res
+    return res      
   },
   (error) => {
     const status = error?.response?.status
@@ -47,6 +36,8 @@ api.interceptors.response.use(
 
       // Redirect to login page
       window.location.href = '/login'
+    } else {
+        console.error("API Error:", error.response?.data || error.message);
     }
 
     return Promise.reject(error)

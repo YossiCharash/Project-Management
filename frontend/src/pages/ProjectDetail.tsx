@@ -3,109 +3,21 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import api from '../lib/api'
 import { ReportAPI, BudgetAPI, ProjectAPI, CategoryAPI } from '../lib/apiClient'
-import { ExpenseCategory, BudgetWithSpending, RecurringTransactionTemplate } from '../types/api'
+import { ExpenseCategory, BudgetWithSpending } from '../types/api'
 import ProjectTrendsChart from '../components/charts/ProjectTrendsChart'
 import BudgetCard from '../components/charts/BudgetCard'
 import BudgetProgressChart from '../components/charts/BudgetProgressChart'
 import EditTransactionModal from '../components/EditTransactionModal'
 import CreateTransactionModal from '../components/CreateTransactionModal'
-import EditRecurringTemplateModal from '../components/EditRecurringTemplateModal'
+import CreateProjectModal from '../components/CreateProjectModal'
 import { useAppDispatch, useAppSelector } from '../utils/hooks'
 import { fetchSuppliers } from '../store/slices/suppliersSlice'
-import { ChevronDown, History, Download, ChevronLeft } from 'lucide-react'
-
-const CATEGORY_LABELS: Record<string, string> = {
-  CLEANING: 'ניקיון',
-  'ניקיון': 'ניקיון',
-  ELECTRICITY: 'חשמל',
-  'חשמל': 'חשמל',
-  INSURANCE: 'ביטוח',
-  'ביטוח': 'ביטוח',
-  GARDENING: 'גינון',
-  'גינון': 'גינון',
-  OTHER: 'אחר',
-  'אחר': 'אחר'
-}
-
-// Reverse mapping: Hebrew to English (for filtering)
-const CATEGORY_REVERSE_MAP: Record<string, string> = {
-  'ניקיון': 'CLEANING',
-  'חשמל': 'ELECTRICITY',
-  'ביטוח': 'INSURANCE',
-  'גינון': 'GARDENING',
-  'אחר': 'OTHER',
-  'תחזוקה': 'MAINTENANCE'
-}
-
-// Normalize category for comparison (handles both Hebrew and English)
-const normalizeCategoryForFilter = (category: string | null | undefined): string | null => {
-  if (!category) return null
-  const trimmed = String(category).trim()
-  if (trimmed.length === 0) return null
-  
-  // If it's already in English (uppercase), return as is
-  // Check if all characters are uppercase letters (English enum values)
-  if (trimmed === trimmed.toUpperCase() && /^[A-Z_]+$/.test(trimmed)) {
-    return trimmed
-  }
-  
-  // If it's in Hebrew, try to convert to English
-  if (CATEGORY_REVERSE_MAP[trimmed]) {
-    return CATEGORY_REVERSE_MAP[trimmed]
-  }
-  
-  // Otherwise return as is (might be a custom category)
-  return trimmed
-}
-
-const calculateMonthlyIncomeAccrual = (monthlyIncome: number, incomeStartDate: Date, currentDate: Date): number => {
-  if (monthlyIncome <= 0) return 0
-  if (incomeStartDate.getTime() > currentDate.getTime()) return 0
-
-  // Income accrues on the same day of month as the start date
-  // First occurrence is on the start date itself
-  const firstOccurrence = new Date(incomeStartDate.getTime())
-  const originalDay = firstOccurrence.getDate()
-  
-  if (firstOccurrence.getTime() > currentDate.getTime()) return 0
-
-  // Calculate how many monthly occurrences have passed from firstOccurrence to currentDate
-  // Count occurrences on the same day of month (or last day of month if day doesn't exist)
-  let occurrences = 0
-  let occurrenceDate = new Date(firstOccurrence.getTime())
-  
-  // Count all occurrences from start date to current date (inclusive)
-  while (occurrenceDate.getTime() <= currentDate.getTime()) {
-    occurrences++
-    
-    // Calculate next occurrence date
-    const nextMonth = occurrenceDate.getMonth() + 1
-    const nextYear = occurrenceDate.getFullYear()
-    
-    // Try to use the original day of month, but handle edge cases
-    let nextOccurrence: Date
-    if (nextMonth === 12) {
-      nextOccurrence = new Date(nextYear + 1, 0, originalDay)
-    } else {
-      nextOccurrence = new Date(nextYear, nextMonth, originalDay)
-    }
-    
-    // If day doesn't exist in this month (e.g., 31st in February), use last day of month
-    if (nextOccurrence.getDate() !== originalDay) {
-      // Use last day of month
-      if (nextMonth === 12) {
-        nextOccurrence = new Date(nextYear + 1, 0, 0) // Last day of December
-      } else {
-        nextOccurrence = new Date(nextYear, nextMonth + 1, 0) // Last day of next month
-      }
-    }
-    
-    // Move to next occurrence for next iteration
-    occurrenceDate = nextOccurrence
-  }
-
-  return monthlyIncome * occurrences
-}
+import { ChevronDown, History, Download, Edit, ChevronLeft } from 'lucide-react'
+import {
+  CATEGORY_LABELS,
+  normalizeCategoryForFilter,
+  calculateMonthlyIncomeAccrual
+} from '../utils/calculations'
 
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
   STANDING_ORDER: 'הוראת קבע',
@@ -164,13 +76,12 @@ export default function ProjectDetail() {
   const [relationProject, setRelationProject] = useState<number | null>(null) // Parent project ID if this is a subproject
   const [subprojects, setSubprojects] = useState<Array<{ id: number; name: string; is_active: boolean }>>([])
   const [subprojectsLoading, setSubprojectsLoading] = useState<boolean>(false)
+  const [showEditProjectModal, setShowEditProjectModal] = useState(false)
+  const [editingProject, setEditingProject] = useState<any | null>(null)
 
   const [filterType, setFilterType] = useState<'all' | 'Income' | 'Expense'>('all')
   const [filterExceptional, setFilterExceptional] = useState<'all' | 'only'>('all')
   const [dateFilterMode, setDateFilterMode] = useState<'current_month' | 'selected_month' | 'date_range'>('current_month')
-  const [transactionTypeFilter, setTransactionTypeFilter] = useState<'all' | 'regular' | 'recurring'>('all')
-  const [editTemplateModalOpen, setEditTemplateModalOpen] = useState(false)
-  const [selectedTemplateForEdit, setSelectedTemplateForEdit] = useState<RecurringTransactionTemplate | null>(null)
   const [selectedMonth, setSelectedMonth] = useState<string>(() => {
     const now = new Date()
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
@@ -194,7 +105,7 @@ export default function ProjectDetail() {
   const [budgetSaving, setBudgetSaving] = useState(false)
   const [budgetFormError, setBudgetFormError] = useState<string | null>(null)
   const [newBudgetForm, setNewBudgetForm] = useState({
-    category: '',
+    category: 'ניקיון',
     amount: '',
     period_type: 'Annual' as 'Annual' | 'Monthly',
     start_date: new Date().toISOString().split('T')[0],
@@ -231,14 +142,6 @@ export default function ProjectDetail() {
     loadCategories()
   }, [])
   
-  // Get all unique categories from transactions (for filtering)
-  const allCategoriesFromTransactions = Array.from(new Set(
-    txs
-      .map(t => t.category)
-      .filter((cat): cat is string => cat !== null && cat !== undefined && cat !== '')
-      .map(cat => cat.trim())
-  ))
-  
   // Use only categories from database (settings) - these are the only valid options
   const allCategoryOptions = availableCategories
   
@@ -271,7 +174,7 @@ export default function ProjectDetail() {
   } | null>(null)
   const [hasFund, setHasFund] = useState(false)
   const [fundLoading, setFundLoading] = useState(false)
-  const [fundCategoryFilter, setFundCategoryFilter] = useState<string>('all')
+  const [fundCategoryFilter] = useState<string>('all')
   const [transactionsExpandedId, setTransactionsExpandedId] = useState<number | null>(null)
   const [showFundTransactionsModal, setShowFundTransactionsModal] = useState(false)
   const [showCreateFundModal, setShowCreateFundModal] = useState(false)
@@ -325,18 +228,15 @@ export default function ProjectDetail() {
       const [categoriesData, transactionsData, budgetsData] = await Promise.all([
         ReportAPI.getProjectExpenseCategories(parseInt(id)),
         ReportAPI.getProjectTransactions(parseInt(id)),
-        BudgetAPI.getProjectBudgets(parseInt(id)).catch((err) => {
-          console.error('Error fetching budgets:', err)
+        BudgetAPI.getProjectBudgets(parseInt(id)).catch(() => {
           return []
         }) // Don't fail if no budgets
       ])
       
-      console.log('📊 Loaded budgets:', budgetsData)
       setExpenseCategories(categoriesData || [])
       setTxs(transactionsData || [])
       setProjectBudgets(budgetsData || [])
     } catch (err: any) {
-      console.error('Error loading charts data:', err)
       // Error loading charts data
     } finally {
       setChartsLoading(false)
@@ -393,26 +293,34 @@ const formatDate = (value: string | null) => {
     return null
   }
 
+  const handleEditProject = async () => {
+    if (!id) return
+    try {
+      // Use the same API call that loadProjectInfo uses for consistency
+      const { data } = await api.get(`/projects/${id}`)
+      setEditingProject(data)
+      setShowEditProjectModal(true)
+    } catch (err: any) {
+      alert('שגיאה בטעינת פרטי הפרויקט: ' + (err.response?.data?.detail || err.message))
+    }
+  }
+
+  const handleProjectUpdateSuccess = async () => {
+    await loadProjectInfo()
+    setShowEditProjectModal(false)
+    setEditingProject(null)
+  }
+
   const loadProjectInfo = async () => {
     if (!id) return
 
     try {
       // First check and renew contract if needed
-      let contractRenewed = false
-      let renewalContractPeriods = null
       try {
-        const renewalResult = await ProjectAPI.checkAndRenewContract(parseInt(id))
-        if (renewalResult?.renewed) {
-          console.log('✅ Contract renewed:', renewalResult)
-          contractRenewed = true
-          // Use contract periods from renewal response if available
-          if ((renewalResult as any).contract_periods) {
-            renewalContractPeriods = (renewalResult as any).contract_periods
-          }
-        }
+        await ProjectAPI.checkAndRenewContract(parseInt(id))
       } catch (err) {
-        // Log but don't fail the entire load
-        console.error('Contract renewal check error:', err)
+        // Ignore errors in renewal check
+        console.log('Contract renewal check:', err)
       }
       
       const { data } = await api.get(`/projects/${id}`)
@@ -435,21 +343,21 @@ const formatDate = (value: string | null) => {
       setProjectEndDate(data.end_date || null)
       setIsParentProject(data.is_parent_project || false)
       setRelationProject(data.relation_project || null)
-      
+
       console.log('📥 DEBUG - State set:', {
         projectStartDate: data.start_date || null,
         projectEndDate: data.end_date || null,
         budgetMonthly: data.budget_monthly || 0,
         isParentProject: data.is_parent_project || false
       })
-      
+
       // Load subprojects if this is a parent project
       if (data.is_parent_project) {
         await loadSubprojects()
       } else {
         setSubprojects([])
       }
-      
+
       if (data.image_url) {
         // Backend now returns full S3 URL in image_url for new uploads.
         // For backward compatibility, if it's a relative path we still prefix with /uploads.
@@ -485,19 +393,8 @@ const formatDate = (value: string | null) => {
         }
       }
       
-      // Load contract periods (use from renewal response if available, otherwise load normally)
-      if (renewalContractPeriods) {
-        setContractPeriods(renewalContractPeriods)
-        console.log('✅ Contract periods loaded from renewal response')
-      } else {
-        await loadContractPeriods()
-      }
-      
-      // If contract was renewed, show a notification
-      if (contractRenewed) {
-        // The contract periods will now include the archived period
-        console.log('ℹ️ Contract was renewed. Previous period is now archived and visible in contract periods.')
-      }
+      // Load contract periods
+      await loadContractPeriods()
     } catch (err: any) {
       setProjectName(`פרויקט ${id}`)
       setProjectBudget({ budget_monthly: 0, budget_annual: 0 })
@@ -515,10 +412,10 @@ const formatDate = (value: string | null) => {
       setContractPeriods(null)
     }
   }
-  
+
   const loadSubprojects = async () => {
     if (!id) return
-    
+
     setSubprojectsLoading(true)
     try {
       const { data } = await api.get(`/projects/${id}/subprojects`)
@@ -637,7 +534,7 @@ const formatDate = (value: string | null) => {
       await loadChartsData()
       setShowAddBudgetForm(false)
       setNewBudgetForm({
-        category: '',
+        category: 'ניקיון',
         amount: '',
         period_type: 'Annual',
         start_date: newBudgetForm.start_date,
@@ -704,45 +601,7 @@ const formatDate = (value: string | null) => {
   }
 
 
-  const handleEditAnyTransaction = async (transaction: Transaction) => {
-    // If it's a recurring transaction, ask the user whether to edit the instance or the template
-    if (transaction.is_generated && transaction.recurring_template_id) {
-      // Create a custom dialog would be better, but for now using a confirm logic
-      // We can improve this with a proper UI later
-      // Using a slightly more descriptive approach if we had a modal, but here we'll use a hack with window.confirm
-      // or better: just open the EditTransactionModal and add a button there "Edit Series"?
-      // The user requirement: "in recurring... option to edit all or specific".
-      
-      // Let's try to be cleaner: specific logic when in "recurring" filter mode?
-      // "choose if to show all or regular or recurring" -> Done.
-      // "and in recurring there will be option to edit all or specific".
-      
-      if (transactionTypeFilter === 'recurring' || transaction.is_generated) {
-         // Check if we want to edit the template
-         // We'll use a simple native confirm for now as it's the most robust without adding new UI components
-         const editTemplate = window.confirm(
-           "זוהי עסקה מחזורית.\nהאם ברצונך לערוך את כל הסדרה (תבנית)?\n\nלחץ 'אישור' לעריכת הסדרה.\nלחץ 'ביטול' לעריכת עסקה ספציפית זו בלבד."
-         )
-         
-         if (editTemplate) {
-           try {
-             // We need to fetch the template first
-             // Assuming we have an endpoint for getting a single template
-             // If not, we might need to filter from the list or add the endpoint
-             // Let's assume GET /recurring-transactions/{id} exists
-             const response = await api.get(`/recurring-transactions/${transaction.recurring_template_id}`)
-             setSelectedTemplateForEdit(response.data)
-             setEditTemplateModalOpen(true)
-             return
-           } catch (err) {
-             console.error('Failed to fetch template', err)
-             alert('שגיאה בטעינת פרטי המחזוריות')
-             // Fallback to editing the transaction
-           }
-         }
-      }
-    }
-    
+  const handleEditAnyTransaction = (transaction: Transaction) => {
     setSelectedTransactionForEdit(transaction)
     setEditTransactionModalOpen(true)
   }
@@ -754,14 +613,6 @@ const formatDate = (value: string | null) => {
   const currentYear = currentDate.getFullYear()
 
   const filtered = txs.filter(t => {
-    // Filter by transaction type
-    if (transactionTypeFilter === 'regular' && t.is_generated) {
-      return false
-    }
-    if (transactionTypeFilter === 'recurring' && !t.is_generated) {
-      return false
-    }
-
     // Exclude fund transactions from the list
     if (t.from_fund === true) {
       return false
@@ -1126,6 +977,13 @@ const formatDate = (value: string | null) => {
             </button>
           )}
           <button
+            onClick={handleEditProject}
+            className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors flex items-center gap-2 text-sm"
+          >
+            <Edit className="w-4 h-4" />
+            ערוך פרויקט
+          </button>
+          <button
             onClick={() => navigate('/dashboard')}
             className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors text-sm"
           >
@@ -1339,40 +1197,6 @@ const formatDate = (value: string | null) => {
                     מתווסף אוטומטית כל חודש
                   </p>
                 </div>
-                
-                {/* Project Budgets Display in Fund Section */}
-                {(projectBudget.budget_monthly > 0 || projectBudget.budget_annual > 0) && (
-                  <div className="col-span-1 sm:col-span-2 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl p-6 mt-2">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                        תקציב פרויקט
-                      </h3>
-                      <span className="text-gray-500 dark:text-gray-400">💰</span>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      {projectBudget.budget_monthly > 0 && (
-                        <div>
-                          <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                            {formatCurrency(projectBudget.budget_monthly)} ₪
-                          </p>
-                          <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                            תקציב חודשי
-                          </p>
-                        </div>
-                      )}
-                      {projectBudget.budget_annual > 0 && (
-                        <div>
-                          <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                            {formatCurrency(projectBudget.budget_annual)} ₪
-                          </p>
-                          <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                            תקציב שנתי
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
               </div>
             ) : (
               <div className="text-center py-8 text-gray-500 dark:text-gray-400">
@@ -1648,6 +1472,74 @@ const formatDate = (value: string | null) => {
                                     </svg>
                                     מסמכים
                                   </button>
+                                  <label className="px-3 py-1.5 text-xs bg-green-600 text-white rounded hover:bg-green-700 cursor-pointer flex items-center gap-1">
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                    </svg>
+                                    העלה מסמכים
+                                    <input
+                                      type="file"
+                                      multiple
+                                      className="hidden"
+                                      onChange={async (e) => {
+                                        const files = Array.from(e.target.files || [])
+                                        if (files.length === 0) return
+
+                                        let successCount = 0
+                                        let errorCount = 0
+                                        const uploadedDocs: Array<{id: number, fileName: string, description: string}> = []
+                                        
+                                        for (let i = 0; i < files.length; i++) {
+                                          const file = files[i]
+                                          try {
+                                            const formData = new FormData()
+                                            formData.append('file', file)
+                                            const response = await api.post(`/transactions/${tx.id}/supplier-document`, formData, {
+                                              headers: { 'Content-Type': 'multipart/form-data' }
+                                            })
+                                            if (response.data && response.data.id) {
+                                              successCount++
+                                              uploadedDocs.push({
+                                                id: response.data.id,
+                                                fileName: file.name,
+                                                description: response.data.description || ''
+                                              })
+                                            }
+                                          } catch (err: any) {
+                                            errorCount++
+                                          }
+                                        }
+
+                                        if (successCount > 0 && uploadedDocs.length > 0) {
+                                          setUploadedDocuments(uploadedDocs)
+                                          setSelectedTransactionForDocuments(tx)
+                                          setShowDescriptionModal(true)
+
+                                          await load()
+                                          if (showDocumentsModal && selectedTransactionForDocuments?.id === tx.id) {
+                                            const { data } = await api.get(`/transactions/${tx.id}/documents`)
+                                            setTransactionDocuments(data || [])
+                                          }
+                                        } else if (successCount > 0) {
+                                          await load()
+                                          if (showDocumentsModal && selectedTransactionForDocuments?.id === tx.id) {
+                                            const { data } = await api.get(`/transactions/${tx.id}/documents`)
+                                            setTransactionDocuments(data || [])
+                                          }
+                                        }
+
+                                        if (errorCount > 0) {
+                                          if (successCount > 0) {
+                                            alert(`הועלו ${successCount} מסמכים, ${errorCount} נכשלו`)
+                                          } else {
+                                            alert(`שגיאה בהעלאת המסמכים`)
+                                          }
+                                        }
+
+                                        e.target.value = ''
+                                      }}
+                                    />
+                                  </label>
                                   <button
                                     onClick={() => handleEditAnyTransaction(tx)}
                                     className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
@@ -1791,7 +1683,7 @@ const formatDate = (value: string | null) => {
                 e.preventDefault()
                 setCreatingFund(true)
                 try {
-                  const response = await api.post(`/projects/${id}/fund?monthly_amount=${monthlyFundAmount}`)
+                  await api.post(`/projects/${id}/fund?monthly_amount=${monthlyFundAmount}`)
                   // Success - reload data
                   await loadProjectInfo()
                   await loadFundData()
@@ -2395,6 +2287,81 @@ const formatDate = (value: string | null) => {
                         >
                           מסמכים
                         </button>
+                        <label className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 cursor-pointer">
+                          העלה מסמכים
+                          <input
+                            type="file"
+                            multiple
+                            className="hidden"
+                            onChange={async (e: ChangeEvent<HTMLInputElement>) => {
+                              const files = e.target.files
+                              if (!files || files.length === 0) return
+                              
+                              try {
+                                let successCount = 0
+                                let errorCount = 0
+                                const uploadedDocs: Array<{id: number, fileName: string, description: string}> = []
+                                
+                                // Upload each file
+                                for (let i = 0; i < files.length; i++) {
+                                  const file = files[i]
+                                  try {
+                                    const formData = new FormData()
+                                    formData.append('file', file)
+                                    const response = await api.post(`/transactions/${t.id}/supplier-document`, formData, {
+                                      headers: { 'Content-Type': 'multipart/form-data' }
+                                    })
+                                    
+                                    // Get document ID from response
+                                    if (response.data && response.data.id) {
+                                      successCount++
+                                      uploadedDocs.push({
+                                        id: response.data.id,
+                                        fileName: file.name,
+                                        description: response.data.description || ''
+                                      })
+                                    }
+                                  } catch (err: any) {
+                                    errorCount++
+                                  }
+                                }
+                                
+                                // If some files were uploaded successfully, show description modal
+                                if (successCount > 0 && uploadedDocs.length > 0) {
+                                  setUploadedDocuments(uploadedDocs)
+                                  setSelectedTransactionForDocuments(t)
+                                  setShowDescriptionModal(true)
+                                  
+                                  await loadChartsData()
+                                  // Reload documents in modal if it's open
+                                  if (showDocumentsModal && selectedTransactionForDocuments?.id === t.id) {
+                                    const { data } = await api.get(`/transactions/${t.id}/documents`)
+                                    setTransactionDocuments(data || [])
+                                  }
+                                } else if (successCount > 0) {
+                                  // Files uploaded but no IDs received - just reload
+                                  await loadChartsData()
+                                  if (showDocumentsModal && selectedTransactionForDocuments?.id === t.id) {
+                                    const { data } = await api.get(`/transactions/${t.id}/documents`)
+                                    setTransactionDocuments(data || [])
+                                  }
+                                }
+                                
+                                // Show result message if there were errors
+                                if (errorCount > 0) {
+                                  if (successCount > 0) {
+                                    alert(`הועלו ${successCount} מסמכים, ${errorCount} נכשלו`)
+                                  } else {
+                                    alert(`שגיאה בהעלאת המסמכים`)
+                                  }
+                                }
+                              } catch (err: any) {
+                                alert(err.response?.data?.detail ?? 'שגיאה בהעלאת מסמכים')
+                              }
+                              e.target.value = ''
+                            }}
+                          />
+                        </label>
                       </div>
                     </td>
                   </tr>
@@ -2442,19 +2409,14 @@ const formatDate = (value: string | null) => {
         transaction={selectedTransactionForEdit}
       />
 
-      <EditRecurringTemplateModal
-        isOpen={editTemplateModalOpen}
+      <CreateProjectModal
+        isOpen={showEditProjectModal}
         onClose={() => {
-          setEditTemplateModalOpen(false)
-          setSelectedTemplateForEdit(null)
+          setShowEditProjectModal(false)
+          setEditingProject(null)
         }}
-        onSuccess={async () => {
-          setEditTemplateModalOpen(false)
-          setSelectedTemplateForEdit(null)
-          await load()
-          await loadChartsData()
-        }}
-        template={selectedTemplateForEdit}
+        onSuccess={handleProjectUpdateSuccess}
+        editingProject={editingProject}
       />
 
       {/* Documents Modal */}
@@ -2886,20 +2848,9 @@ const formatDate = (value: string | null) => {
                   </div>
 
                   <div>
-                    <div className="flex justify-between items-center mb-1">
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                        תאריך התחלה *
-                      </label>
-                      {projectStartDate && (
-                        <button
-                          type="button"
-                          onClick={() => setNewBudgetForm(prev => ({ ...prev, start_date: projectStartDate }))}
-                          className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
-                        >
-                          לפי תחילת פרויקט ({new Date(projectStartDate).toLocaleDateString('he-IL')})
-                        </button>
-                      )}
-                    </div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      תאריך התחלה *
+                    </label>
                     <input
                       type="date"
                       value={newBudgetForm.start_date}

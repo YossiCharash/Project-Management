@@ -160,11 +160,7 @@ async def create_transaction(db: DBSessionDep, data: TransactionCreate, user = D
         if not fund:
             raise HTTPException(status_code=400, detail="Fund not found for this project")
         
-        # Check if fund has enough balance
-        if float(fund.current_balance) < float(data.amount):
-            raise HTTPException(status_code=400, detail=f"Insufficient fund balance. Current balance: {fund.current_balance} ₪")
-        
-        # Deduct from fund
+        # Allow negative balance - deduct from fund (can go into negative)
         await fund_service.deduct_from_fund(data.project_id, data.amount)
     
     # Debug: Print to verify user_id is being set
@@ -586,6 +582,12 @@ async def delete_transaction(tx_id: int, db: DBSessionDep, user = Depends(requir
     tx = await repo.get_by_id(tx_id)
     if not tx:
         raise HTTPException(status_code=404, detail="Transaction not found")
+    
+    # Restore fund balance if this was a fund transaction
+    if getattr(tx, 'from_fund', False) and tx.type == 'Expense':
+        from backend.services.fund_service import FundService
+        fund_service = FundService(db)
+        await fund_service.refund_to_fund(tx.project_id, tx.amount)
     
     # Get project name for audit log
     project = await ProjectRepository(db).get_by_id(tx.project_id)

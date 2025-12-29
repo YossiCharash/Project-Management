@@ -1,6 +1,7 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Optional
 from datetime import datetime
+import re
 
 
 class Token(BaseModel):
@@ -29,16 +30,38 @@ class PasswordReset(BaseModel):
     token: str
     new_password: str = Field(min_length=8, max_length=128)
 
+    @field_validator('new_password')
+    @classmethod
+    def validate_password(cls, v):
+        if not re.match(r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[A-Za-z\d@$!%*#?&]{8,}$', v):
+            raise ValueError('Password must contain at least one uppercase letter, one lowercase letter, and one number')
+        return v
+
 
 class ChangePassword(BaseModel):
     current_password: str
     new_password: str = Field(min_length=8, max_length=128)
+
+    @field_validator('new_password')
+    @classmethod
+    def validate_password(cls, v):
+        if not re.match(r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[A-Za-z\d@$!%*#?&]{8,}$', v):
+            raise ValueError('Password must contain at least one uppercase letter, one lowercase letter, and one number')
+        return v
 
 
 class ResetPasswordWithToken(BaseModel):
     token: str
     temp_password: str
     new_password: str = Field(min_length=8, max_length=128)
+
+    @field_validator('new_password')
+    @classmethod
+    def validate_password(cls, v):
+        if not re.match(r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[A-Za-z\d@$!%*#?&]{8,}$', v):
+            raise ValueError('Password must contain at least one uppercase letter, one lowercase letter, and one number')
+        return v
+
 
 
 class UserProfile(BaseModel):

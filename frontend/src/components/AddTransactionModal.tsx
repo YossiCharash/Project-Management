@@ -303,8 +303,9 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                   </label>
                 </div>
                 {fundBalance !== null && (
-                  <p className="text-xs text-gray-600 dark:text-gray-400">
+                  <p className={`text-xs ${fundBalance < 0 ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-gray-600 dark:text-gray-400'}`}>
                     יתרה בקופה: {fundBalance.toLocaleString('he-IL')} ₪
+                    {fundBalance < 0 && ' (מינוס!)'}
                   </p>
                 )}
                 {formData.from_fund && (

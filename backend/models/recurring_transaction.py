@@ -30,9 +30,9 @@ class RecurringTransactionTemplate(Base):
     description: Mapped[str] = mapped_column(Text)
     type: Mapped[str] = mapped_column(String(20), index=True)  # Income/Expense
     amount: Mapped[float] = mapped_column(Numeric(14, 2))
-    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"), nullable=True, index=True)
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"), nullable=True)
+    category: Mapped[str | None] = mapped_column(Text, default=None)  # Deprecated: use category_id instead
     category_obj: Mapped["Category | None"] = relationship(lazy="selectin")
-    category = association_proxy("category_obj", "name")
     notes: Mapped[str | None] = mapped_column(Text, default=None)
     
     # Supplier relationship (optional for Income transactions)

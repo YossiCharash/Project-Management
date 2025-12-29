@@ -35,6 +35,13 @@ def create_app() -> FastAPI:
         {"name": "reports", "description": "דוחות רווחיות והשוואה לתקציב"},
     ]
 
+    # Initialize database - creates all tables, enums, indexes, and foreign keys
+    try:
+        settings.validate_security()
+    except ValueError as e:
+        print(f"\n[SECURITY WARNING] {str(e)}\n")
+        # In production, you might want to exit: exit(1)
+
     app = FastAPI(
         title="BMS Backend",
         version="1.0.0",
@@ -308,17 +315,17 @@ async def run_recurring_transactions_scheduler():
                     transactions = await service.generate_transactions_for_date(today)
                     
                     if transactions:
-                        print(f"✅ Generated {len(transactions)} recurring transactions for {today}")
+                        print(f"[OK] Generated {len(transactions)} recurring transactions for {today}")
                     else:
-                        print(f"ℹ️  No recurring transactions to generate for {today}")
+                        print(f"[INFO] No recurring transactions to generate for {today}")
                 except Exception as e:
-                    print(f"❌ Error generating recurring transactions: {e}")
+                    print(f"[ERROR] Error generating recurring transactions: {e}")
                     import traceback
                     traceback.print_exc()
                 finally:
                     await db.close()
         except Exception as e:
-            print(f"❌ Error in recurring transactions scheduler: {e}")
+            print(f"[ERROR] Error in recurring transactions scheduler: {e}")
             import traceback
             traceback.print_exc()
             # Wait a bit before retrying
@@ -371,24 +378,24 @@ async def run_contract_renewal_scheduler():
                             renewed_project = await service.check_and_renew_contract(project.id)
                             if renewed_project:
                                 renewed_count += 1
-                                print(f"✅ Renewed contract for project: {project.name} (ID: {project.id})")
+                                print(f"[OK] Renewed contract for project: {project.name} (ID: {project.id})")
                         except Exception as e:
-                            print(f"❌ Error renewing contract for project {project.name} (ID: {project.id}): {e}")
+                            print(f"[ERROR] Error renewing contract for project {project.name} (ID: {project.id}): {e}")
                             import traceback
                             traceback.print_exc()
                     
                     if renewed_count > 0:
-                        print(f"✅ Contract renewal check completed: {renewed_count} contracts renewed")
+                        print(f"[OK] Contract renewal check completed: {renewed_count} contracts renewed")
                     else:
-                        print(f"ℹ️  Contract renewal check completed: No contracts needed renewal")
+                        print(f"[INFO] Contract renewal check completed: No contracts needed renewal")
                 except Exception as e:
-                    print(f"❌ Error in contract renewal scheduler: {e}")
+                    print(f"[ERROR] Error in contract renewal scheduler: {e}")
                     import traceback
                     traceback.print_exc()
                 finally:
                     await db.close()
         except Exception as e:
-            print(f"❌ Error in contract renewal scheduler: {e}")
+            print(f"[ERROR] Error in contract renewal scheduler: {e}")
             import traceback
             traceback.print_exc()
             # Wait a bit before retrying

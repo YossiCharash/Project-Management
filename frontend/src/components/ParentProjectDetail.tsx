@@ -441,6 +441,7 @@ const SubprojectCardsList: React.FC<{
           subproject={subproject}
           imageUrl={subprojectImages[subproject.id] || null}
           onViewClick={() => onNavigate(`/projects/${subproject.id}`)}
+          onEditClick={onEditClick ? () => onEditClick(subproject.id) : undefined}
         />
       ))}
     </div>
@@ -451,8 +452,9 @@ const ConsolidatedFinancialSummary: React.FC<{
   summary: FinancialSummary
   subprojects: SubprojectFinancial[]
   onAddTransaction?: (subprojectId: number) => void
-}> = ({ summary, subprojects, onAddTransaction }) => {
-  const navigate = useNavigate()
+  onEditSubproject?: (subprojectId: number) => void
+  onNavigateSubproject?: (subprojectId: number) => void
+}> = ({ summary, subprojects, onAddTransaction, onEditSubproject, onNavigateSubproject }) => {
   // Filter out parent project from subprojects (if it's included with "(ראשי)" in the name)
   const actualSubprojects = subprojects.filter(sp => !sp.name.includes('(ראשי)'))
   
@@ -546,10 +548,22 @@ const ConsolidatedFinancialSummary: React.FC<{
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {actualSubprojects.map((subproject) => (
+            {actualSubprojects.map((subproject) => {
+              const handleCardClick = (e: React.MouseEvent) => {
+                // Don't navigate if clicking on buttons or interactive elements
+                const target = e.target as HTMLElement
+                if (target.closest('button') || target.closest('a')) {
+                  return
+                }
+                if (onNavigateSubproject) {
+                  onNavigateSubproject(subproject.id)
+                }
+              }
+
+              return (
               <div
                 key={subproject.id}
-                onClick={() => navigate(`/projects/${subproject.id}`)}
+                onClick={handleCardClick}
                 className="bg-gradient-to-br from-gray-50 to-white dark:from-gray-700 dark:to-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 p-5 hover:shadow-md transition-shadow cursor-pointer"
               >
                 <div className="flex items-start justify-between mb-4">
@@ -568,6 +582,19 @@ const ConsolidatedFinancialSummary: React.FC<{
                       >
                         <Plus className="w-3 h-3" />
                         הוסף עסקה
+                      </button>
+                    )}
+                    {onEditSubproject && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onEditSubproject(subproject.id)
+                        }}
+                        className="px-3 py-1.5 text-xs bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors flex items-center gap-1.5"
+                        title="ערוך תת-פרויקט"
+                      >
+                        <Edit className="w-3 h-3" />
+                        ערוך
                       </button>
                     )}
                     <div className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusBgClass(subproject.status)} ${getStatusColorClass(subproject.status)}`}>
@@ -615,7 +642,8 @@ const ConsolidatedFinancialSummary: React.FC<{
                   </div>
                 </div>
               </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>
@@ -914,6 +942,8 @@ export default function ParentProjectDetail() {
   const [error, setError] = useState<string | null>(null)
   const [showCreateSubprojectModal, setShowCreateSubprojectModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
+  const [showEditSubprojectModal, setShowEditSubprojectModal] = useState(false)
+  const [editingSubproject, setEditingSubproject] = useState<Project | null>(null)
   const [showAddTransactionModal, setShowAddTransactionModal] = useState(false)
   const [selectedSubprojectForTransaction, setSelectedSubprojectForTransaction] = useState<number | null>(null)
   
@@ -1313,6 +1343,17 @@ export default function ParentProjectDetail() {
     })
   }
 
+  const handleEditSubproject = async (subprojectId: number) => {
+    try {
+      // Load subproject data for editing
+      const { data } = await api.get(`/projects/${subprojectId}`)
+      setEditingSubproject(data)
+      setShowEditSubprojectModal(true)
+    } catch (err: any) {
+      alert(err.response?.data?.detail || 'שגיאה בטעינת נתוני תת-פרויקט')
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -1494,6 +1535,10 @@ export default function ParentProjectDetail() {
             setSelectedSubprojectForTransaction(subprojectId)
             setShowAddTransactionModal(true)
           }}
+          onEditSubproject={handleEditSubproject}
+          onNavigateSubproject={(subprojectId) => {
+            navigate(`/projects/${subprojectId}`)
+          }}
         />
       ) : (
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-8">
@@ -1588,6 +1633,24 @@ export default function ParentProjectDetail() {
             loadParentProjectData()
           }}
           editingProject={parentProject}
+        />
+      )}
+
+      {/* Edit Subproject Modal */}
+      {editingSubproject && (
+        <CreateProjectModal
+          isOpen={showEditSubprojectModal}
+          onClose={() => {
+            setShowEditSubprojectModal(false)
+            setEditingSubproject(null)
+          }}
+          onSuccess={(project: Project) => {
+            setShowEditSubprojectModal(false)
+            setEditingSubproject(null)
+            loadParentProjectData()
+          }}
+          editingProject={editingSubproject}
+          parentProjectId={id ? parseInt(id) : undefined}
         />
       )}
 
