@@ -280,17 +280,32 @@ def create_app() -> FastAPI:
         return {"status": "healthy", "message": "Project Management System is running"}
 
     # Serve Frontend (SPA) in Production/Docker
-    # This assumes the frontend build artifacts are located at /app/static
-    static_dir = "/app/static"
+    # We check multiple possible locations for the frontend build artifacts
+    possible_static_dirs = [
+        "/app/static",  # Docker container path
+        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend", "dist"),  # Local dev path
+    ]
     
-    if os.path.exists(static_dir):
+    static_dir = None
+    for d in possible_static_dirs:
+        if os.path.exists(d) and os.path.exists(os.path.join(d, "index.html")):
+            static_dir = d
+            break
+            
+    if static_dir:
+        print(f"🎨 Serving frontend from: {static_dir}")
+        
         # Serve assets (JS/CSS)
         # We mount /assets to serve files from /app/static/assets
         if os.path.exists(os.path.join(static_dir, "assets")):
             app.mount("/assets", StaticFiles(directory=os.path.join(static_dir, "assets")), name="assets")
         
-        # Serve other static files (like favicon.ico, logo.png) if they exist in root of static_dir
-        # and fallback to index.html for SPA routing
+        # Explicit root handler
+        @app.get("/")
+        async def serve_root():
+            return FileResponse(os.path.join(static_dir, "index.html"))
+
+        # Catch-all handler for SPA routing
         @app.get("/{full_path:path}")
         async def serve_frontend(full_path: str):
             # Check if file exists in static_dir
@@ -304,10 +319,9 @@ def create_app() -> FastAPI:
 
             # Fallback to index.html for SPA
             index_path = os.path.join(static_dir, "index.html")
-            if os.path.exists(index_path):
-                return FileResponse(index_path)
-            
-            return JSONResponse(status_code=404, content={"detail": "Frontend not found"})
+            return FileResponse(index_path)
+    else:
+        print("⚠️ Frontend static files not found. Frontend serving disabled.")
 
     return app
 
