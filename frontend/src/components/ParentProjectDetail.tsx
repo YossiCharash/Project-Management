@@ -16,7 +16,7 @@ import api from '../lib/api'
 import ProjectExpensePieChart from './charts/ProjectExpensePieChart'
 import ProjectTrendsChart from './charts/ProjectTrendsChart'
 import CreateProjectModal from './CreateProjectModal'
-import AddTransactionModal from './AddTransactionModal'
+import CreateTransactionModal from './CreateTransactionModal'
 
 // Reverse mapping: Hebrew to English (for filtering)
 const CATEGORY_REVERSE_MAP: Record<string, string> = {
@@ -441,7 +441,6 @@ const SubprojectCardsList: React.FC<{
           subproject={subproject}
           imageUrl={subprojectImages[subproject.id] || null}
           onViewClick={() => onNavigate(`/projects/${subproject.id}`)}
-          onEditClick={onEditClick ? () => onEditClick(subproject.id) : undefined}
         />
       ))}
     </div>
