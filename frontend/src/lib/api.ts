@@ -3,7 +3,7 @@ import axios from 'axios'
 // ההגדרה של baseURL - משתמשת ב-relative path ב-production (עבור nginx proxy)
 // וב-localhost ב-development (או דרך vite proxy)
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL,
+  baseURL: import.meta.env.VITE_API_URL || '/api/v1',
   timeout: 30000, // avoid ECONNABORTED on heavy endpoints during dev
   withCredentials: false,
 })

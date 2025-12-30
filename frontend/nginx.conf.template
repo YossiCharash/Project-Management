@@ -61,11 +61,6 @@ server {
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
-        # Use the backend's host for SNI/Routing if it's external
-        # If BACKEND_URL is set to an external domain, we should not force $host
-        # But if it's internal docker network, $host might be fine.
-        # For Render/External usage, let's allow Nginx to set Host to the proxy target
-        # proxy_set_header Host $host; 
         
         # In case we are proxying to HTTPS (e.g. Render backend URL)
         proxy_ssl_server_name on;
@@ -73,16 +68,28 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        # proxy_set_header X-Forwarded-Host $host;
-        # proxy_set_header X-Forwarded-Port 10000;
         
-        # Prevent backend from generating redirects to frontend domain
-        # proxy_set_header X-Original-Host $host;
-        # proxy_set_header X-Original-URI $request_uri;
         proxy_cache_bypass $http_upgrade;
 
         # Don't buffer responses - important for streaming
         proxy_buffering off;
+    }
+
+    # Uploads proxy - forwards /uploads/* requests to the backend
+    location /uploads/ {
+        access_log off;
+        
+        # Backend service URL for uploads
+        proxy_pass ${VITE_API_URL}/uploads/;
+
+        proxy_http_version 1.1;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # Allow caching for uploads
+        expires 1y;
+        add_header Cache-Control "public, immutable";
     }
 
     # React Router - MUST BE LAST!
