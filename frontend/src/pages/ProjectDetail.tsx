@@ -59,6 +59,15 @@ interface Transaction {
     file_path?: string | null
 }
 
+// Helper to safely get category name whether it's a string or an object
+const getCategoryName = (category: any): string => {
+  if (!category) return '';
+  if (typeof category === 'object' && category.name) {
+    return category.name;
+  }
+  return String(category);
+}
+
 export default function ProjectDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -764,11 +773,12 @@ const formatDate = (value: string | null) => {
     // Otherwise, match by category (handle both Hebrew and English categories)
     let categoryMatches = true
     if (categoryFilter && categoryFilter !== 'all') {
-      const txCategory = normalizeCategoryForFilter(t.category)
+      const catName = getCategoryName(t.category)
+      const txCategory = normalizeCategoryForFilter(catName)
       const filterCategory = normalizeCategoryForFilter(categoryFilter)
       // Match if normalized categories are equal, or if original categories match
       const normalizedMatch: boolean = txCategory !== null && filterCategory !== null && txCategory === filterCategory
-      const directMatch: boolean = !!(t.category && String(t.category).trim() === String(categoryFilter).trim())
+      const directMatch: boolean = !!(catName && String(catName).trim() === String(categoryFilter).trim())
       categoryMatches = normalizedMatch || directMatch
     }
     
@@ -791,10 +801,11 @@ const formatDate = (value: string | null) => {
         // First filter out fund transactions
         if (t.from_fund === true) return false
         
-        const txCategory = normalizeCategoryForFilter(t.category)
+        const catName = getCategoryName(t.category)
+        const txCategory = normalizeCategoryForFilter(catName)
         const filterCategory = normalizeCategoryForFilter(categoryFilter)
         return (txCategory !== null && filterCategory !== null && txCategory === filterCategory) ||
-               (t.category && String(t.category).trim() === String(categoryFilter).trim())
+               (catName && String(catName).trim() === String(categoryFilter).trim())
       }).length
 
 
@@ -1497,7 +1508,12 @@ const formatDate = (value: string | null) => {
                                     מחזורי
                                   </span>
                                 )}
-                                <span className="text-sm text-gray-600 dark:text-gray-300">{tx.category ? (CATEGORY_LABELS[tx.category] || tx.category) : '-'}</span>
+                                <span className="text-sm text-gray-600 dark:text-gray-300">
+                              {(() => {
+                                const catName = getCategoryName(tx.category);
+                                return catName ? (CATEGORY_LABELS[catName] || catName) : '-';
+                              })()}
+                            </span>
                               </div>
                               <div className="flex items-center gap-4">
                                 <span className="text-sm text-gray-500 dark:text-gray-400">{new Date(tx.tx_date).toLocaleDateString('he-IL')}</span>
@@ -1867,7 +1883,10 @@ const formatDate = (value: string | null) => {
                               })}
                             </span>
                             <span className="text-xs text-gray-500 dark:text-gray-400">
-                              {tx.category ? (CATEGORY_LABELS[tx.category] || tx.category) : 'קופה'}
+                              {(() => {
+                                const catName = getCategoryName(tx.category);
+                                return catName ? (CATEGORY_LABELS[catName] || catName) : 'קופה';
+                              })()}
                             </span>
                           </div>
                         </div>
@@ -3733,7 +3752,7 @@ const formatDate = (value: string | null) => {
                                 {tx.description || '-'}
                               </td>
                               <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">
-                                {tx.category || '-'}
+                                {getCategoryName(tx.category) || '-'}
                               </td>
                               <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">
                                 {tx.payment_method ? PAYMENT_METHOD_LABELS[tx.payment_method] || tx.payment_method : '-'}

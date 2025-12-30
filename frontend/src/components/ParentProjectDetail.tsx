@@ -485,11 +485,12 @@ const ConsolidatedTransactionsTable: React.FC<{
     // Handle both Hebrew and English categories
     let categoryMatch = true
     if (filters.category) {
-      const txCategory = normalizeCategoryForFilter(transaction.category)
+      const catName = getCategoryName(transaction.category)
+      const txCategory = normalizeCategoryForFilter(catName)
       const filterCategory = normalizeCategoryForFilter(filters.category)
       // Match if normalized categories are equal, or if original categories match
       const normalizedMatch: boolean = txCategory !== null && filterCategory !== null && txCategory === filterCategory
-      const directMatch: boolean = !!(transaction.category && String(transaction.category).trim() === String(filters.category).trim())
+      const directMatch: boolean = !!(catName && String(catName).trim() === String(filters.category).trim())
       categoryMatch = normalizedMatch || directMatch
     }
     
@@ -669,7 +670,7 @@ const ConsolidatedTransactionsTable: React.FC<{
                     {formatCurrency(transaction.amount)}
                   </td>
                   <td className="p-3 text-gray-700 dark:text-gray-300">
-                    {transaction.category || '-'}
+                    {getCategoryName(transaction.category) || '-'}
                   </td>
                   <td className="p-3 text-gray-700 dark:text-gray-300">
                     {transaction.description || '-'}
@@ -726,6 +727,15 @@ const ConsolidatedTransactionsTable: React.FC<{
       )}
     </div>
   )
+}
+
+// Helper to safely get category name whether it's a string or an object
+const getCategoryName = (category: any): string => {
+  if (!category) return '';
+  if (typeof category === 'object' && category.name) {
+    return category.name;
+  }
+  return String(category);
 }
 
 export default function ParentProjectDetail() {
