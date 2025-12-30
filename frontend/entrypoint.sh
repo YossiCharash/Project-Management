@@ -6,8 +6,8 @@
 # So we need to ensure BACKEND_URL is exported (it is by Docker).
 
 if [ -z "$VITE_API_URL" ]; then
-    echo "WARNING: BACKEND_URL is not set. Defaulting to http://backend:8000"
-    export BACKEND_URL="http://backend:8000"
+    echo "WARNING: VITE_API_URL is not set. Defaulting to http://backend:8000"
+    export VITE_API_URL="http://backend:8000"
 fi
 
 echo "Generating nginx.conf with BACKEND_URL=${VITE_API_URL}"
