@@ -67,7 +67,7 @@ jobs:
   deploy:
     needs: [build-and-push-backend, build-and-push-frontend]
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && github.event_name != 'pull_request'
     steps:
       - name: Deploy Backend to Render
         run: |
