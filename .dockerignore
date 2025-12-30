@@ -1,0 +1,15 @@
+**/node_modules
+**/dist
+**/build
+.git
+.idea
+__pycache__
+**/*.pyc
+.env
+**/.env
+venv
+env
+backend/venv
+backend/env
+coverage
+.pytest_cache
