@@ -7,6 +7,7 @@ from backend.repositories.supplier_repository import SupplierRepository
 from backend.repositories.supplier_document_repository import SupplierDocumentRepository
 from backend.schemas.supplier import SupplierCreate, SupplierOut, SupplierUpdate
 from backend.services.audit_service import AuditService
+from backend.services.supplier_service import SupplierService
 from backend.core.config import settings
 import os
 import re
@@ -62,8 +63,23 @@ async def get_supplier(supplier_id: int, db: DBSessionDep, user = Depends(get_cu
 @router.post("/", response_model=SupplierOut)
 async def create_supplier(db: DBSessionDep, data: SupplierCreate, user = Depends(get_current_user)):
     """Create supplier - accessible to all authenticated users"""
-    supplier = Supplier(**data.model_dump())
-    created_supplier = await SupplierRepository(db).create(supplier)
+    service = SupplierService(db)
+    
+    # Check if supplier with same name exists
+    repo = SupplierRepository(db)
+    # The name is unique in DB but let's check explicitly or catch exception
+    # Currently SupplierRepository doesn't have get_by_name but could fail on DB constraint
+    # We will let the DB constraint handle it or catch IntegrityError if we want, but simple create is fine
+    
+    try:
+        created_supplier = await service.create(**data.model_dump())
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+         # Handle potential unique constraint error
+         if "unique constraint" in str(e).lower():
+             raise HTTPException(status_code=400, detail="Supplier with this name already exists")
+         raise e
     
     # Log create action
     await AuditService(db).log_supplier_action(
@@ -79,18 +95,22 @@ async def create_supplier(db: DBSessionDep, data: SupplierCreate, user = Depends
 @router.put("/{supplier_id}", response_model=SupplierOut)
 async def update_supplier(supplier_id: int, db: DBSessionDep, data: SupplierUpdate, user = Depends(get_current_user)):
     """Update supplier - accessible to all authenticated users"""
+    service = SupplierService(db)
     repo = SupplierRepository(db)
+    
     supplier = await repo.get(supplier_id)
     if not supplier:
         raise HTTPException(status_code=404, detail="Supplier not found")
     
     # Store old values for audit log
     old_values = {'name': supplier.name, 'is_active': str(supplier.is_active)}
+    if supplier.category:
+        old_values['category'] = supplier.category.name if hasattr(supplier.category, 'name') else str(supplier.category)
     
-    for k, v in data.model_dump(exclude_unset=True).items():
-        setattr(supplier, k, v)
-    
-    updated_supplier = await repo.update(supplier)
+    try:
+        updated_supplier = await service.update(supplier_id, **data.model_dump(exclude_unset=True))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     
     # Log update action
     new_values = {k: str(v) for k, v in data.model_dump(exclude_unset=True).items()}

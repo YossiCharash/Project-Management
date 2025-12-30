@@ -18,17 +18,7 @@ async def create_budget(
 ):
     """Create a new budget for a project category"""
     try:
-        print(
-            "📥 [Budget API] create_budget request",
-            {
-                "user": current_user.email,
-                "project_id": budget.project_id,
-                "amount": budget.amount,
-                "period_type": budget.period_type,
-                "start_date": budget.start_date,
-                "end_date": budget.end_date,
-            },
-        )
+
         service = BudgetService(db)
         
         # Convert category name to category_id
@@ -43,8 +33,7 @@ async def create_budget(
             )
         
         # Debug: Print what we're about to pass
-        print(f"🔍 [Budget API] Calling create_budget with: project_id={budget.project_id}, category_id={category_obj.id}, amount={budget.amount}")
-        
+
         created_budget = await service.create_budget(
             project_id=budget.project_id,
             category_id=category_obj.id,
@@ -53,14 +42,11 @@ async def create_budget(
             start_date=budget.start_date,
             end_date=budget.end_date
         )
-        print("✅ [Budget API] Budget created", {"budget_id": created_budget.id})
         return BudgetOut.model_validate(created_budget)
     except ValueError as e:
-        print(f"⚠️ [Budget API] Validation error while creating budget: {e}")
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         import traceback
-        print(f"❌ [Budget API] Unexpected error while creating budget: {e}")
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error creating budget: {str(e)}")
 
@@ -73,17 +59,13 @@ async def get_project_budgets(
 ):
     """Get all budgets for a project with spending information"""
     try:
-        print(f"📊 [Budget API] Getting budgets for project {project_id}, user: {current_user.email} (role: {current_user.role})")
         service = BudgetService(db)
         budgets_data = await service.get_project_budgets_with_spending(project_id)
-        print(f"📊 [Budget API] Found {len(budgets_data)} budgets for project {project_id}")
         # Convert dict to BudgetWithSpending schema
         budgets = [BudgetWithSpending.model_validate(budget_dict) for budget_dict in budgets_data]
-        print(f"📊 [Budget API] Successfully converted {len(budgets)} budgets to schema")
         return budgets
     except Exception as e:
         import traceback
-        print(f"❌ [Budget API] Error retrieving budgets for project {project_id}: {str(e)}")
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error retrieving budgets: {str(e)}")
 

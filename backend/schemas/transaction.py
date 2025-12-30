@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Literal
 
 
@@ -46,6 +46,14 @@ class TransactionOut(BaseModel):
     category: str | None = None
     category_id: int | None = None
     payment_method: str | None = None
+
+    @field_validator('category', mode='before')
+    @classmethod
+    def extract_category_name(cls, v):
+        # If value is an object with 'name' attribute (e.g. ORM model), return the name
+        if hasattr(v, 'name'):
+            return v.name
+        return v
     notes: str | None = None
     is_exceptional: bool = False
     is_generated: bool = False

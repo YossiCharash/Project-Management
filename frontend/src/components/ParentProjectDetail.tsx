@@ -3,7 +3,6 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { 
   ArrowLeft, 
-  Calendar, 
   DollarSign,
   MapPin,
   RefreshCw,
@@ -13,7 +12,6 @@ import {
 import { ProjectWithFinance, Project } from '../types/api'
 import { DashboardAPI } from '../lib/apiClient'
 import api from '../lib/api'
-import ProjectExpensePieChart from './charts/ProjectExpensePieChart'
 import ProjectTrendsChart from './charts/ProjectTrendsChart'
 import CreateProjectModal from './CreateProjectModal'
 import CreateTransactionModal from './CreateTransactionModal'
@@ -80,13 +78,9 @@ interface Transaction {
   subproject_id?: number | null
   is_exceptional?: boolean
   subproject_name?: string
+  is_generated?: boolean
 }
 
-interface ExpenseCategory {
-  category: string
-  amount: number
-  color: string
-}
 
 // Simple Hebrew text constants
 const HebrewText = {
@@ -184,276 +178,44 @@ const getStatusBgClass = (status: 'green' | 'yellow' | 'red'): string => {
   }
 }
 
-const DateSelector: React.FC<{
-  dateType: 'month' | 'year' | 'custom'
-  onDateTypeChange: (type: 'month' | 'year' | 'custom') => void
-  selectedMonth: string
-  onMonthChange: (month: string) => void
-  selectedYear: string
-  onYearChange: (year: string) => void
-  customRange: DateRange
-  onCustomRangeChange: (range: DateRange) => void
-}> = ({
-  dateType,
-  onDateTypeChange,
-  selectedMonth,
-  onMonthChange,
-  selectedYear,
-  onYearChange,
-  customRange,
-  onCustomRangeChange
-}) => {
-  const currentYear = new Date().getFullYear()
-  const years = Array.from({ length: 5 }, (_, i) => currentYear - 2 + i)
-  const months = [
-    { value: '01', label: HebrewText.months.january },
-    { value: '02', label: HebrewText.months.february },
-    { value: '03', label: HebrewText.months.march },
-    { value: '04', label: HebrewText.months.april },
-    { value: '05', label: HebrewText.months.may },
-    { value: '06', label: HebrewText.months.june },
-    { value: '07', label: HebrewText.months.july },
-    { value: '08', label: HebrewText.months.august },
-    { value: '09', label: HebrewText.months.september },
-    { value: '10', label: HebrewText.months.october },
-    { value: '11', label: HebrewText.months.november },
-    { value: '12', label: HebrewText.months.december }
-  ]
 
-  return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-      <div className="flex items-center gap-2 mb-4">
-        <Calendar className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{HebrewText.time.dateRange}</h3>
-      </div>
-      
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            {HebrewText.time.dateRange}
-          </label>
-          <select
-            value={dateType}
-            onChange={(e) => onDateTypeChange(e.target.value as 'month' | 'year' | 'custom')}
-            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-          >
-            <option value="month">{HebrewText.time.specificMonth}</option>
-            <option value="year">{HebrewText.time.specificYear}</option>
-            <option value="custom">{HebrewText.time.customRange}</option>
-          </select>
-        </div>
 
-        {dateType === 'month' && (
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              {HebrewText.time.month}
-            </label>
-            <select
-              value={selectedMonth}
-              onChange={(e) => onMonthChange(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-            >
-              {months.map(month => (
-                <option key={month.value} value={month.value}>
-                  {month.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-
-        {dateType === 'year' && (
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              {HebrewText.time.year}
-            </label>
-            <select
-              value={selectedYear}
-              onChange={(e) => onYearChange(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-            >
-              {years.map(year => (
-                <option key={year} value={year.toString()}>
-                  {year}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-
-        {dateType === 'custom' && (
-          <>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                {HebrewText.time.fromDate}
-              </label>
-              <input
-                type="date"
-                value={customRange.start}
-                onChange={(e) => onCustomRangeChange({ ...customRange, start: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                {HebrewText.time.toDate}
-              </label>
-              <input
-                type="date"
-                value={customRange.end}
-                onChange={(e) => onCustomRangeChange({ ...customRange, end: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              />
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  )
-}
-
-const SubprojectCard: React.FC<{
-  subproject: SubprojectFinancial
-  imageUrl: string | null
-  onViewClick: () => void
-}> = ({ subproject, imageUrl, onViewClick }) => {
-  return (
-    <div className="bg-gradient-to-br from-white to-gray-50 dark:from-gray-700 dark:to-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 p-6 hover:shadow-md transition-shadow duration-200">
-      {imageUrl && (
-        <div className="mb-4 rounded-lg overflow-hidden">
-          <img
-            src={imageUrl}
-            alt={subproject.name}
-            className="w-full h-40 object-cover"
-          />
-        </div>
-      )}
-      <div className="flex items-start justify-between mb-4">
-        <div className="flex-1">
-          <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
-            {subproject.name}
-          </h4>
-          <div className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getStatusBgClass(subproject.status)} ${getStatusColorClass(subproject.status)}`}>
-            {getStatusText(subproject.status)}
-          </div>
-        </div>
-      </div>
-
-      <div className="space-y-3">
-        <div className="flex justify-between items-center">
-          <span className="text-sm text-gray-600 dark:text-gray-400">הכנסות</span>
-          <span className="font-semibold text-green-600 dark:text-green-400">
-            {formatCurrency(subproject.income)}
-          </span>
-        </div>
-        
-        <div className="flex justify-between items-center">
-          <span className="text-sm text-gray-600 dark:text-gray-400">הוצאות</span>
-          <span className="font-semibold text-red-600 dark:text-red-400">
-            {formatCurrency(subproject.expense)}
-          </span>
-        </div>
-        
-        <div className="border-t border-gray-200 dark:border-gray-600 pt-3">
-          <div className="flex justify-between items-center">
-            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">רווח נטו</span>
-            <span className={`font-bold text-lg ${
-              subproject.profit >= 0 
-                ? 'text-green-600 dark:text-green-400' 
-                : 'text-red-600 dark:text-red-400'
-            }`}>
-              {formatCurrency(subproject.profit)}
-            </span>
-          </div>
-          
-          <div className="flex justify-between items-center mt-1">
-            <span className="text-xs text-gray-500 dark:text-gray-400">רווחיות</span>
-            <span className={`text-sm font-medium ${
-              subproject.profitMargin >= 0 
-                ? 'text-green-600 dark:text-green-400' 
-                : 'text-red-600 dark:text-red-400'
-            }`}>
-              {formatPercentage(subproject.profitMargin)}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-xs text-gray-500 dark:text-gray-400">מזהה פרויקט</span>
-          <span className="text-xs font-mono text-gray-600 dark:text-gray-300">
-            #{subproject.id}
-          </span>
-        </div>
-        
-        <button
-          onClick={onViewClick}
-          className="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2 px-4 rounded-lg transition-colors duration-200 flex items-center justify-center gap-2"
-        >
-          <span>צפה בפרויקט</span>
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-          </svg>
-        </button>
-      </div>
-    </div>
-  )
-}
-
-const SubprojectCardsList: React.FC<{
-  subprojects: SubprojectFinancial[]
-  onNavigate: (path: string) => void
-}> = ({ subprojects, onNavigate }) => {
-  const [subprojectImages, setSubprojectImages] = useState<Record<number, string | null>>({})
-
-  useEffect(() => {
-    const loadImages = async () => {
-      const images: Record<number, string | null> = {}
-      for (const subproject of subprojects) {
-        try {
-          const { data } = await api.get(`/projects/${subproject.id}`)
-          if (data.image_url) {
-            const apiUrl = import.meta.env.VITE_API_URL || ''
-            // @ts-ignore
-            const baseUrl = apiUrl ? apiUrl.replace('/api/v1', '') : ''
-            images[subproject.id] = `${baseUrl}/uploads/${data.image_url}`
-          } else {
-            images[subproject.id] = null
-          }
-        } catch (err) {
-          // Error loading image
-          images[subproject.id] = null
-        }
-      }
-      setSubprojectImages(images)
-    }
-    if (subprojects.length > 0) {
-      loadImages()
-    }
-  }, [subprojects])
-
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-      {subprojects.map((subproject) => (
-        <SubprojectCard
-          key={subproject.id}
-          subproject={subproject}
-          imageUrl={subprojectImages[subproject.id] || null}
-          onViewClick={() => onNavigate(`/projects/${subproject.id}`)}
-        />
-      ))}
-    </div>
-  )
-}
-
-const ConsolidatedFinancialSummary: React.FC<{
+interface ConsolidatedFinancialSummaryProps {
   summary: FinancialSummary
   subprojects: SubprojectFinancial[]
   onAddTransaction?: (subprojectId: number) => void
   onEditSubproject?: (subprojectId: number) => void
   onNavigateSubproject?: (subprojectId: number) => void
-}> = ({ summary, subprojects, onAddTransaction, onEditSubproject, onNavigateSubproject }) => {
+  
+  // Filter Props
+  filterMode: 'month' | 'year' | 'project' | 'custom'
+  onFilterModeChange: (mode: 'month' | 'year' | 'project' | 'custom') => void
+  selectedMonth: string
+  onMonthChange: (month: string) => void
+  selectedYear: number
+  onYearChange: (year: number) => void
+  customStart: string
+  onCustomStartChange: (date: string) => void
+  customEnd: string
+  onCustomEndChange: (date: string) => void
+}
+
+const ConsolidatedFinancialSummary: React.FC<ConsolidatedFinancialSummaryProps> = ({ 
+  subprojects, 
+  onAddTransaction, 
+  onEditSubproject, 
+  onNavigateSubproject,
+  filterMode,
+  onFilterModeChange,
+  selectedMonth,
+  onMonthChange,
+  selectedYear,
+  onYearChange,
+  customStart,
+  onCustomStartChange,
+  customEnd,
+  onCustomEndChange
+}) => {
   // Filter out parent project from subprojects (if it's included with "(ראשי)" in the name)
   const actualSubprojects = subprojects.filter(sp => !sp.name.includes('(ראשי)'))
   
@@ -461,7 +223,6 @@ const ConsolidatedFinancialSummary: React.FC<{
   const subprojectsTotalIncome = actualSubprojects.reduce((sum, sp) => sum + sp.income, 0)
   const subprojectsTotalExpense = actualSubprojects.reduce((sum, sp) => sum + sp.expense, 0)
   const subprojectsNetProfit = subprojectsTotalIncome - subprojectsTotalExpense
-  const subprojectsProfitMargin = subprojectsTotalIncome > 0 ? (subprojectsNetProfit / subprojectsTotalIncome) * 100 : 0
 
   return (
     <div className="space-y-6">
@@ -478,18 +239,83 @@ const ConsolidatedFinancialSummary: React.FC<{
 
       {/* Main Financial Summary - Subprojects Only */}
       <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-2xl p-8 border border-blue-200 dark:border-blue-800">
-        <div className="mb-6">
-          <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">סיכום פיננסי כולל - תתי פרויקטים</h4>
-          <p className="text-sm text-gray-600 dark:text-gray-400">סיכום כל התתי פרויקטים בלבד</p>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
+          <div>
+            <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">סיכום פיננסי כולל - תתי פרויקטים</h4>
+            <p className="text-sm text-gray-600 dark:text-gray-400">סיכום כל התתי פרויקטים בלבד</p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={filterMode}
+              onChange={(e) => onFilterModeChange(e.target.value as any)}
+              className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="month">חודש ספציפי</option>
+              <option value="year">שנה ספציפית</option>
+              <option value="project">מתחילת הפרויקט</option>
+              <option value="custom">טווח תאריכים</option>
+            </select>
+
+            {filterMode === 'month' && (
+              <input
+                type="month"
+                value={selectedMonth}
+                onChange={(e) => onMonthChange(e.target.value)}
+                className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm focus:ring-2 focus:ring-blue-500"
+              />
+            )}
+
+            {filterMode === 'year' && (
+              <select
+                value={selectedYear}
+                onChange={(e) => onYearChange(Number(e.target.value))}
+                className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm focus:ring-2 focus:ring-blue-500"
+              >
+                {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map(year => (
+                  <option key={year} value={year}>{year}</option>
+                ))}
+              </select>
+            )}
+
+            {filterMode === 'custom' && (
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  value={customStart}
+                  onChange={(e) => onCustomStartChange(e.target.value)}
+                  className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm"
+                  placeholder="מתאריך"
+                />
+                <span className="text-gray-500">-</span>
+                <input
+                  type="date"
+                  value={customEnd}
+                  onChange={(e) => onCustomEndChange(e.target.value)}
+                  className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm"
+                  placeholder="עד תאריך"
+                />
+              </div>
+            )}
+          </div>
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm">
             <div className="text-center">
+              <div className="text-3xl font-bold text-blue-600 dark:text-blue-400 mb-2">
+                {formatCurrency(subprojectsTotalIncome)}
+              </div>
+              <div className="text-sm font-medium text-gray-600 dark:text-gray-400">{HebrewText.financial.income}</div>
+            </div>
+          </div>
+          
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm">
+            <div className="text-center">
               <div className="text-3xl font-bold text-red-600 dark:text-red-400 mb-2">
                 {formatCurrency(subprojectsTotalExpense)}
               </div>
-              <div className="text-sm font-medium text-gray-600 dark:text-gray-400">{HebrewText.financial.totalExpense}</div>
+              <div className="text-sm font-medium text-gray-600 dark:text-gray-400">{HebrewText.financial.expense}</div>
             </div>
           </div>
           
@@ -503,19 +329,6 @@ const ConsolidatedFinancialSummary: React.FC<{
                 {subprojectsNetProfit >= 0 ? '+' : ''}{formatCurrency(subprojectsNetProfit)}
               </div>
               <div className="text-sm font-medium text-gray-600 dark:text-gray-400">{HebrewText.financial.netProfit}</div>
-            </div>
-          </div>
-          
-          <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm">
-            <div className="text-center">
-              <div className={`text-3xl font-bold mb-2 ${
-                subprojectsProfitMargin >= 0 
-                  ? 'text-green-600 dark:text-green-400' 
-                  : 'text-red-600 dark:text-red-400'
-              }`}>
-                {subprojectsProfitMargin >= 0 ? '+' : ''}{formatPercentage(subprojectsProfitMargin)}
-              </div>
-              <div className="text-sm font-medium text-gray-600 dark:text-gray-400">{HebrewText.financial.profitMargin}</div>
             </div>
           </div>
         </div>
@@ -925,8 +738,6 @@ export default function ParentProjectDetail() {
   const [financialSummary, setFinancialSummary] = useState<FinancialSummary | null>(null)
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [transactionsLoading, setTransactionsLoading] = useState(false)
-  const [expenseCategories, setExpenseCategories] = useState<ExpenseCategory[]>([])
-  const [chartsLoading, setChartsLoading] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showCreateSubprojectModal, setShowCreateSubprojectModal] = useState(false)
@@ -946,12 +757,15 @@ export default function ParentProjectDetail() {
   })
   
   // Date selector state
-  const [dateType, setDateType] = useState<'month' | 'year' | 'custom'>('month')
-  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() < 9 ? `0${new Date().getMonth() + 1}` : `${new Date().getMonth() + 1}`)
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString())
+  const [dateType, setDateType] = useState<'month' | 'year' | 'project' | 'custom'>('month')
+  const [selectedMonth, setSelectedMonth] = useState<string>(() => {
+    const now = new Date()
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  })
+  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear())
   const [customRange, setCustomRange] = useState<DateRange>({
-    start: new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0],
-    end: new Date().toISOString().split('T')[0]
+    start: '',
+    end: ''
   })
 
   useEffect(() => {
@@ -965,7 +779,6 @@ export default function ParentProjectDetail() {
     if (id && parentProject) {
       loadAdvancedFinancialSummary(parseInt(id))
       loadTransactions()
-      loadChartsData()
     }
   }, [dateType, selectedMonth, selectedYear, customRange, id, parentProject])
 
@@ -993,9 +806,6 @@ export default function ParentProjectDetail() {
       // Load transactions
       await loadTransactions()
       
-      // Load charts data
-      await loadChartsData()
-      
     } catch (err: any) {
       // Parent project data loading error
       setError(err.message || 'שגיאה בטעינת נתוני הפרויקט')
@@ -1011,17 +821,22 @@ export default function ParentProjectDetail() {
       let endDate: string | undefined
       
       if (dateType === 'month') {
-        const targetDate = new Date(parseInt(selectedYear), parseInt(selectedMonth) - 1, 1)
-        const nextMonth = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 1)
+        const [year, month] = selectedMonth.split('-').map(Number)
+        const targetDate = new Date(year, month - 1, 1)
+        const nextMonth = new Date(year, month, 1)
         startDate = targetDate.toISOString().split('T')[0]
-        endDate = nextMonth.toISOString().split('T')[0]
+        // End date should be last day of the month
+        const lastDayOfMonth = new Date(nextMonth.getTime() - 1)
+        endDate = lastDayOfMonth.toISOString().split('T')[0]
       } else if (dateType === 'year') {
-        const targetYear = parseInt(selectedYear)
-        startDate = `${targetYear}-01-01`
-        endDate = `${targetYear}-12-31`
+        startDate = `${selectedYear}-01-01`
+        endDate = `${selectedYear}-12-31`
       } else if (dateType === 'custom') {
         startDate = customRange.start
         endDate = customRange.end
+      } else if (dateType === 'project') {
+        startDate = undefined
+        endDate = undefined
       }
       
       // Load advanced financial summary
@@ -1071,46 +886,6 @@ export default function ParentProjectDetail() {
     }
   }
 
-  const loadChartsData = async () => {
-    if (!id) return
-    
-    setChartsLoading(true)
-    try {
-      // Load expense categories for pie chart
-      const { data: transactions } = await api.get(`/transactions/project/${id}`)
-      
-      // Filter transactions by date range
-      const filteredTransactions = filterTransactionsByDate(transactions || [])
-      
-      // Calculate expense categories
-      const categoryMap: { [key: string]: number } = {}
-      filteredTransactions.forEach((tx: any) => {
-        if (tx.type === 'Expense') {
-          const category = tx.category || 'ללא קטגוריה'
-          categoryMap[category] = (categoryMap[category] || 0) + Number(tx.amount || 0)
-        }
-      })
-      
-      // Convert to array with colors
-      const colors = [
-        '#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6',
-        '#EC4899', '#06B6D4', '#84CC16', '#F97316', '#6366F1'
-      ]
-      
-      const categories: ExpenseCategory[] = Object.entries(categoryMap).map(([category, amount], index) => ({
-        category,
-        amount,
-        color: colors[index % colors.length]
-      }))
-      
-      setExpenseCategories(categories)
-      
-    } catch (err: any) {
-      // Error loading charts data
-    } finally {
-      setChartsLoading(false)
-    }
-  }
 
   const loadSubprojectsData = async (parentId: number) => {
     try {
@@ -1316,16 +1091,18 @@ export default function ParentProjectDetail() {
       const txDate = new Date(transaction.tx_date)
       
       if (dateType === 'month') {
-        const targetDate = new Date(parseInt(selectedYear), parseInt(selectedMonth) - 1, 1)
-        const nextMonth = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 1)
-        return txDate >= targetDate && txDate < nextMonth
+        const [year, month] = selectedMonth.split('-').map(Number)
+        return txDate.getFullYear() === year && (txDate.getMonth() + 1) === month
       } else if (dateType === 'year') {
-        const targetYear = parseInt(selectedYear)
-        return txDate.getFullYear() === targetYear
+        return txDate.getFullYear() === selectedYear
       } else if (dateType === 'custom') {
+        if (!customRange.start || !customRange.end) return true
         const startDate = new Date(customRange.start)
         const endDate = new Date(customRange.end)
+        endDate.setHours(23, 59, 59, 999)
         return txDate >= startDate && txDate <= endDate
+      } else if (dateType === 'project') {
+        return true
       }
       
       return true
@@ -1496,17 +1273,7 @@ export default function ParentProjectDetail() {
         </div>
       </motion.div>
 
-      {/* Date Selector */}
-      <DateSelector
-        dateType={dateType}
-        onDateTypeChange={setDateType}
-        selectedMonth={selectedMonth}
-        onMonthChange={setSelectedMonth}
-        selectedYear={selectedYear}
-        onYearChange={setSelectedYear}
-        customRange={customRange}
-        onCustomRangeChange={setCustomRange}
-      />
+      {/* Date Selector removed - moved to Financial Summary */}
 
       {/* Subprojects Financial Dashboard */}
       {subprojects.length > 0 ? (
@@ -1528,6 +1295,16 @@ export default function ParentProjectDetail() {
           onNavigateSubproject={(subprojectId) => {
             navigate(`/projects/${subprojectId}`)
           }}
+          filterMode={dateType}
+          onFilterModeChange={setDateType}
+          selectedMonth={selectedMonth}
+          onMonthChange={setSelectedMonth}
+          selectedYear={selectedYear}
+          onYearChange={setSelectedYear}
+          customStart={customRange.start}
+          onCustomStartChange={(val) => setCustomRange(prev => ({ ...prev, start: val }))}
+          customEnd={customRange.end}
+          onCustomEndChange={(val) => setCustomRange(prev => ({ ...prev, end: val }))}
         />
       ) : (
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-8">
@@ -1554,24 +1331,7 @@ export default function ParentProjectDetail() {
       )}
 
       {/* Charts Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Project Expense Pie Chart */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-        >
-          {chartsLoading ? (
-            <div className="h-96 bg-gray-100 dark:bg-gray-700 rounded-2xl animate-pulse flex items-center justify-center">
-              <div className="text-gray-500 dark:text-gray-400">טוען נתוני גרפים...</div>
-            </div>
-          ) : (
-            <ProjectExpensePieChart
-              expenseCategories={expenseCategories}
-              projectName={parentProject?.name || 'פרויקט ראשי'}
-            />
-          )}
-        </motion.div>
+      <div className="grid grid-cols-1 gap-8">
 
         {/* Project Trends Chart */}
         <motion.div
@@ -1579,7 +1339,7 @@ export default function ParentProjectDetail() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
         >
-          {chartsLoading ? (
+          {transactionsLoading ? (
             <div className="h-96 bg-gray-100 dark:bg-gray-700 rounded-2xl animate-pulse flex items-center justify-center">
               <div className="text-gray-500 dark:text-gray-400">טוען נתוני גרפים...</div>
             </div>
@@ -1605,7 +1365,7 @@ export default function ParentProjectDetail() {
       <CreateProjectModal
         isOpen={showCreateSubprojectModal}
         onClose={() => setShowCreateSubprojectModal(false)}
-        onSuccess={(project: Project) => {
+        onSuccess={() => {
           setShowCreateSubprojectModal(false)
           loadParentProjectData()
         }}
@@ -1617,7 +1377,7 @@ export default function ParentProjectDetail() {
         <CreateProjectModal
           isOpen={showEditModal}
           onClose={() => setShowEditModal(false)}
-          onSuccess={(project: Project) => {
+          onSuccess={() => {
             setShowEditModal(false)
             loadParentProjectData()
           }}
@@ -1633,7 +1393,7 @@ export default function ParentProjectDetail() {
             setShowEditSubprojectModal(false)
             setEditingSubproject(null)
           }}
-          onSuccess={(project: Project) => {
+          onSuccess={() => {
             setShowEditSubprojectModal(false)
             setEditingSubproject(null)
             loadParentProjectData()

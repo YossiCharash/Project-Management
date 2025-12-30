@@ -1,5 +1,5 @@
 from datetime import datetime
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field, EmailStr, field_validator
 
 
 class SupplierBase(BaseModel):
@@ -8,11 +8,22 @@ class SupplierBase(BaseModel):
     phone: str | None = None
     annual_budget: float | None = None
     category: str | None = None
+    category_id: int | None = None
+
+    @field_validator('category', mode='before')
+    @classmethod
+    def extract_category_name(cls, v):
+        # If value is an object with 'name' attribute (e.g. ORM model), return the name
+        if hasattr(v, 'name'):
+            return v.name
+        return v
 
 
 class SupplierCreate(SupplierBase):
     # For creation, category is mandatory
-    category: str
+    # Allowing category_id as well
+    category: str | None = None
+    category_id: int | None = None
 
 
 class SupplierUpdate(BaseModel):
@@ -21,6 +32,7 @@ class SupplierUpdate(BaseModel):
     phone: str | None = None
     annual_budget: float | None = None
     category: str | None = None
+    category_id: int | None = None
 
 
 class SupplierOut(SupplierBase):

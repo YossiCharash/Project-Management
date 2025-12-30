@@ -40,10 +40,26 @@ class RecurringTransactionService:
             raise ValueError(f"קטגוריה '{category.name}' לא פעילה. יש להפעיל את הקטגוריה בהגדרות לפני יצירת העסקה.")
         return category
 
-    async def create_template(self, data: RecurringTransactionTemplateCreate) -> RecurringTransactionTemplate:
+    async def create_template(self, data: RecurringTransactionTemplateCreate, user_id: Optional[int] = None) -> RecurringTransactionTemplate:
         """Create a new recurring transaction template"""
         template_data = data.model_dump()
         
+        # Set the user who created the template
+        if user_id:
+            template_data['created_by_user_id'] = user_id
+        
+        # If category_id is missing, try to resolve it from category name if present
+        if template_data.get('category_id') is None and template_data.get('category'):
+            # Find category by name
+            from sqlalchemy import select
+            from backend.models.category import Category
+            # Using imported Category model
+            stmt = select(Category).where(Category.name == template_data['category'])
+            result = await self.db.execute(stmt)
+            category = result.scalar_one_or_none()
+            if category:
+                template_data['category_id'] = category.id
+
         if template_data.get('category_id') is None:
              raise ValueError("קטגוריה היא שדה חובה לעסקאות מחזוריות.")
 
@@ -84,7 +100,7 @@ class RecurringTransactionService:
         # Update the template
         updated_template = await self.recurring_repo.update(template, update_data)
         
-        # Propagate non-financial changes (category, description, notes, supplier) to existing generated transactions
+        # Propagate non-financial changes (category, description, notes, supplier, payment_method) to existing generated transactions
         # We do NOT update amount or date for past transactions to preserve financial history
         # unless specifically requested (which isn't implemented here yet)
         propagate_fields = {}
@@ -96,6 +112,8 @@ class RecurringTransactionService:
             propagate_fields['description'] = update_data['description']
         if 'notes' in update_data:
             propagate_fields['notes'] = update_data['notes']
+        if 'payment_method' in update_data:
+            propagate_fields['payment_method'] = update_data['payment_method']
             
         if propagate_fields:
             try:
@@ -191,6 +209,8 @@ class RecurringTransactionService:
                     "category_id": template.category_id,
                     "notes": template.notes,
                     "supplier_id": template.supplier_id,
+                    "payment_method": template.payment_method,
+                    "created_by_user_id": template.created_by_user_id,
                     "is_generated": True
                 }
 
@@ -203,13 +223,17 @@ class RecurringTransactionService:
                     # Try without recurring fields if they cause issues
                     try:
                         transaction_data_fallback = {k: v for k, v in transaction_data.items() 
-                                                   if k not in ['recurring_template_id', 'is_generated']}
+                                                   if k not in ['recurring_template_id', 'is_generated', 'payment_method', 'created_by_user_id']}
                         transaction = Transaction(**transaction_data_fallback)
                         # Manually set fields if they exist
                         if hasattr(transaction, 'recurring_template_id'):
                             transaction.recurring_template_id = transaction_data.get('recurring_template_id')
                         if hasattr(transaction, 'is_generated'):
                             transaction.is_generated = transaction_data.get('is_generated', False)
+                        if hasattr(transaction, 'payment_method'):
+                            transaction.payment_method = transaction_data.get('payment_method')
+                        if hasattr(transaction, 'created_by_user_id'):
+                            transaction.created_by_user_id = transaction_data.get('created_by_user_id')
                         self.db.add(transaction)
                         generated_transactions.append(transaction)
                     except Exception:
@@ -297,6 +321,8 @@ class RecurringTransactionService:
                             "category_id": template.category_id,
                             "notes": template.notes,
                             "supplier_id": template.supplier_id,
+                            "payment_method": template.payment_method,
+                            "created_by_user_id": template.created_by_user_id,
                             "is_generated": True
                         }
                         try:
@@ -307,12 +333,16 @@ class RecurringTransactionService:
                             # Try without recurring fields
                             try:
                                 transaction_data_fallback = {k: v for k, v in transaction_data.items() 
-                                                           if k not in ['recurring_template_id', 'is_generated']}
+                                                           if k not in ['recurring_template_id', 'is_generated', 'payment_method', 'created_by_user_id']}
                                 transaction = Transaction(**transaction_data_fallback)
                                 if hasattr(transaction, 'recurring_template_id'):
                                     transaction.recurring_template_id = transaction_data.get('recurring_template_id')
                                 if hasattr(transaction, 'is_generated'):
                                     transaction.is_generated = True
+                                if hasattr(transaction, 'payment_method'):
+                                    transaction.payment_method = transaction_data.get('payment_method')
+                                if hasattr(transaction, 'created_by_user_id'):
+                                    transaction.created_by_user_id = transaction_data.get('created_by_user_id')
                                 self.db.add(transaction)
                                 generated_transactions.append(transaction)
                             except Exception:
@@ -441,7 +471,8 @@ class RecurringTransactionService:
                     "date": occurrence_date,
                     "amount": template.amount,
                     "description": template.description,
-                    "category": template.category
+                    "category": template.category,
+                    "payment_method": template.payment_method
                 })
             
             current_date = occurrence_date + relativedelta(months=1)

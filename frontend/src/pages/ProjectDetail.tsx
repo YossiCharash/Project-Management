@@ -6,7 +6,6 @@ import { ReportAPI, BudgetAPI, ProjectAPI, CategoryAPI, RecurringTransactionAPI 
 import { ExpenseCategory, BudgetWithSpending, RecurringTransactionTemplate } from '../types/api'
 import ProjectTrendsChart from '../components/charts/ProjectTrendsChart'
 import BudgetCard from '../components/charts/BudgetCard'
-import BudgetProgressChart from '../components/charts/BudgetProgressChart'
 import EditTransactionModal from '../components/EditTransactionModal'
 import CreateTransactionModal from '../components/CreateTransactionModal'
 import CreateProjectModal from '../components/CreateProjectModal'
@@ -94,6 +93,17 @@ export default function ProjectDetail() {
   })
   const [startDate, setStartDate] = useState<string>('')
   const [endDate, setEndDate] = useState<string>('')
+  
+  // Financial Summary Filter State
+  const [financialFilterMode, setFinancialFilterMode] = useState<'month' | 'year' | 'project' | 'custom'>('month')
+  const [financialSelectedMonth, setFinancialSelectedMonth] = useState<string>(() => {
+    const now = new Date()
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  })
+  const [financialSelectedYear, setFinancialSelectedYear] = useState<number>(new Date().getFullYear())
+  const [financialCustomStart, setFinancialCustomStart] = useState<string>('')
+  const [financialCustomEnd, setFinancialCustomEnd] = useState<string>('')
+  
   const [categoryFilter, setCategoryFilter] = useState<string>('all')
 
   const [editTransactionModalOpen, setEditTransactionModalOpen] = useState(false)
@@ -799,23 +809,39 @@ const formatDate = (value: string | null) => {
   const calculateFinancialSummary = () => {
     const now = new Date()
     
-    // Calculate start date: use project.start_date if available, otherwise use 1 year ago as fallback
     let calculationStartDate: Date
-    if (projectStartDate) {
-      calculationStartDate = new Date(projectStartDate)
+    let calculationEndDate: Date
+
+    if (financialFilterMode === 'month') {
+        const [year, month] = financialSelectedMonth.split('-').map(Number)
+        calculationStartDate = new Date(year, month - 1, 1)
+        calculationEndDate = new Date(year, month, 0, 23, 59, 59, 999)
+    } else if (financialFilterMode === 'year') {
+        calculationStartDate = new Date(financialSelectedYear, 0, 1)
+        calculationEndDate = new Date(financialSelectedYear, 11, 31, 23, 59, 59, 999)
+    } else if (financialFilterMode === 'custom') {
+         calculationStartDate = financialCustomStart ? new Date(financialCustomStart) : new Date(0)
+         const customEnd = financialCustomEnd ? new Date(financialCustomEnd) : new Date()
+         customEnd.setHours(23, 59, 59, 999)
+         calculationEndDate = customEnd
     } else {
-      // Fallback: use 1 year ago if no project start date
-      const oneYearAgo = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate())
-      calculationStartDate = oneYearAgo
-    }
-    
-    // Calculate end date: use project.end_date if available and in the past, otherwise use now
-    // This ensures we only count transactions from the current contract period
-    let calculationEndDate: Date = now
-    if (projectEndDate) {
-      const endDate = new Date(projectEndDate)
-      // If contract has ended, use end_date; otherwise use now
-      calculationEndDate = endDate < now ? endDate : now
+        // 'project' / default behavior
+        if (projectStartDate) {
+          calculationStartDate = new Date(projectStartDate)
+        } else {
+          // Fallback: use 1 year ago if no project start date
+          const oneYearAgo = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate())
+          calculationStartDate = oneYearAgo
+        }
+        
+        // Calculate end date: use project.end_date if available and in the past, otherwise use now
+        // This ensures we only count transactions from the current contract period
+        calculationEndDate = now
+        if (projectEndDate) {
+          const endDate = new Date(projectEndDate)
+          // If contract has ended, use end_date; otherwise use now
+          calculationEndDate = endDate < now ? endDate : now
+        }
     }
     
     // Debug: Check all transactions
@@ -930,10 +956,15 @@ const formatDate = (value: string | null) => {
       txsCount: txs.length,
       projectStartDate,
       projectEndDate,
-      projectBudget
+      projectBudget,
+      financialFilterMode,
+      financialSelectedMonth,
+      financialSelectedYear,
+      financialCustomStart,
+      financialCustomEnd
     })
     return calculateFinancialSummary()
-  }, [txs, projectStartDate, projectEndDate, projectBudget])
+  }, [txs, projectStartDate, projectEndDate, projectBudget, financialFilterMode, financialSelectedMonth, financialSelectedYear, financialCustomStart, financialCustomEnd])
   
   const income = financialSummary.income
   const expense = financialSummary.expense
@@ -1117,19 +1148,75 @@ const formatDate = (value: string | null) => {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.03 }}
-        className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6"
+        className="bg-blue-50 dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6"
       >
-        <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">סיכום פיננסי</h3>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-4">
+          <h3 className="text-xl font-semibold text-gray-900 dark:text-white">סיכום פיננסי</h3>
+          
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={financialFilterMode}
+              onChange={(e) => setFinancialFilterMode(e.target.value as any)}
+              className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="month">חודש ספציפי</option>
+              <option value="year">שנה ספציפית</option>
+              <option value="project">מתחילת הפרויקט</option>
+              <option value="custom">טווח תאריכים</option>
+            </select>
+
+            {financialFilterMode === 'month' && (
+              <input
+                type="month"
+                value={financialSelectedMonth}
+                onChange={(e) => setFinancialSelectedMonth(e.target.value)}
+                className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm focus:ring-2 focus:ring-blue-500"
+              />
+            )}
+
+            {financialFilterMode === 'year' && (
+              <select
+                value={financialSelectedYear}
+                onChange={(e) => setFinancialSelectedYear(Number(e.target.value))}
+                className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm focus:ring-2 focus:ring-blue-500"
+              >
+                {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map(year => (
+                  <option key={year} value={year}>{year}</option>
+                ))}
+              </select>
+            )}
+
+            {financialFilterMode === 'custom' && (
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  value={financialCustomStart}
+                  onChange={(e) => setFinancialCustomStart(e.target.value)}
+                  className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm"
+                  placeholder="מתאריך"
+                />
+                <span className="text-gray-500">-</span>
+                <input
+                  type="date"
+                  value={financialCustomEnd}
+                  onChange={(e) => setFinancialCustomEnd(e.target.value)}
+                  className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm"
+                  placeholder="עד תאריך"
+                />
+              </div>
+            )}
+          </div>
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg text-center">
+          <div className="bg-white dark:bg-blue-900/20 p-4 rounded-lg text-center">
             <div className="text-blue-600 dark:text-blue-400 font-semibold mb-1">
-              {projectBudget.budget_annual > 0 ? 'תקציב שנתי' : 'תקציב חודשי'}
+              הכנסות
             </div>
             <div className="text-2xl font-bold text-blue-700 dark:text-blue-300">
-              {formatCurrency(projectBudget.budget_annual > 0 ? projectBudget.budget_annual : projectBudget.budget_monthly)} ₪
+              {formatCurrency(income)} ₪
             </div>
           </div>
-          <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg text-center">
+          <div className="bg-white dark:bg-red-900/20 p-4 rounded-lg text-center">
             <div className="text-red-600 dark:text-red-400 font-semibold mb-1">הוצאות</div>
             <div className="text-2xl font-bold text-red-700 dark:text-red-300">
               {expense.toFixed(2)} ₪
@@ -1137,8 +1224,8 @@ const formatDate = (value: string | null) => {
           </div>
           <div className={`p-4 rounded-lg text-center ${
             income - expense < 0 
-              ? 'bg-red-50 dark:bg-red-900/20' 
-              : 'bg-green-50 dark:bg-green-900/20'
+              ? 'bg-white dark:bg-red-900/20' 
+              : 'bg-white dark:bg-green-900/20'
           }`}>
             <div className={`font-semibold mb-1 ${
               income - expense < 0 
@@ -1159,142 +1246,26 @@ const formatDate = (value: string | null) => {
       </motion.div>
 
       {/* Fund and Transactions Section */}
-      <div className="max-w-6xl mx-auto w-full space-y-6 lg:space-y-0 lg:grid lg:grid-cols-3 lg:gap-6">
+      <div className="max-w-6xl mx-auto w-full space-y-6 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-6">
           {/* Fund Section */}
-          {(hasFund || fundData) && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.05 }}
-            className="lg:col-span-1 bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6"
-          >
-            <div className="mb-4 flex items-center justify-between">
-              <div>
-                <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-                  פרטי הקופה
-                </h2>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  מעקב אחר יתרת הקופה ועסקאות מהקופה
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                {fundData && fundData.transactions && fundData.transactions.length > 0 && (
-                  <button
-                    onClick={() => setShowFundTransactionsModal(true)}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm flex items-center gap-2"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                    </svg>
-                    עסקאות קופה ({fundData.transactions.length})
-                  </button>
-                )}
-                {fundData && (
-                  <button
-                    onClick={() => {
-                      setMonthlyFundAmount(fundData.monthly_amount)
-                      setCurrentBalance(fundData.current_balance)
-                      setShowEditFundModal(true)
-                    }}
-                    className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm flex items-center gap-2"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                    </svg>
-                    ערוך קופה
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {fundLoading ? (
-              <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-                טוען פרטי קופה...
-              </div>
-            ) : fundData ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 border border-blue-200 dark:border-blue-800 rounded-xl p-6">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-sm font-medium text-blue-700 dark:text-blue-300">
-                      יתרה נוכחית
-                    </h3>
-                    <svg className="w-6 h-6 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
-                    </svg>
-                  </div>
-                  <p className="text-3xl font-bold text-blue-900 dark:text-blue-100">
-                    {fundData.current_balance.toLocaleString('he-IL')} ₪
-                  </p>
-                  <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-                    יתרה זמינה כעת
-                  </p>
-                </div>
-
-                <div className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 border border-green-200 dark:border-green-800 rounded-xl p-6">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-sm font-medium text-green-700 dark:text-green-300">
-                      כמה היה מתחילה
-                    </h3>
-                    <svg className="w-6 h-6 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  </div>
-                  <p className="text-3xl font-bold text-green-900 dark:text-green-100">
-                    {fundData.initial_total.toLocaleString('he-IL')} ₪
-                  </p>
-                  <p className="text-xs text-green-600 dark:text-green-400 mt-1">
-                    סכום כולל שנכנס לקופה
-                  </p>
-                </div>
-
-                <div className="bg-gradient-to-br from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20 border border-red-200 dark:border-red-800 rounded-xl p-6">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-sm font-medium text-red-700 dark:text-red-300">
-                      כמה יצא
-                    </h3>
-                    <svg className="w-6 h-6 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                    </svg>
-                  </div>
-                  <p className="text-3xl font-bold text-red-900 dark:text-red-100">
-                    {fundData.total_deductions.toLocaleString('he-IL')} ₪
-                  </p>
-                  <p className="text-xs text-red-600 dark:text-red-400 mt-1">
-                    סה"כ סכום שירד מהקופה
-                  </p>
-                </div>
-
-                <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 border border-purple-200 dark:border-purple-800 rounded-xl p-6">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-sm font-medium text-purple-700 dark:text-purple-300">
-                      סכום חודשי
-                    </h3>
-                    <svg className="w-6 h-6 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                  </div>
-                  <p className="text-3xl font-bold text-purple-900 dark:text-purple-100">
-                    {fundData.monthly_amount.toLocaleString('he-IL')} ₪
-                  </p>
-                  <p className="text-xs text-purple-600 dark:text-purple-400 mt-1">
-                    מתווסף אוטומטית כל חודש
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-                לא ניתן לטעון את פרטי הקופה
-              </div>
-            )}
-          </motion.div>
-          )}
+          {/* Trends Section (Moved from bottom) */}
+          <div className="lg:col-span-1 bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 overflow-hidden">
+             <ProjectTrendsChart
+                projectId={parseInt(id || '0')}
+                projectName={projectName}
+                transactions={txs}
+                expenseCategories={expenseCategories}
+                compact={true}
+                projectIncome={projectBudget?.budget_monthly || 0}
+             />
+          </div>
 
           {/* Transactions List */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
-            className={`${(hasFund || fundData) ? 'lg:col-span-2' : 'lg:col-span-3'} bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6`}
+            className="lg:col-span-1 bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6"
           >
             <div className="mb-4">
               <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
@@ -1989,64 +1960,87 @@ const formatDate = (value: string | null) => {
           </>
         ) : (
           <>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              {projectBudgets && projectBudgets.length > 0 ? (
-                <>
-                  {projectBudgets.map((budget) => (
-                    <BudgetCard
-                      key={budget.id}
-                      budget={budget}
-                      onDelete={() => handleDeleteBudget(budget.id)}
-                      onEdit={() => handleStartEditBudget(budget)}
-                      deleting={budgetDeleteLoading === budget.id}
-                    />
-                  ))}
-                  <div className={
-                    projectBudgets.length === 1 ? 'lg:col-span-3' :
-                    projectBudgets.length === 2 ? 'lg:col-span-2' :
-                    projectBudgets.length === 3 ? 'lg:col-span-1' :
-                    'lg:col-span-4'
-                  }>
-                    <ProjectTrendsChart
-                      projectId={parseInt(id || '0')}
-                      projectName={projectName}
-                      transactions={txs}
-                      expenseCategories={expenseCategories}
-                      compact={true}
-                      projectIncome={projectBudget?.budget_monthly || 0}
-                    />
-                  </div>
-                </>
-              ) : (
-                <div className="lg:col-span-4">
-                  <ProjectTrendsChart
-                    projectId={parseInt(id || '0')}
-                    projectName={projectName}
-                    transactions={txs}
-                    expenseCategories={expenseCategories}
-                    compact={true}
-                  />
-                  {!chartsLoading && (!projectBudgets || projectBudgets.length === 0) && (
-                    <div className="mt-6 text-center py-8 bg-gray-50 dark:bg-gray-700/50 rounded-xl border border-gray-200 dark:border-gray-600">
-                      <p className="text-gray-500 dark:text-gray-400">
-                        אין תקציבים לקטגוריות לפרויקט זה
-                      </p>
-                      <p className="text-sm text-gray-400 dark:text-gray-500 mt-2 mb-4">
-                        הוסף תקציבים לקטגוריות כדי לעקוב אחר הוצאות מול תכנון
-                      </p>
+          <>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Budgets Section - Left Side */}
+              <div className="flex flex-col gap-6">
+                  {projectBudgets && projectBudgets.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {projectBudgets.map((budget) => (
+                        <BudgetCard
+                          key={budget.id}
+                          budget={budget}
+                          onDelete={() => handleDeleteBudget(budget.id)}
+                          onEdit={() => handleStartEditBudget(budget)}
+                          deleting={budgetDeleteLoading === budget.id}
+                        />
+                      ))}
                     </div>
+                  ) : (
+                     !chartsLoading && (
+                        <div className="mt-6 text-center py-8 bg-gray-50 dark:bg-gray-700/50 rounded-xl border border-gray-200 dark:border-gray-600">
+                          <p className="text-gray-500 dark:text-gray-400">
+                            אין תקציבים לקטגוריות לפרויקט זה
+                          </p>
+                          <p className="text-sm text-gray-400 dark:text-gray-500 mt-2 mb-4">
+                            הוסף תקציבים לקטגוריות כדי לעקוב אחר הוצאות מול תכנון
+                          </p>
+                        </div>
+                     )
                   )}
-                </div>
-              )}
-            </div>
-            {projectBudgets && projectBudgets.length > 0 && (
-              <div className="mt-6">
-                <BudgetProgressChart
-                  budgets={projectBudgets}
-                  projectName={projectName || `פרויקט #${id}`}
-                />
               </div>
-            )}
+
+              {/* Fund Section - Right Side */}
+              <div>
+                    <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 h-full">
+                        <div className="mb-4 flex items-center justify-between">
+                            <div>
+                                <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">פרטי הקופה</h2>
+                                <p className="text-sm text-gray-600 dark:text-gray-400">מעקב אחר יתרת הקופה ועסקאות מהקופה</p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                {fundData && fundData.transactions && fundData.transactions.length > 0 && (
+                                    <button onClick={() => setShowFundTransactionsModal(true)} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm flex items-center gap-2">
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+                                        עסקאות קופה ({fundData.transactions.length})
+                                    </button>
+                                )}
+                                {fundData && (
+                                    <button onClick={() => { setMonthlyFundAmount(fundData.monthly_amount); setCurrentBalance(fundData.current_balance); setShowEditFundModal(true) }} className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm flex items-center gap-2">
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                                        ערוך קופה
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                        {fundLoading ? (
+                            <div className="text-center py-8 text-gray-500 dark:text-gray-400">טוען פרטי קופה...</div>
+                        ) : fundData ? (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 border border-blue-200 dark:border-blue-800 rounded-xl p-6">
+                                    <div className="flex items-center justify-between mb-2"><h3 className="text-sm font-medium text-blue-700 dark:text-blue-300">יתרה נוכחית</h3><svg className="w-6 h-6 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg></div>
+                                    <p className="text-3xl font-bold text-blue-900 dark:text-blue-100">{fundData.current_balance.toLocaleString('he-IL')} ₪</p><p className="text-xs text-blue-600 dark:text-blue-400 mt-1">יתרה זמינה כעת</p>
+                                </div>
+                                <div className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 border border-green-200 dark:border-green-800 rounded-xl p-6">
+                                    <div className="flex items-center justify-between mb-2"><h3 className="text-sm font-medium text-green-700 dark:text-green-300">כמה היה מתחילה</h3><svg className="w-6 h-6 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></div>
+                                    <p className="text-3xl font-bold text-green-900 dark:text-green-100">{fundData.initial_total.toLocaleString('he-IL')} ₪</p><p className="text-xs text-green-600 dark:text-green-400 mt-1">סכום כולל שנכנס לקופה</p>
+                                </div>
+                                <div className="bg-gradient-to-br from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20 border border-red-200 dark:border-red-800 rounded-xl p-6">
+                                    <div className="flex items-center justify-between mb-2"><h3 className="text-sm font-medium text-red-700 dark:text-red-300">כמה יצא</h3><svg className="w-6 h-6 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg></div>
+                                    <p className="text-3xl font-bold text-red-900 dark:text-red-100">{fundData.total_deductions.toLocaleString('he-IL')} ₪</p><p className="text-xs text-red-600 dark:text-red-400 mt-1">סה"כ סכום שירד מהקופה</p>
+                                </div>
+                                <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 border border-purple-200 dark:border-purple-800 rounded-xl p-6">
+                                    <div className="flex items-center justify-between mb-2"><h3 className="text-sm font-medium text-purple-700 dark:text-purple-300">סכום חודשי</h3><svg className="w-6 h-6 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg></div>
+                                    <p className="text-3xl font-bold text-purple-900 dark:text-purple-100">{fundData.monthly_amount.toLocaleString('he-IL')} ₪</p><p className="text-xs text-purple-600 dark:text-purple-400 mt-1">מתווסף אוטומטית כל חודש</p>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="text-center py-8 text-gray-500 dark:text-gray-400">לא ניתן לטעון את פרטי הקופה</div>
+                        )}
+                    </div>
+              </div>
+            </div>
+          </>
           </>
         )}
       </motion.div>
@@ -3829,31 +3823,6 @@ const formatDate = (value: string | null) => {
                     </div>
                   </div>
 
-                  {/* Budgets Chart */}
-                  {selectedPeriodSummary.budgets && selectedPeriodSummary.budgets.length > 0 && (
-                    <div>
-                      <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">תקציבים</h4>
-                      <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm border border-gray-200 dark:border-gray-700">
-                        <BudgetProgressChart
-                          budgets={selectedPeriodSummary.budgets.map((b: any) => ({
-                            category: b.category,
-                            amount: b.amount,
-                            spent_amount: 0, // We don't have spending data for past periods
-                            remaining_amount: b.amount,
-                            spent_percentage: 0,
-                            expected_spent_percentage: 0,
-                            is_over_budget: false,
-                            is_spending_too_fast: false,
-                            period_type: b.period_type,
-                            base_amount: b.amount,
-                            expense_amount: 0,
-                            income_amount: 0
-                          }))}
-                          projectName={projectName}
-                        />
-                      </div>
-                    </div>
-                  )}
 
                   {/* Fund Chart (if fund data exists) */}
                   {selectedPeriodSummary.fund_data && (

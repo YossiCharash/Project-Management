@@ -516,7 +516,7 @@ class ReportService:
                 "type": tx.type,
                 "amount": float(tx.amount),
                 "description": tx.description,
-                "category": tx.category,
+                "category": tx.category.name if tx.category else None,
                 "notes": tx.notes,
                 "is_exceptional": tx.is_exceptional,
                 "is_generated": getattr(tx, 'is_generated', False),

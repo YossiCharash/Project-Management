@@ -189,15 +189,7 @@ async def get_project(project_id: int, db: DBSessionDep, user = Depends(get_curr
     from backend.services.fund_service import FundService
     fund_service = FundService(db)
     fund = await fund_service.get_fund_by_project(project_id)
-    
-    # Debug: Log project data being sent
-    print(f"📥 [Backend] Project {project_id} data:", {
-        "start_date": str(project.start_date),
-        "num_residents": project.num_residents,
-        "monthly_price_per_apartment": project.monthly_price_per_apartment,
-        "budget_monthly": project.budget_monthly,
-        "budget_annual": project.budget_annual
-    })
+
     
     # Convert to dict to modify
     project_dict = {

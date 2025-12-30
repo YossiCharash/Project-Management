@@ -187,6 +187,7 @@ export interface RecurringTransactionTemplateCreate {
   category_id?: number | null
   notes?: string | null
   supplier_id: number
+  payment_method?: string | null
   frequency?: 'Monthly'
   day_of_month: number
   start_date: string
@@ -206,6 +207,7 @@ export interface RecurringTransactionTemplate {
   category_id?: number | null
   notes?: string | null
   supplier_id: number
+  payment_method?: string | null
   frequency: 'Monthly'
   day_of_month: number
   start_date: string
@@ -215,6 +217,12 @@ export interface RecurringTransactionTemplate {
   is_active: boolean
   created_at: string
   updated_at: string
+  created_by_user_id?: number | null
+  created_by_user?: {
+    id: number
+    email: string
+    full_name: string
+  } | null
 }
 
 export interface RecurringTransactionTemplateUpdate {
@@ -224,6 +232,7 @@ export interface RecurringTransactionTemplateUpdate {
   category_id?: number | null
   notes?: string | null
   supplier_id?: number | null
+  payment_method?: string | null
   day_of_month?: number
   start_date?: string
   end_type?: 'No End' | 'After Occurrences' | 'On Date'

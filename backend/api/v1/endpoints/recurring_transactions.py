@@ -46,7 +46,10 @@ async def create_recurring_template(
         raise HTTPException(status_code=400, detail="Supplier is required for expense transactions")
     
     service = RecurringTransactionService(db)
-    template = await service.create_template(data)
+    try:
+        template = await service.create_template(data, user_id=user.id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     
     # Check if we should generate a transaction immediately (if today is the day)
     # This ensures that if a user creates a template for today, the transaction appears immediately
@@ -92,7 +95,11 @@ async def update_recurring_template(
     user = Depends(get_current_user)
 ):
     """Update a recurring transaction template"""
-    template = await RecurringTransactionService(db).update_template(template_id, data)
+    try:
+        template = await RecurringTransactionService(db).update_template(template_id, data)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+        
     if not template:
         raise HTTPException(status_code=404, detail="Recurring template not found")
     # Convert to schema to handle enum serialization

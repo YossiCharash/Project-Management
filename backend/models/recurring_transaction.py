@@ -7,6 +7,7 @@ from sqlalchemy.ext.associationproxy import association_proxy
 
 from backend.db.base import Base
 from backend.models.category import Category
+from backend.models.transaction import PaymentMethod
 
 
 class RecurringFrequency(str, Enum):
@@ -43,6 +44,9 @@ class RecurringTransactionTemplate(Base):
     supplier_id: Mapped[int | None] = mapped_column(ForeignKey("suppliers.id"), nullable=True, index=True)
     supplier: Mapped["Supplier | None"] = relationship("Supplier", lazy="selectin")
 
+    # Payment method
+    payment_method: Mapped[str | None] = mapped_column(SAEnum(PaymentMethod, name="payment_method", create_constraint=True, native_enum=True), nullable=True)
+
     # Recurring settings
     frequency: Mapped[str] = mapped_column(SAEnum(RecurringFrequency, name="recurring_frequency", create_constraint=True, native_enum=True), default=RecurringFrequency.MONTHLY.value)
     day_of_month: Mapped[int] = mapped_column(Integer, default=1)  # Day 1-31
@@ -56,6 +60,10 @@ class RecurringTransactionTemplate(Base):
     # Status
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     
+    # User who created the template
+    created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    created_by_user: Mapped["User | None"] = relationship("User", foreign_keys=[created_by_user_id], lazy="selectin")
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

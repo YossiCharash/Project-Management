@@ -25,18 +25,23 @@ class TransactionService:
         self,
         *,
         category_id: int | None = None,
+        category_name: str | None = None,
         allow_missing: bool = False
     ):
+        category = None
         if category_id is not None:
             category = await self.category_repository.get(category_id)
             if not category and not allow_missing:
                 raise ValueError("קטגוריה שנבחרה לא קיימת יותר במערכת.")
-        else:
-            category = None
-
+        elif category_name is not None:
+            # Fallback for legacy calls using name
+            category = await self.category_repository.get_by_name_global(category_name)
+            if not category and not allow_missing:
+                raise ValueError(f"לא נמצאה קטגוריה בשם '{category_name}'")
+        
         if category and not category.is_active:
             raise ValueError(f"קטגוריה '{category.name}' לא פעילה. יש להפעיל את הקטגוריה בהגדרות לפני יצירת העסקה.")
-
+        
         return category
 
     async def check_duplicate_transaction(

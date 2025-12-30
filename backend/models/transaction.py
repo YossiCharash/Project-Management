@@ -50,8 +50,8 @@ class Transaction(Base):
     description: Mapped[str | None] = mapped_column(Text, default=None)
 
     category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"), nullable=True, index=True)
-    category_obj: Mapped["Category | None"] = relationship(lazy="selectin")
-    category = association_proxy("category_obj", "name")
+    category: Mapped["Category | None"] = relationship(lazy="selectin")
+    # category proxy removed as category is now the relationship object
     payment_method: Mapped[str | None] = mapped_column(SAEnum(PaymentMethod, name="payment_method", create_constraint=True, native_enum=True), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, default=None)
     is_exceptional: Mapped[bool] = mapped_column(Boolean, default=False, index=True)

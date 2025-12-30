@@ -70,7 +70,7 @@ def create_app() -> FastAPI:
         else:
             detail = "שגיאת מסד נתונים."
             status_code = 400
-            
+
         print(f"⚠️ Integrity Error at {request.url.path}: {detail} - {error_msg}")
         return JSONResponse(
             status_code=status_code,
@@ -80,7 +80,6 @@ def create_app() -> FastAPI:
     @app.exception_handler(DataError)
     async def data_error_handler(request: Request, exc: DataError):
         """Handle database data errors (invalid types, values too long)"""
-        print(f"⚠️ Data Error at {request.url.path}: {exc}")
         return JSONResponse(
             status_code=400,
             content={"detail": "הנתונים שהוזנו אינם תקינים (סוג נתונים שגוי או ערך ארוך מדי)."},
@@ -104,7 +103,6 @@ def create_app() -> FastAPI:
     async def global_exception_handler(request: Request, exc: Exception):
         import traceback
         error_details = traceback.format_exc()
-        print(f"🔥 Unhandled exception at {request.url.path}: {exc}")
         print(error_details)
         return JSONResponse(
             status_code=500,
@@ -194,8 +192,7 @@ def create_app() -> FastAPI:
                 "Access-Control-Allow-Methods": response.headers.get("Access-Control-Allow-Methods"),
                 "Access-Control-Allow-Headers": response.headers.get("Access-Control-Allow-Headers"),
             }
-            print(f"🔍 CORS Preflight Response Headers: {cors_headers}")
-        
+
         return response
 
     @app.on_event("startup")
@@ -309,8 +306,6 @@ def create_app() -> FastAPI:
             # Fallback to index.html for SPA
             index_path = os.path.join(static_dir, "index.html")
             return FileResponse(index_path)
-    else:
-        print("⚠️ Frontend static files not found. Frontend serving disabled.")
 
     return app
 
@@ -346,19 +341,13 @@ async def run_recurring_transactions_scheduler():
                     service = RecurringTransactionService(db)
                     # Generate transactions for today
                     transactions = await service.generate_transactions_for_date(today)
-                    
-                    if transactions:
-                        print(f"[OK] Generated {len(transactions)} recurring transactions for {today}")
-                    else:
-                        print(f"[INFO] No recurring transactions to generate for {today}")
+
                 except Exception as e:
-                    print(f"[ERROR] Error generating recurring transactions: {e}")
                     import traceback
                     traceback.print_exc()
                 finally:
                     await db.close()
         except Exception as e:
-            print(f"[ERROR] Error in recurring transactions scheduler: {e}")
             import traceback
             traceback.print_exc()
             # Wait a bit before retrying
@@ -411,24 +400,15 @@ async def run_contract_renewal_scheduler():
                             renewed_project = await service.check_and_renew_contract(project.id)
                             if renewed_project:
                                 renewed_count += 1
-                                print(f"[OK] Renewed contract for project: {project.name} (ID: {project.id})")
                         except Exception as e:
-                            print(f"[ERROR] Error renewing contract for project {project.name} (ID: {project.id}): {e}")
                             import traceback
                             traceback.print_exc()
-                    
-                    if renewed_count > 0:
-                        print(f"[OK] Contract renewal check completed: {renewed_count} contracts renewed")
-                    else:
-                        print(f"[INFO] Contract renewal check completed: No contracts needed renewal")
                 except Exception as e:
-                    print(f"[ERROR] Error in contract renewal scheduler: {e}")
                     import traceback
                     traceback.print_exc()
                 finally:
                     await db.close()
         except Exception as e:
-            print(f"[ERROR] Error in contract renewal scheduler: {e}")
             import traceback
             traceback.print_exc()
             # Wait a bit before retrying

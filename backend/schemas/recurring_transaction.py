@@ -13,6 +13,7 @@ class RecurringTransactionTemplateBase(BaseModel):
     category_id: Optional[int] = None
     notes: Optional[str] = None
     supplier_id: int | None = Field(None, description="Supplier ID is required for Expense transactions")
+    payment_method: Optional[str] = None
     frequency: Literal["Monthly"] = "Monthly"
     day_of_month: int = Field(ge=1, le=31)
     start_date: date
@@ -22,7 +23,7 @@ class RecurringTransactionTemplateBase(BaseModel):
 
 
 class RecurringTransactionTemplateCreate(RecurringTransactionTemplateBase):
-    pass
+    category: Optional[str] = None
 
 
 class RecurringTransactionTemplateUpdate(BaseModel):
@@ -31,6 +32,7 @@ class RecurringTransactionTemplateUpdate(BaseModel):
     category_id: Optional[int] = None
     notes: Optional[str] = None
     supplier_id: Optional[int] = None
+    payment_method: Optional[str] = None
     day_of_month: Optional[int] = Field(None, ge=1, le=31)
     start_date: Optional[date] = None
     end_type: Optional[Literal["No End", "After Occurrences", "On Date"]] = None
@@ -49,6 +51,7 @@ class RecurringTransactionTemplateOut(BaseModel):
     category_id: Optional[int] = None
     notes: Optional[str] = None
     supplier_id: int | None = None
+    payment_method: Optional[str] = None
     frequency: Literal["Monthly"] = "Monthly"
     day_of_month: int
     start_date: date
@@ -56,6 +59,8 @@ class RecurringTransactionTemplateOut(BaseModel):
     end_date: Optional[date] = None
     max_occurrences: Optional[int] = None
     is_active: bool
+    created_by_user_id: Optional[int] = None
+    created_by_user: Optional[Any] = None  # User object or dict
     created_at: datetime
     updated_at: datetime
 
@@ -67,16 +72,32 @@ class RecurringTransactionTemplateOut(BaseModel):
             # Handle SQLAlchemy model objects - use getattr to access attributes
             obj_dict = {}
             for attr in ['id', 'project_id', 'description', 'type', 'amount', 'category', 'category_id', 'notes',
-                        'supplier_id', 'frequency', 'day_of_month', 'start_date', 'end_type', 'end_date',
-                        'max_occurrences', 'is_active', 'created_at', 'updated_at']:
+                        'supplier_id', 'payment_method', 'frequency', 'day_of_month', 'start_date', 'end_type', 'end_date',
+                        'max_occurrences', 'is_active', 'created_by_user_id', 'created_at', 'updated_at']:
                 if hasattr(data, attr):
                     value = getattr(data, attr)
                     if attr == 'frequency' and hasattr(value, 'value'):
                         obj_dict[attr] = value.value
                     elif attr == 'end_type' and hasattr(value, 'value'):
                         obj_dict[attr] = value.value
+                    elif attr == 'payment_method' and hasattr(value, 'value'):
+                        obj_dict[attr] = value.value
                     else:
                         obj_dict[attr] = value
+            
+            # Handle created_by_user separately
+            if hasattr(data, 'created_by_user'):
+                user = getattr(data, 'created_by_user')
+                if user:
+                    # Simple user info
+                    obj_dict['created_by_user'] = {
+                        'id': user.id,
+                        'email': user.email,
+                        'full_name': getattr(user, 'full_name', None) or user.email.split('@')[0]
+                    }
+                else:
+                    obj_dict['created_by_user'] = None
+
             return obj_dict
         elif isinstance(data, dict):
             # Handle dict objects
@@ -85,6 +106,8 @@ class RecurringTransactionTemplateOut(BaseModel):
                 result['frequency'] = result['frequency'].value
             if 'end_type' in result and hasattr(result.get('end_type'), 'value'):
                 result['end_type'] = result['end_type'].value
+            if 'payment_method' in result and hasattr(result.get('payment_method'), 'value'):
+                result['payment_method'] = result['payment_method'].value
             return result
         return data
 
