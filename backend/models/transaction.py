@@ -49,7 +49,7 @@ class Transaction(Base):
     amount: Mapped[float] = mapped_column(Numeric(14, 2))
     description: Mapped[str | None] = mapped_column(Text, default=None)
 
-    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"), nullable=True, index=True)
+    category_id: Mapped[int | None] = mapped_column("category", ForeignKey("categories.id"), nullable=True, index=True)
     category: Mapped["Category | None"] = relationship(lazy="selectin")
     # category proxy removed as category is now the relationship object
     payment_method: Mapped[str | None] = mapped_column(SAEnum(PaymentMethod, name="payment_method", create_constraint=True, native_enum=True), nullable=True)
