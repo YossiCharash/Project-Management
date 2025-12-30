@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typing import TYPE_CHECKING
 from datetime import datetime, date
 from enum import Enum
 from sqlalchemy import String, Date, DateTime, ForeignKey, Numeric, Text, Boolean, Enum as SAEnum
@@ -7,6 +8,13 @@ from sqlalchemy.ext.associationproxy import association_proxy
 
 from backend.db.base import Base
 from backend.models.category import Category
+
+if TYPE_CHECKING:
+    from backend.models.project import Project
+    from backend.models.supplier import Supplier
+    from backend.models.recurring_transaction import RecurringTransactionTemplate
+    from backend.models.supplier_document import SupplierDocument
+    from backend.models.user import User
 
 
 class TransactionType(str, Enum):
