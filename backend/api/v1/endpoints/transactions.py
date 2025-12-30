@@ -9,6 +9,7 @@ from backend.repositories.transaction_repository import TransactionRepository
 from backend.repositories.project_repository import ProjectRepository
 from backend.repositories.supplier_repository import SupplierRepository
 from backend.repositories.supplier_document_repository import SupplierDocumentRepository
+from backend.repositories.category_repository import CategoryRepository
 from backend.models.supplier_document import SupplierDocument
 from backend.schemas.transaction import TransactionCreate, TransactionOut, TransactionUpdate
 from backend.services.transaction_service import TransactionService
@@ -138,13 +139,21 @@ async def create_transaction(db: DBSessionDep, data: TransactionCreate, user = D
     
     # Validate supplier if provided
     # Supplier is required only for Expense transactions (not for Income or fund transactions or when category is "אחר")
+    
+    # Check if category is "Other"
+    is_other_category = False
+    if data.category_id:
+        category = await CategoryRepository(db).get(data.category_id)
+        if category and category.name == 'אחר':
+            is_other_category = True
+
     if data.supplier_id is not None:
         supplier = await SupplierRepository(db).get(data.supplier_id)
         if not supplier:
             raise HTTPException(status_code=404, detail="Supplier not found")
         if not supplier.is_active:
             raise HTTPException(status_code=400, detail="Cannot create transaction with inactive supplier")
-    elif data.type == 'Expense' and not data.from_fund and data.category != 'אחר':
+    elif data.type == 'Expense' and not data.from_fund and not is_other_category:
         # Supplier is required for Expense transactions (not for Income, fund transactions, or when category is "אחר")
         raise HTTPException(status_code=400, detail="Supplier is required for expense transactions")
     
