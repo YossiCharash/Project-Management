@@ -1,5 +1,5 @@
 # Build stage
-FROM node:18-alpine AS builder
+FROM node:22-alpine AS builder
 
 WORKDIR /app
 
@@ -13,7 +13,6 @@ RUN npm ci
 
 # Copy source
 COPY . .
-RUN rm -rf node_modules && npm install
 
 # Build the app
 RUN npm run build
