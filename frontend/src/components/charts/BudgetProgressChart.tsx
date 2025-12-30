@@ -65,12 +65,21 @@ export default function BudgetProgressChart({ budgets, projectName }: BudgetProg
   const chartData = budgets.map(budget => {
     const spent = Number(budget.spent_amount ?? 0)
     const remaining = Number(budget.remaining_amount ?? (budget.amount - spent))
+    
+    // Calculate spent percentage safely
+    let spentPercent = 0
+    if (budget.spent_percentage !== undefined && budget.spent_percentage !== null) {
+      spentPercent = Number(budget.spent_percentage)
+    } else if (budget.amount > 0) {
+      spentPercent = (spent / budget.amount) * 100
+    }
+    
     return {
       category: budget.category,
       budget: budget.amount,
       spent,
       remaining,
-      spentPercent: Math.max(budget.spent_percentage ?? (spent / budget.amount * 100), 0),
+      spentPercent: Math.max(spentPercent, 0),
       expectedPercent: budget.expected_spent_percentage,
       isOverBudget: budget.is_over_budget,
       isSpendingTooFast: budget.is_spending_too_fast

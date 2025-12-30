@@ -87,7 +87,7 @@ export default function ProjectDetail() {
 
   const [filterType, setFilterType] = useState<'all' | 'Income' | 'Expense'>('all')
   const [filterExceptional, setFilterExceptional] = useState<'all' | 'only'>('all')
-  const [dateFilterMode, setDateFilterMode] = useState<'current_month' | 'selected_month' | 'date_range'>('current_month')
+  const [dateFilterMode, setDateFilterMode] = useState<'current_month' | 'selected_month' | 'date_range' | 'all_time'>('current_month')
   const [selectedMonth, setSelectedMonth] = useState<string>(() => {
     const now = new Date()
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
@@ -104,9 +104,9 @@ export default function ProjectDetail() {
   const [recurringTemplates, setRecurringTemplates] = useState<RecurringTransactionTemplate[]>([])
 
   const loadRecurringTemplates = async () => {
-    if (!id) return
+    if (!id || isNaN(Number(id))) return
     try {
-      const templates = await RecurringTransactionAPI.getProjectTemplates(parseInt(id))
+      const templates = await RecurringTransactionAPI.getProjectRecurringTemplates(parseInt(id))
       setRecurringTemplates(templates)
     } catch (err) {
       console.error('Failed to load recurring templates', err)
@@ -234,7 +234,7 @@ export default function ProjectDetail() {
   const [loadingPeriodSummary, setLoadingPeriodSummary] = useState(false)
 
   const load = async () => {
-    if (!id) return
+    if (!id || isNaN(Number(id))) return
 
     setLoading(true)
     try {
@@ -248,7 +248,7 @@ export default function ProjectDetail() {
   }
 
   const loadChartsData = async () => {
-    if (!id) return
+    if (!id || isNaN(Number(id))) return
 
     setChartsLoading(true)
     try {
@@ -323,7 +323,7 @@ const formatDate = (value: string | null) => {
   }
 
   const handleEditProject = async () => {
-    if (!id) return
+    if (!id || isNaN(Number(id))) return
     try {
       // Use the same API call that loadProjectInfo uses for consistency
       const { data } = await api.get(`/projects/${id}`)
@@ -341,7 +341,7 @@ const formatDate = (value: string | null) => {
   }
 
   const loadProjectInfo = async () => {
-    if (!id) return
+    if (!id || isNaN(Number(id))) return
 
     try {
       // First check and renew contract if needed
@@ -431,7 +431,7 @@ const formatDate = (value: string | null) => {
   }
   
   const loadContractPeriods = async () => {
-    if (!id) return
+    if (!id || isNaN(Number(id))) return
     
     try {
       const periods = await ProjectAPI.getContractPeriods(parseInt(id))
@@ -443,7 +443,7 @@ const formatDate = (value: string | null) => {
   }
 
   const loadSubprojects = async () => {
-    if (!id) return
+    if (!id || isNaN(Number(id))) return
 
     setSubprojectsLoading(true)
     try {
@@ -458,7 +458,7 @@ const formatDate = (value: string | null) => {
   }
 
   const loadFundData = async () => {
-    if (!id) return
+    if (!id || isNaN(Number(id))) return
     
     setFundLoading(true)
     try {
@@ -478,7 +478,7 @@ const formatDate = (value: string | null) => {
   }
 
   useEffect(() => {
-    if (id) {
+    if (id && !isNaN(Number(id))) {
       loadProjectInfo()
       // Load transactions list first, then charts data
       load().then(() => {
@@ -726,12 +726,15 @@ const formatDate = (value: string | null) => {
     } else if (dateFilterMode === 'date_range') {
       // Show date range
       if (startDate && endDate) {
-        const start = new Date(startDate)
-        const end = new Date(endDate)
-        dateMatches = txDate >= start && txDate <= end
+        // Use string comparison to avoid timezone issues with Date objects
+        // tx_date is YYYY-MM-DD, startDate/endDate are YYYY-MM-DD
+        const txDateStr = typeof t.tx_date === 'string' ? t.tx_date.split('T')[0] : new Date(t.tx_date).toISOString().split('T')[0]
+        dateMatches = txDateStr >= startDate && txDateStr <= endDate
       } else {
         dateMatches = true // Show all if dates not set
       }
+    } else if (dateFilterMode === 'all_time') {
+      dateMatches = true
     } else {
       dateMatches = true // Show all if no date filter mode
     }
@@ -1372,6 +1375,17 @@ const formatDate = (value: string | null) => {
                               className="w-4 h-4 text-blue-600"
                             />
                             <span className="text-sm text-gray-700 dark:text-gray-300">חודש מסוים</span>
+                          </label>
+                          <label className="flex items-center gap-2">
+                            <input
+                              type="radio"
+                              name="dateFilter"
+                              value="all_time"
+                              checked={dateFilterMode === 'all_time'}
+                              onChange={() => setDateFilterMode('all_time')}
+                              className="w-4 h-4 text-blue-600"
+                            />
+                            <span className="text-sm text-gray-700 dark:text-gray-300">כל הזמן</span>
                           </label>
                           <label className="flex items-center gap-2">
                             <input
@@ -2300,6 +2314,12 @@ const formatDate = (value: string | null) => {
                 {categoryFilter === 'all' && dateFilterMode === 'current_month' && (
                   <div className="mt-1">התצוגה מוגבלת לחודש הנוכחי - נסה לשנות את סינון התאריך לראות עסקאות מחודשים קודמים</div>
                 )}
+                          {categoryFilter === 'all' && dateFilterMode === 'date_range' && (
+                            <div className="mt-1">לא נמצאו עסקאות בטווח התאריכים שנבחר. נסה להרחיב את הטווח או לנקות את הסינון.</div>
+                          )}
+                          {categoryFilter === 'all' && dateFilterMode === 'all_time' && (
+                            <div className="mt-1">לא נמצאו עסקאות כלל במערכת.</div>
+                          )}
                 <div className="mt-2 text-xs">
                   סך הכל {txs.length} עסקאות במערכת
                   {categoryFilter !== 'all' && transactionsMatchingCategory > 0 && (

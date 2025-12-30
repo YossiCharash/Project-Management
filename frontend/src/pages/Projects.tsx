@@ -13,7 +13,8 @@ import {
   Archive,
   Eye,
   RefreshCw,
-  RotateCcw
+  RotateCcw,
+  ImageOff
 } from 'lucide-react'
 import { ProjectWithFinance, DashboardSnapshot } from '../types/api'
 import { DashboardAPI, ProjectAPI } from '../lib/apiClient'
@@ -45,6 +46,7 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
   onAddTransaction,
   hasSubprojects = false
 }) => {
+  const [imgError, setImgError] = useState(false)
   // Check if this is a parent project using the is_parent_project field
   const isParentProject = project.is_parent_project === true
   const getStatusColor = (status: 'green' | 'yellow' | 'red') => {
@@ -112,20 +114,24 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
           ? 'border-gray-300 dark:border-gray-600 opacity-75' 
           : 'border-gray-200 dark:border-gray-700'
       }`}
+      dir="rtl"
     >
       <div className="p-6">
-        {imageUrl && (
-          <div className="mb-3 rounded-lg overflow-hidden">
+        <div className="mb-3 rounded-lg overflow-hidden h-36 bg-gray-100 dark:bg-gray-700 w-full relative">
+          {imageUrl && !imgError ? (
             <img
               src={imageUrl}
               alt={project.name}
-              className="w-full h-36 object-cover"
-              onError={(e) => {
-                e.currentTarget.style.display = 'none'
-              }}
+              className="w-full h-full object-cover"
+              onError={() => setImgError(true)}
             />
-          </div>
-        )}
+          ) : (
+            <div className="flex flex-col items-center justify-center h-full text-gray-400 dark:text-gray-500">
+              <ImageOff className="w-8 h-8 mb-2 opacity-50" />
+            </div>
+          )}
+        </div>
+
         <div className="flex justify-between items-start mb-4">
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-1.5">
