@@ -2013,6 +2013,7 @@ const formatDate = (value: string | null) => {
                       transactions={txs}
                       expenseCategories={expenseCategories}
                       compact={true}
+                      projectIncome={projectBudget?.budget_monthly || 0}
                     />
                   </div>
                 </>

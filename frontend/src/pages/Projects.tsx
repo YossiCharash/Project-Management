@@ -133,13 +133,15 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
         </div>
 
         <div className="flex justify-between items-start mb-4">
-          <div className="flex-1">
-            <div className="flex items-center gap-2 mb-1.5">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center flex-wrap gap-2 mb-1.5">
+              <h3 className={`${
+                project.name.length > 25 ? 'text-sm' : project.name.length > 15 ? 'text-base' : 'text-lg'
+              } font-semibold text-gray-900 dark:text-white leading-tight break-words`}>
                 {project.name}
               </h3>
               {hasSubprojects && (
-                <span className="px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 text-[11px] font-medium rounded-full">
+                <span className="flex-shrink-0 px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 text-[11px] font-medium rounded-full whitespace-nowrap">
                   יש תת-פרויקטים
                 </span>
               )}

@@ -17,6 +17,7 @@ interface ProjectTrendsChartProps {
     color: string
   }>
   compact?: boolean
+  projectIncome?: number
 }
 
 interface ChartDataPoint {
@@ -34,7 +35,8 @@ export default function ProjectTrendsChart({
   projectName, 
   transactions,
   expenseCategories = [],
-  compact = false
+  compact = false,
+  projectIncome = 0
 }: ProjectTrendsChartProps) {
   const [viewMode, setViewMode] = useState<'profitability' | 'categories'>('profitability')
   const [filterType, setFilterType] = useState<FilterType>('month')
@@ -61,7 +63,7 @@ export default function ProjectTrendsChart({
   useEffect(() => {
     processData()
     processExpenseCategories()
-  }, [filterType, selectedMonth, selectedYear, customStartDate, customEndDate, transactions, expenseCategories])
+  }, [filterType, selectedMonth, selectedYear, customStartDate, customEndDate, transactions, expenseCategories, projectIncome])
 
   const processData = () => {
     let filteredTransactions = [...transactions]
@@ -108,7 +110,7 @@ export default function ProjectTrendsChart({
       for (let i = 0; i < 12; i++) {
         // Create date as UTC to avoid timezone shifts
         const monthStr = `${selectedYear}-${(i + 1).toString().padStart(2, '0')}`
-        groupedData[monthStr] = { income: 0, expense: 0 }
+        groupedData[monthStr] = { income: projectIncome || 0, expense: 0 }
       }
     } else if (filterType === 'month') {
       // Initialize all days for the selected month
@@ -139,7 +141,11 @@ export default function ProjectTrendsChart({
       }
       
       if (tx.type === 'Income') {
-        groupedData[dateKey].income += Math.abs(tx.amount)
+        // If we have a fixed project income and we are in year view (monthly grouping), 
+        // we use the fixed income instead of summing transactions
+        if (!projectIncome || filterType !== 'year') {
+          groupedData[dateKey].income += Math.abs(tx.amount)
+        }
       } else {
         groupedData[dateKey].expense += Math.abs(tx.amount)
       }
