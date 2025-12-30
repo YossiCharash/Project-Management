@@ -24,16 +24,30 @@ RUN ls -al /app
 # Production stage
 FROM nginx:alpine
 
+# Install envsubst (contained in gettext package) if not present
+# Alpine's nginx image usually has it, but better safe.
+# NOTE: nginx:alpine usually does NOT have bash, use sh.
+# Recent versions (1.19+) have envsubst built-in or via package.
+RUN apk add --no-cache gettext
+
 # Copy built files
 # FIX: Changed the path from '/app/build' to the common default, '/app/dist'.
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Copy nginx config
-COPY ./nginx.conf /etc/nginx/conf.d/default.conf
+# Copy nginx config template
+# We store it in templates dir for organization or directly where we need it
+COPY ./nginx.conf.template /etc/nginx/templates/default.conf.template
+COPY ./entrypoint.sh /docker-entrypoint.sh
+
+# Make entrypoint executable
+RUN chmod +x /docker-entrypoint.sh
 
 # Render expects the app to listen on $PORT
 # But Nginx defaults to 80, so we'll handle this in nginx.conf
 EXPOSE 10000
+
+# Use our custom entrypoint
+ENTRYPOINT ["/docker-entrypoint.sh"]
 
 # Start Nginx
 CMD ["nginx", "-g", "daemon off;"]
