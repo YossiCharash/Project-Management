@@ -118,7 +118,7 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
             <div>
               <div className="text-gray-500 dark:text-gray-400 text-xs">הכנסות השנה</div>
               <div className="font-semibold text-green-600 dark:text-green-400">
-                {(project.income_month_to_date || 0).toFixed(0)} ₪
+                {((project.budget_monthly || 0) > 0 ? (project.budget_monthly || 0) * 12 : (project.income_month_to_date || 0)).toFixed(0)} ₪
               </div>
             </div>
             <div>

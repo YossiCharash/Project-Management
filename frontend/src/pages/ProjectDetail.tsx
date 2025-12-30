@@ -895,9 +895,7 @@ const formatDate = (value: string | null) => {
     })
     
     const monthlyIncome = Number(projectBudget?.budget_monthly || 0)
-    const transactionIncome = monthlyIncome > 0
-      ? 0
-      : incomeTransactions.reduce((s, t) => s + Number(t.amount || 0), 0)
+    const transactionIncome = incomeTransactions.reduce((s, t) => s + Number(t.amount || 0), 0)
     const transactionExpense = expenseTransactions.reduce((s, t) => s + Number(t.amount || 0), 0)
     
     // Calculate income from project monthly budget (treated as expected monthly income)
@@ -934,8 +932,13 @@ const formatDate = (value: string | null) => {
       })
     }
     
-    // Total income = transaction income + project income (from monthly budget)
-    const totalIncome = transactionIncome + projectIncome
+    // Total income logic:
+    // If we have a monthly budget (projectIncome > 0), we normally show the accrued income.
+    // However, if we also have actual transactions, we want to make sure we don't double count,
+    // but also don't hide actual income if it exceeds the budget or if budget calculation returns 0.
+    // If projectIncome is 0 (e.g. no start date), we show transactionIncome.
+    // If both exist, we show the larger of the two (Accrued vs Actual) to reflect value.
+    const totalIncome = monthlyIncome > 0 ? Math.max(transactionIncome, projectIncome) : transactionIncome
     
     console.log('🔍 DEBUG - Final calculation:', {
       transactionIncome,
