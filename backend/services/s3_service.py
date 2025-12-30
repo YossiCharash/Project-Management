@@ -76,4 +76,26 @@ class S3Service:
             # Log error but don't fail the deletion - the database record will still be deleted
             print(f"Warning: Failed to delete file from S3: {e}")
 
+    def get_file_content(self, file_url: str) -> bytes | None:
+        """Get file content from S3 given its URL"""
+        key = None
+        if self._base_url and file_url.startswith(self._base_url):
+            key = file_url.replace(self._base_url + "/", "")
+        elif f"https://{self._bucket}.s3." in file_url:
+            parts = file_url.split(f"https://{self._bucket}.s3.{settings.AWS_REGION}.amazonaws.com/")
+            if len(parts) > 1:
+                key = parts[1]
+        
+        if not key:
+            # Assuming file_url might be the key itself if not full URL
+            key = file_url
+            
+        try:
+            response = self._s3.get_object(Bucket=self._bucket, Key=key)
+            return response['Body'].read()
+        except Exception as e:
+            print(f"Warning: Failed to download file from S3: {e}")
+            return None
+
+
 

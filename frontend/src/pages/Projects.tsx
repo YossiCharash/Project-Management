@@ -18,6 +18,7 @@ import {
 import { ProjectWithFinance, DashboardSnapshot } from '../types/api'
 import { DashboardAPI, ProjectAPI } from '../lib/apiClient'
 import CreateProjectModal from '../components/CreateProjectModal'
+import CreateTransactionModal from '../components/CreateTransactionModal'
 import CategoryBarChart, { CategoryPoint } from '../components/charts/CategoryBarChart'
 import api from '../lib/api'
 
@@ -29,6 +30,7 @@ interface ProjectCardProps {
   onProjectArchive?: (project: ProjectWithFinance) => void
   onProjectRestore?: (project: ProjectWithFinance) => void
   onCreateSubproject?: (project: ProjectWithFinance) => void
+  onAddTransaction?: (project: ProjectWithFinance) => void
   hasSubprojects?: boolean
 }
 
@@ -40,6 +42,7 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
   onProjectArchive,
   onProjectRestore,
   onCreateSubproject,
+  onAddTransaction,
   hasSubprojects = false
 }) => {
   // Check if this is a parent project using the is_parent_project field
@@ -175,11 +178,33 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
                   e.stopPropagation()
                   onProjectClick?.(project)
                 }}
-                className="flex-1 px-2.5 py-1.5 text-xs bg-blue-100 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded-lg hover:bg-blue-200 dark:hover:bg-blue-900/40 transition-colors flex items-center justify-center gap-1.5"
+                className="px-2.5 py-1.5 text-xs bg-blue-100 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded-lg hover:bg-blue-200 dark:hover:bg-blue-900/40 transition-colors flex items-center justify-center gap-1.5"
+                title={hasSubprojects ? 'צפה בתת-פרויקטים' : 'צפה'}
               >
                 <Eye className="w-4 h-4" />
-                {hasSubprojects ? 'צפה בתת-פרויקטים' : 'צפה'}
+                {hasSubprojects && <span className="hidden sm:inline">צפה</span>}
               </button>
+
+              {/* Add Transaction Button - Next to View button for regular projects */}
+              {onAddTransaction && project.is_active !== false && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onAddTransaction(project)
+                  }}
+                  className="flex-1 px-2.5 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-1.5 shadow-sm"
+                  title="הוסף עסקה"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>הוסף עסקה</span>
+                </button>
+              )}
+
+              {/* View button expanded if no transaction button */}
+              {(!onAddTransaction || project.is_active === false) && (
+                <div className="flex-1" />
+              )}
+
               {onProjectEdit && project.is_active !== false && (
                 <button
                   onClick={(e) => {
@@ -254,6 +279,8 @@ export default function Projects() {
   const [archiveFilter, setArchiveFilter] = useState<'active' | 'archived' | 'all'>('active')
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [showCreateModal, setShowCreateModal] = useState(false)
+  const [showTransactionModal, setShowTransactionModal] = useState(false)
+  const [transactionProject, setTransactionProject] = useState<ProjectWithFinance | null>(null)
   const [editingProject, setEditingProject] = useState<ProjectWithFinance | null>(null)
   const [selectedParentProject, setSelectedParentProject] = useState<ProjectWithFinance | null>(null)
   const [archivingProject, setArchivingProject] = useState<number | null>(null)
@@ -433,6 +460,11 @@ export default function Projects() {
     setEditingProject(null)
     setSelectedParentProject(parentProject)
     setShowCreateModal(true)
+  }
+
+  const handleAddTransaction = (project: ProjectWithFinance) => {
+    setTransactionProject(project)
+    setShowTransactionModal(true)
   }
 
   const handleProjectSuccess = (project?: any) => {
@@ -669,6 +701,7 @@ export default function Projects() {
                 onProjectArchive={isAdmin ? handleProjectArchive : undefined}
                 onProjectRestore={isAdmin ? handleProjectRestore : undefined}
                 onCreateSubproject={isAdmin ? handleCreateSubproject : undefined}
+                onAddTransaction={handleAddTransaction}
                 hasSubprojects={hasSubprojects}
               />
             )
@@ -688,6 +721,26 @@ export default function Projects() {
         projectType={projectTypeToCreate}
         parentProjectId={selectedParentProject?.id}
       />
+
+      {/* Create Transaction Modal */}
+      {transactionProject && (
+        <CreateTransactionModal
+          isOpen={showTransactionModal}
+          onClose={() => {
+            setShowTransactionModal(false)
+            setTransactionProject(null)
+          }}
+          onSuccess={() => {
+            setShowTransactionModal(false)
+            setTransactionProject(null)
+            loadProjectsData(archiveFilter !== 'active')
+          }}
+          projectId={transactionProject.id}
+          isSubproject={!!transactionProject.relation_project}
+          projectName={transactionProject.name}
+          allowSubprojectSelection={transactionProject.is_parent_project === true}
+        />
+      )}
     </div>
   )
 }

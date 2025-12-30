@@ -1117,19 +1117,13 @@ const formatDate = (value: string | null) => {
         className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6"
       >
         <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">סיכום פיננסי</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg text-center">
             <div className="text-blue-600 dark:text-blue-400 font-semibold mb-1">
               {projectBudget.budget_annual > 0 ? 'תקציב שנתי' : 'תקציב חודשי'}
             </div>
             <div className="text-2xl font-bold text-blue-700 dark:text-blue-300">
               {formatCurrency(projectBudget.budget_annual > 0 ? projectBudget.budget_annual : projectBudget.budget_monthly)} ₪
-            </div>
-          </div>
-          <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg text-center">
-            <div className="text-green-600 dark:text-green-400 font-semibold mb-1">הכנסות</div>
-            <div className="text-2xl font-bold text-green-700 dark:text-green-300">
-              {income.toFixed(2)} ₪
             </div>
           </div>
           <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg text-center">
@@ -1162,9 +1156,9 @@ const formatDate = (value: string | null) => {
       </motion.div>
 
       {/* Fund and Transactions Section */}
-      {(hasFund || fundData) && (
-        <div className="max-w-6xl mx-auto w-full space-y-6 lg:space-y-0 lg:grid lg:grid-cols-3 lg:gap-6">
+      <div className="max-w-6xl mx-auto w-full space-y-6 lg:space-y-0 lg:grid lg:grid-cols-3 lg:gap-6">
           {/* Fund Section */}
+          {(hasFund || fundData) && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -1290,13 +1284,14 @@ const formatDate = (value: string | null) => {
               </div>
             )}
           </motion.div>
+          )}
 
           {/* Transactions List */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
-            className="lg:col-span-2 bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6"
+            className={`${(hasFund || fundData) ? 'lg:col-span-2' : 'lg:col-span-3'} bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6`}
           >
             <div className="mb-4">
               <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
@@ -1586,8 +1581,6 @@ const formatDate = (value: string | null) => {
               </div>
             </div>
           </motion.div>
-        </div>
-      )}
 
       {/* Edit Fund Modal */}
       {showEditFundModal && fundData && (
@@ -1882,14 +1875,14 @@ const formatDate = (value: string | null) => {
                           </span>
                         </div>
                       </div>
-                      
+
                       {tx.description && (
                         <div className="mb-2">
                           <span className="text-xs text-gray-500 dark:text-gray-400">תיאור: </span>
                           <span className="text-sm text-gray-700 dark:text-gray-300">{tx.description}</span>
                         </div>
                       )}
-                      
+
                       {tx.created_by_user && (
                         <div className="mb-2 flex items-center gap-2">
                           <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1900,7 +1893,7 @@ const formatDate = (value: string | null) => {
                           </span>
                         </div>
                       )}
-                      
+
                       {tx.notes && (
                         <div className="mb-2">
                           <span className="text-xs text-gray-500 dark:text-gray-400">הערות: </span>
@@ -1951,6 +1944,7 @@ const formatDate = (value: string | null) => {
           </motion.div>
         </motion.div>
       )}
+        </div>
 
       {/* Budget Cards and Charts */}
       <motion.div
@@ -1969,7 +1963,7 @@ const formatDate = (value: string | null) => {
           </div>
         </div>
 
-        
+
         {chartsLoading ? (
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -2502,6 +2496,7 @@ const formatDate = (value: string | null) => {
         }}
         projectId={parseInt(id || '0')}
         isSubproject={!!relationProject}
+        projectName={projectName}
       />
 
       <EditTransactionModal

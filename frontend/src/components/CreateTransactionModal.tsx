@@ -13,6 +13,8 @@ interface CreateTransactionModalProps {
   onSuccess: () => void
   projectId: number
   isSubproject?: boolean // True if the current project is a subproject
+  projectName?: string
+  allowSubprojectSelection?: boolean
 }
 
 type TransactionType = 'regular' | 'recurring'
@@ -22,7 +24,9 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
   onClose,
   onSuccess,
   projectId,
-  isSubproject = false
+  isSubproject = false,
+  projectName,
+  allowSubprojectSelection = false
 }) => {
   const dispatch = useAppDispatch()
   const { items: suppliers } = useAppSelector(s => s.suppliers)
@@ -142,6 +146,7 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
     setPaymentMethod('')
     setNotes('')
     // If this is a subproject, set subprojectId to current projectId automatically
+    // If it's a parent project (allowSubprojectSelection), start with empty subprojectId
     setSubprojectId(isSubproject ? projectId : '')
     setSupplierId('')
     setIsExceptional(false)
@@ -274,6 +279,7 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
         supplier_id: supplierId ? Number(supplierId) : undefined,
         is_exceptional: isExceptional,
         from_fund: fromFund && type === 'Expense' ? true : false,
+        subproject_id: subprojectId ? Number(subprojectId) : undefined
       }
 
       let response
@@ -347,19 +353,20 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
       return
     }
 
-    setLoading(true)
-    setError(null)
-
-    try {
-      const templateData = {
-        ...recurringFormData,
-        category: recurringFormData.category || undefined,
-        notes: recurringFormData.notes || undefined,
-        end_date: recurringFormData.end_type === 'On Date' ? recurringFormData.end_date : undefined,
-        max_occurrences: recurringFormData.end_type === 'After Occurrences' ? recurringFormData.max_occurrences : undefined
-      }
-
-      const templateResponse = await RecurringTransactionAPI.createTemplate(templateData)
+      setLoading(true)
+      setError(null)
+  
+      try {
+        const templateData = {
+          ...recurringFormData,
+          category: recurringFormData.category || undefined,
+          notes: recurringFormData.notes || undefined,
+          end_date: recurringFormData.end_type === 'On Date' ? recurringFormData.end_date : undefined,
+          max_occurrences: recurringFormData.end_type === 'After Occurrences' ? recurringFormData.max_occurrences : undefined,
+          subproject_id: subprojectId ? Number(subprojectId) : undefined
+        }
+  
+        const templateResponse = await RecurringTransactionAPI.createTemplate(templateData)
       
       // Generate transactions for current month and next month
       const today = new Date()
@@ -641,7 +648,7 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
                     {isSubproject ? (
                       <input
                         type="text"
-                        value={projectId ? `פרויקט #${projectId}` : ''}
+                        value={projectName || (projectId ? `פרויקט #${projectId}` : '')}
                         disabled
                         className="w-full px-3 py-2 bg-gray-100 dark:bg-gray-600 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-600 dark:text-gray-400 cursor-not-allowed"
                       />
@@ -650,8 +657,9 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
                         className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                         value={subprojectId}
                         onChange={e => setSubprojectId(e.target.value === '' ? '' : Number(e.target.value))}
+                        disabled={!allowSubprojectSelection && subprojects.length === 0}
                       >
-                        <option value="">ללא</option>
+                        <option value="">{allowSubprojectSelection ? 'בחר תת-פרויקט' : 'ללא'}</option>
                         {subprojects.map(sp => (
                           <option key={sp.id} value={sp.id}>{sp.name}</option>
                         ))}

@@ -1,11 +1,94 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from datetime import date
+import io
 
 from backend.core.deps import DBSessionDep, require_roles, get_current_user
 from backend.services.report_service import ReportService
 from backend.models.user import UserRole
 
 router = APIRouter()
+
+
+from backend.schemas.report import ReportOptions
+
+@router.post("/project/custom-report")
+async def generate_custom_report(options: ReportOptions, db: DBSessionDep, user = Depends(get_current_user)):
+    """Generate a custom report based on options"""
+    try:
+        report_service = ReportService(db)
+        
+        # Determine filename based on project name if possible
+        from sqlalchemy import select
+        from backend.models.project import Project
+        project_result = await db.execute(select(Project.name).where(Project.id == options.project_id))
+        project_name = project_result.scalar_one_or_none()
+        
+        content = await report_service.generate_custom_report(options)
+        
+        # Build filename: [Project Name] הפרטים
+        # Sanitize project name for filename
+        safe_project_name = "".join([c for c in (project_name or f"project_{options.project_id}") if c.isalnum() or c in (' ', '-', '_')]).strip()
+        filename = f"{safe_project_name} הפרטים"
+        
+        if options.format == "pdf":
+            media_type = "application/pdf"
+            filename += ".pdf"
+        elif options.format == "excel":
+            media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            filename += ".xlsx"
+        elif options.format == "zip":
+            media_type = "application/zip"
+            filename += ".zip"
+        else:
+            raise ValueError("Invalid format")
+            
+        # URL encode filename for Content-Disposition header to handle non-ASCII chars
+        from urllib.parse import quote
+        encoded_filename = quote(filename)
+            
+        headers = {
+            'Content-Disposition': f"attachment; filename*=UTF-8''{encoded_filename}"
+        }
+        return Response(content=content, media_type=media_type, headers=headers)
+    except Exception as e:
+        import traceback
+        print(f"❌ [Report API] Error generating custom report: {str(e)}")
+        traceback.print_exc()
+        raise
+
+
+@router.get("/project/{project_id}/export/excel")
+async def export_project_excel(project_id: int, db: DBSessionDep, user = Depends(get_current_user)):
+    """Export project report to Excel"""
+    try:
+        report_content = await ReportService(db).generate_excel_report(project_id)
+        
+        headers = {
+            'Content-Disposition': f'attachment; filename="project_{project_id}_report.xlsx"'
+        }
+        return Response(content=report_content, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers=headers)
+    except Exception as e:
+        import traceback
+        print(f"❌ [Report API] Error generating Excel report: {str(e)}")
+        traceback.print_exc()
+        raise
+
+
+@router.get("/project/{project_id}/export/zip")
+async def export_project_zip(project_id: int, db: DBSessionDep, user = Depends(get_current_user)):
+    """Export project report and documents to ZIP"""
+    try:
+        zip_content = await ReportService(db).generate_zip_export(project_id)
+        
+        headers = {
+            'Content-Disposition': f'attachment; filename="project_{project_id}_export.zip"'
+        }
+        return Response(content=zip_content, media_type="application/zip", headers=headers)
+    except Exception as e:
+        import traceback
+        print(f"❌ [Report API] Error generating ZIP export: {str(e)}")
+        traceback.print_exc()
+        raise
 
 
 @router.get("/project/{project_id}")

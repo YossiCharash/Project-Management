@@ -151,9 +151,6 @@ def create_app() -> FastAPI:
         method = request.method
         
         if origin:
-            print(f"🔍 CORS Request: {method} {request.url.path} from origin: {origin}")
-            print(f"🔍 Allowed origins: {settings.CORS_ORIGINS}")
-            
             # Check if origin is in allowed list (with or without www)
             origin_normalized = origin.rstrip("/")
             origin_with_www = origin_normalized.replace("https://ziposystem.co.il", "https://www.ziposystem.co.il")
@@ -164,11 +161,6 @@ def create_app() -> FastAPI:
                 origin_with_www in settings.CORS_ORIGINS or
                 origin_without_www in settings.CORS_ORIGINS
             )
-            
-            if is_allowed:
-                print(f"✅ Origin {origin} is in allowed list")
-            else:
-                print(f"❌ Origin {origin} is NOT in allowed list")
         
         response = await call_next(request)
         
@@ -208,9 +200,6 @@ def create_app() -> FastAPI:
 
     @app.on_event("startup")
     async def on_startup() -> None:
-        # Debug: Print CORS origins on startup
-        print(f"🌐 CORS Origins configured: {settings.CORS_ORIGINS}")
-        
         # Initialize database - creates all tables, enums, indexes, and foreign keys
         await init_database(engine)
 
@@ -293,7 +282,7 @@ def create_app() -> FastAPI:
             break
             
     if static_dir:
-        print(f"🎨 Serving frontend from: {static_dir}")
+
         
         # Serve assets (JS/CSS)
         # We mount /assets to serve files from /app/static/assets

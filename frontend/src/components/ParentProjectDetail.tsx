@@ -484,16 +484,7 @@ const ConsolidatedFinancialSummary: React.FC<{
           <p className="text-sm text-gray-600 dark:text-gray-400">סיכום כל התתי פרויקטים בלבד</p>
         </div>
         
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm">
-            <div className="text-center">
-              <div className="text-3xl font-bold text-green-600 dark:text-green-400 mb-2">
-                {formatCurrency(subprojectsTotalIncome)}
-              </div>
-              <div className="text-sm font-medium text-gray-600 dark:text-gray-400">{HebrewText.financial.totalIncome}</div>
-            </div>
-          </div>
-          
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm">
             <div className="text-center">
               <div className="text-3xl font-bold text-red-600 dark:text-red-400 mb-2">
@@ -892,13 +883,7 @@ const ConsolidatedTransactionsTable: React.FC<{
       {/* Summary */}
       {filteredTransactions.length > 0 && (
         <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-600">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg text-center">
-              <div className="text-green-600 dark:text-green-400 font-semibold mb-1">סה"כ הכנסות</div>
-              <div className="text-2xl font-bold text-green-700 dark:text-green-300">
-                {formatCurrency(totalIncome)}
-              </div>
-            </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg text-center">
               <div className="text-red-600 dark:text-red-400 font-semibold mb-1">סה"כ הוצאות</div>
               <div className="text-2xl font-bold text-red-700 dark:text-red-300">
@@ -1660,7 +1645,7 @@ export default function ParentProjectDetail() {
       )}
 
       {/* Add Transaction Modal */}
-      <AddTransactionModal
+      <CreateTransactionModal
         isOpen={showAddTransactionModal}
         onClose={() => {
           setShowAddTransactionModal(false)
@@ -1673,7 +1658,9 @@ export default function ParentProjectDetail() {
           loadTransactions()
           loadAdvancedFinancialSummary(parseInt(id || '0'))
         }}
-        selectedProjectId={selectedSubprojectForTransaction || undefined}
+        projectId={selectedSubprojectForTransaction || 0}
+        isSubproject={true}
+        projectName={subprojects.find(sp => sp.id === selectedSubprojectForTransaction)?.name}
       />
     </div>
   )

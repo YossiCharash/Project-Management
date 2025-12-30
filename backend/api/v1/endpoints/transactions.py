@@ -52,7 +52,7 @@ async def list_transactions(project_id: int, db: DBSessionDep, user = Depends(ge
     # Get project name for audit log
     project = await ProjectRepository(db).get_by_id(project_id)
     project_name = project.name if project else f"Project {project_id}"
-    
+
     # Log view action
     await AuditService(db).log_transaction_action(
         user_id=user.id,
@@ -60,11 +60,11 @@ async def list_transactions(project_id: int, db: DBSessionDep, user = Depends(ge
         transaction_id=project_id,
         details={'project_id': project_id, 'project_name': project_name}
     )
-    
+
     # Get transactions with user info
     # Filter by project's current contract period dates if they exist
     transactions = await TransactionRepository(db).list_by_project(project_id)
-    
+
     # Filter transactions by current contract period dates (if project has dates)
     if project and project.start_date and project.end_date:
         filtered_transactions = []
@@ -75,21 +75,21 @@ async def list_transactions(project_id: int, db: DBSessionDep, user = Depends(ge
             if tx.from_fund or (project.start_date <= tx.tx_date <= project.end_date):
                 filtered_transactions.append(tx)
         transactions = filtered_transactions
-    
+
     # Load user info for each transaction
     from backend.repositories.user_repository import UserRepository
     user_repo = UserRepository(db)
-    
+
     result = []
     for tx in transactions:
         # Get is_generated value - check both attribute and recurring_template_id
         is_generated_value = getattr(tx, 'is_generated', False)
         recurring_template_id = getattr(tx, 'recurring_template_id', None)
-        
+
         # If transaction has recurring_template_id but is_generated is False, set it to True
         if recurring_template_id and not is_generated_value:
             is_generated_value = True
-        
+
         tx_dict = {
             'id': tx.id,
             'project_id': tx.project_id,
@@ -111,7 +111,7 @@ async def list_transactions(project_id: int, db: DBSessionDep, user = Depends(ge
             'from_fund': tx.from_fund if hasattr(tx, 'from_fund') else False,
             'recurring_template_id': recurring_template_id
         }
-        
+
         # Load user info if exists
         if tx_dict['created_by_user_id']:
             creator = await user_repo.get_by_id(tx_dict['created_by_user_id'])
@@ -121,12 +121,9 @@ async def list_transactions(project_id: int, db: DBSessionDep, user = Depends(ge
                     'full_name': creator.full_name,
                     'email': creator.email
                 }
-                print(f"DEBUG: Loaded user for transaction {tx.id}: {creator.full_name}")
-            else:
-                print(f"DEBUG: User {tx_dict['created_by_user_id']} not found for transaction {tx.id}")
-        
+
         result.append(tx_dict)
-    
+
     return result
 
 
@@ -136,15 +133,16 @@ async def create_transaction(db: DBSessionDep, data: TransactionCreate, user = D
     project = await ProjectRepository(db).get_by_id(data.project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    
+
     # Validate supplier if provided
     # Supplier is required only for Expense transactions (not for Income or fund transactions or when category is "אחר")
-    
+
     # Check if category is "Other"
     is_other_category = False
+    category_obj = None
     if data.category_id:
-        category = await CategoryRepository(db).get(data.category_id)
-        if category and category.name == 'אחר':
+        category_obj = await CategoryRepository(db).get(data.category_id)
+        if category_obj and category_obj.name == 'אחר':
             is_other_category = True
 
     if data.supplier_id is not None:
@@ -156,11 +154,11 @@ async def create_transaction(db: DBSessionDep, data: TransactionCreate, user = D
     elif data.type == 'Expense' and not data.from_fund and not is_other_category:
         # Supplier is required for Expense transactions (not for Income, fund transactions, or when category is "אחר")
         raise HTTPException(status_code=400, detail="Supplier is required for expense transactions")
-    
+
     # Add user_id to transaction data
     transaction_data = data.model_dump()
     transaction_data['created_by_user_id'] = user.id
-    
+
     # Handle fund deduction if from_fund is True
     if data.from_fund and data.type == 'Expense':
         from backend.services.fund_service import FundService
@@ -168,13 +166,13 @@ async def create_transaction(db: DBSessionDep, data: TransactionCreate, user = D
         fund = await fund_service.get_fund_by_project(data.project_id)
         if not fund:
             raise HTTPException(status_code=400, detail="Fund not found for this project")
-        
+
         # Allow negative balance - deduct from fund (can go into negative)
         await fund_service.deduct_from_fund(data.project_id, data.amount)
-    
+
     # Debug: Print to verify user_id is being set
     print(f"DEBUG: Creating transaction with created_by_user_id={user.id}, user={user.full_name}")
-    
+
     # Create transaction (duplicate check is done inside TransactionService.create)
     try:
         transaction = await TransactionService(db).create(**transaction_data)
@@ -184,13 +182,13 @@ async def create_transaction(db: DBSessionDep, data: TransactionCreate, user = D
         if "זוהתה עסקה כפולה" in error_msg:
              raise HTTPException(status_code=409, detail=error_msg)
         raise HTTPException(status_code=400, detail=error_msg)
-    
+
     # Debug: Verify transaction was created with user_id
     print(f"DEBUG: Transaction created with id={transaction.id}, created_by_user_id={transaction.created_by_user_id}")
-    
+
     # Get project name for audit log
     project_name = project.name if project else f"Project {transaction.project_id}"
-    
+
     # Log create action with full details
     await AuditService(db).log_transaction_action(
         user_id=user.id,
@@ -212,11 +210,11 @@ async def create_transaction(db: DBSessionDep, data: TransactionCreate, user = D
             'file_path': transaction.file_path
         }
     )
-    
+
     # Convert to dict with user info
     from backend.repositories.user_repository import UserRepository
     user_repo = UserRepository(db)
-    
+
     result = {
         'id': transaction.id,
         'project_id': transaction.project_id,
@@ -224,7 +222,7 @@ async def create_transaction(db: DBSessionDep, data: TransactionCreate, user = D
         'type': transaction.type,
         'amount': float(transaction.amount),
         'description': transaction.description,
-        'category': transaction.category,
+        'category': transaction.category or (category_obj.name if category_obj else None),
         'category_id': transaction.category_id,
         'payment_method': transaction.payment_method,
         'notes': transaction.notes,
@@ -238,7 +236,7 @@ async def create_transaction(db: DBSessionDep, data: TransactionCreate, user = D
         'from_fund': transaction.from_fund if hasattr(transaction, 'from_fund') else False,
         'recurring_template_id': getattr(transaction, 'recurring_template_id', None)
     }
-    
+
     # Load user info if exists
     if transaction.created_by_user_id:
         creator = await user_repo.get_by_id(transaction.created_by_user_id)
@@ -248,7 +246,7 @@ async def create_transaction(db: DBSessionDep, data: TransactionCreate, user = D
                 'full_name': creator.full_name,
                 'email': creator.email
             }
-    
+
     return result
 
 
@@ -258,9 +256,9 @@ async def upload_receipt(tx_id: int, db: DBSessionDep, file: UploadFile = File(.
     tx = await TransactionRepository(db).get_by_id(tx_id)
     if not tx:
         raise HTTPException(status_code=404, detail="Transaction not found")
-    
+
     result = await TransactionService(db).attach_file(tx, file)
-    
+
     # Log upload action
     await AuditService(db).log_transaction_action(
         user_id=user.id,
@@ -268,11 +266,11 @@ async def upload_receipt(tx_id: int, db: DBSessionDep, file: UploadFile = File(.
         transaction_id=tx_id,
         details={'filename': file.filename}
     )
-    
+
     # Convert to dict with user info
     from backend.repositories.user_repository import UserRepository
     user_repo = UserRepository(db)
-    
+
     transaction_dict = {
         'id': result.id,
         'project_id': result.project_id,
@@ -293,7 +291,7 @@ async def upload_receipt(tx_id: int, db: DBSessionDep, file: UploadFile = File(.
         'created_by_user': None,
         'recurring_template_id': getattr(result, 'recurring_template_id', None)
     }
-    
+
     # Load user info if exists
     if result.created_by_user_id:
         creator = await user_repo.get_by_id(result.created_by_user_id)
@@ -303,7 +301,7 @@ async def upload_receipt(tx_id: int, db: DBSessionDep, file: UploadFile = File(.
                 'full_name': creator.full_name,
                 'email': creator.email
             }
-    
+
     return transaction_dict
 
 
@@ -311,18 +309,18 @@ async def upload_receipt(tx_id: int, db: DBSessionDep, file: UploadFile = File(.
 async def get_transaction_documents(tx_id: int, db: DBSessionDep, user = Depends(get_current_user)):
     """Get all documents for a transaction - accessible to all authenticated users"""
     from sqlalchemy import select, and_
-    
+
     tx = await TransactionRepository(db).get_by_id(tx_id)
     if not tx:
         raise HTTPException(status_code=404, detail="Transaction not found")
-    
+
     # Get all documents for this transaction
     docs_query = select(SupplierDocument).where(SupplierDocument.transaction_id == tx_id)
     docs_result = await db.execute(docs_query)
     docs = docs_result.scalars().all()
-    
+
     result = []
-    
+
     for doc in docs:
         result.append({
             "id": doc.id,
@@ -333,26 +331,26 @@ async def get_transaction_documents(tx_id: int, db: DBSessionDep, user = Depends
             "description": doc.description,
             "uploaded_at": doc.uploaded_at.isoformat() if doc.uploaded_at else None
         })
-    
+
     return result
 
 
 @router.put("/{tx_id}/documents/{doc_id}", response_model=dict)
 async def update_transaction_document(
-    tx_id: int, 
-    doc_id: int, 
-    db: DBSessionDep, 
+    tx_id: int,
+    doc_id: int,
+    db: DBSessionDep,
     description: str | None = Form(None),
     user = Depends(get_current_user)
 ):
     """Update document description for a transaction - accessible to all authenticated users"""
     from sqlalchemy import select, and_
-    
+
     # Verify transaction exists
     tx = await TransactionRepository(db).get_by_id(tx_id)
     if not tx:
         raise HTTPException(status_code=404, detail="Transaction not found")
-    
+
     # Get the document
     docs_query = select(SupplierDocument).where(
         and_(
@@ -362,14 +360,14 @@ async def update_transaction_document(
     )
     docs_result = await db.execute(docs_query)
     doc = docs_result.scalar_one_or_none()
-    
+
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
-    
+
     # Update description
     doc.description = description.strip() if description and description.strip() else None
     await SupplierDocumentRepository(db).update(doc)
-    
+
     return {
         "id": doc.id,
         "transaction_id": doc.transaction_id,
@@ -384,7 +382,7 @@ async def upload_supplier_document(tx_id: int, db: DBSessionDep, file: UploadFil
     tx = await TransactionRepository(db).get_by_id(tx_id)
     if not tx:
         raise HTTPException(status_code=404, detail="Transaction not found")
-    
+
     # Prepare upload prefix
     s3 = S3Service()
 
@@ -400,13 +398,13 @@ async def upload_supplier_document(tx_id: int, db: DBSessionDep, file: UploadFil
         # If no supplier, use a generic transactions prefix
         prefix = "transactions"
         supplier_id = None
-    
+
     # Upload to S3 (using thread to avoid blocking loop)
     # Reset file pointer
     await file.seek(0)
-    
+
     import asyncio
-    
+
     file_url = await asyncio.to_thread(
         s3.upload_file,
         prefix=prefix,
@@ -414,15 +412,15 @@ async def upload_supplier_document(tx_id: int, db: DBSessionDep, file: UploadFil
         filename=file.filename or "supplier-document",
         content_type=file.content_type,
     )
-    
+
     # Create supplier document linked to transaction (supplier_id can be None)
     doc = SupplierDocument(supplier_id=supplier_id, transaction_id=tx_id, file_path=file_url)
     await SupplierDocumentRepository(db).create(doc)
-    
+
     return {
         "id": doc.id,
-        "file_path": file_url, 
-        "supplier_id": supplier_id, 
+        "file_path": file_url,
+        "supplier_id": supplier_id,
         "transaction_id": tx_id,
         "description": doc.description
     }
@@ -430,36 +428,36 @@ async def upload_supplier_document(tx_id: int, db: DBSessionDep, file: UploadFil
 
 @router.delete("/{tx_id}/documents/{doc_id}")
 async def delete_transaction_document(
-    tx_id: int, 
-    doc_id: int, 
-    db: DBSessionDep, 
+    tx_id: int,
+    doc_id: int,
+    db: DBSessionDep,
     user = Depends(get_current_user)
 ):
     """Delete document from transaction - accessible to all authenticated users"""
     from sqlalchemy import select, and_
     import asyncio
-    
+
     # Verify transaction exists
     tx = await TransactionRepository(db).get_by_id(tx_id)
     if not tx:
         raise HTTPException(status_code=404, detail="Transaction not found")
-    
+
     # Get the document
     doc_repo = SupplierDocumentRepository(db)
     doc = await doc_repo.get_by_id(doc_id)
-    
+
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
-    
+
     if doc.transaction_id != tx_id:
         raise HTTPException(status_code=400, detail="Document does not belong to this transaction")
-    
+
     # Store file path before deletion
     file_path = doc.file_path
-    
+
     # Delete the document from database
     await doc_repo.delete(doc)
-    
+
     # Try to delete from S3 if file_path is an S3 URL
     if file_path and ("s3" in file_path.lower() or "amazonaws.com" in file_path or settings.AWS_S3_BASE_URL and file_path.startswith(settings.AWS_S3_BASE_URL)):
         try:
@@ -469,7 +467,7 @@ async def delete_transaction_document(
         except Exception as e:
             # Log but don't fail - document is already deleted from DB
             print(f"Warning: Failed to delete file from S3: {e}")
-    
+
     return {"ok": True}
 
 
@@ -480,11 +478,11 @@ async def update_transaction(tx_id: int, db: DBSessionDep, data: TransactionUpda
     tx = await repo.get_by_id(tx_id)
     if not tx:
         raise HTTPException(status_code=404, detail="Transaction not found")
-    
+
     # Get project name for audit log
     project = await ProjectRepository(db).get_by_id(tx.project_id)
     project_name = project.name if project else f"Project {tx.project_id}"
-    
+
     # Store old values for audit log
     old_values = {
         'amount': str(tx.amount),
@@ -499,7 +497,7 @@ async def update_transaction(tx_id: int, db: DBSessionDep, data: TransactionUpda
         'is_generated': tx.is_generated,
         'file_path': tx.file_path or ''
     }
-    
+
     # Validate supplier if provided
     if data.supplier_id is not None:
         supplier = await SupplierRepository(db).get(data.supplier_id)
@@ -507,7 +505,7 @@ async def update_transaction(tx_id: int, db: DBSessionDep, data: TransactionUpda
             raise HTTPException(status_code=404, detail="Supplier not found")
         if not supplier.is_active:
             raise HTTPException(status_code=400, detail="Cannot update transaction with inactive supplier")
-    
+
     # Check for duplicates if allow_duplicate is False
     if not data.allow_duplicate:
         # Resolve new values or fallback to existing
@@ -515,7 +513,7 @@ async def update_transaction(tx_id: int, db: DBSessionDep, data: TransactionUpda
         new_amount = data.amount if data.amount is not None else tx.amount
         new_type = data.type if data.type is not None else tx.type
         new_supplier_id = data.supplier_id if data.supplier_id is not None else tx.supplier_id
-        
+
         service = TransactionService(db)
         duplicates = await service.check_duplicate_transaction(
             project_id=tx.project_id,
@@ -524,17 +522,17 @@ async def update_transaction(tx_id: int, db: DBSessionDep, data: TransactionUpda
             supplier_id=new_supplier_id,
             type=new_type
         )
-        
+
         # Filter out current transaction
         duplicates = [d for d in duplicates if d.id != tx_id]
-        
+
         if duplicates:
              raise HTTPException(status_code=409, detail="זוהתה עסקה כפולה")
-    
+
     update_data = data.model_dump(exclude_unset=True)
     if 'allow_duplicate' in update_data:
         del update_data['allow_duplicate']
-    
+
     # Validate category if being updated (unless it's a cash register transaction)
     from_fund = update_data.get('from_fund', tx.from_fund if hasattr(tx, 'from_fund') else False)
     category_name = update_data.pop('category', None) if 'category' in update_data else None
@@ -554,12 +552,12 @@ async def update_transaction(tx_id: int, db: DBSessionDep, data: TransactionUpda
                 status_code=400,
                 detail="לא ניתן להסיר קטגוריה מעסקה רגילה. רק עסקאות קופה יכולות להיות ללא קטגוריה."
             )
-    
+
     for k, v in update_data.items():
         setattr(tx, k, v)
-    
+
     updated_tx = await repo.update(tx)
-    
+
     # Log update action with full details
     new_values = {k: str(v) for k, v in update_data.items()}
     await AuditService(db).log_transaction_action(
@@ -573,11 +571,11 @@ async def update_transaction(tx_id: int, db: DBSessionDep, data: TransactionUpda
             'new_values': new_values
         }
     )
-    
+
     # Convert to dict with user info
     from backend.repositories.user_repository import UserRepository
     user_repo = UserRepository(db)
-    
+
     result = {
         'id': updated_tx.id,
         'project_id': updated_tx.project_id,
@@ -598,7 +596,7 @@ async def update_transaction(tx_id: int, db: DBSessionDep, data: TransactionUpda
         'created_by_user': None,
         'recurring_template_id': getattr(updated_tx, 'recurring_template_id', None)
     }
-    
+
     # Load user info if exists
     if updated_tx.created_by_user_id:
         creator = await user_repo.get_by_id(updated_tx.created_by_user_id)
@@ -608,7 +606,7 @@ async def update_transaction(tx_id: int, db: DBSessionDep, data: TransactionUpda
                 'full_name': creator.full_name,
                 'email': creator.email
             }
-    
+
     return result
 
 
@@ -619,17 +617,17 @@ async def delete_transaction(tx_id: int, db: DBSessionDep, user = Depends(requir
     tx = await repo.get_by_id(tx_id)
     if not tx:
         raise HTTPException(status_code=404, detail="Transaction not found")
-    
+
     # Restore fund balance if this was a fund transaction
     if getattr(tx, 'from_fund', False) and tx.type == 'Expense':
         from backend.services.fund_service import FundService
         fund_service = FundService(db)
         await fund_service.refund_to_fund(tx.project_id, tx.amount)
-    
+
     # Get project name for audit log
     project = await ProjectRepository(db).get_by_id(tx.project_id)
     project_name = project.name if project else f"Project {tx.project_id}"
-    
+
     # Store transaction details for audit log
     tx_details = {
         'project_id': tx.project_id,
@@ -646,9 +644,9 @@ async def delete_transaction(tx_id: int, db: DBSessionDep, user = Depends(requir
         'is_generated': tx.is_generated,
         'file_path': tx.file_path
     }
-    
+
     await repo.delete(tx)
-    
+
     # Log delete action
     await AuditService(db).log_transaction_action(
         user_id=user.id,
@@ -656,5 +654,5 @@ async def delete_transaction(tx_id: int, db: DBSessionDep, user = Depends(requir
         transaction_id=tx_id,
         details=tx_details
     )
-    
+
     return {"ok": True}

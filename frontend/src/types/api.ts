@@ -106,6 +106,7 @@ export interface TransactionCreate {
   supplier_id?: number | null
   from_fund?: boolean
   allow_duplicate?: boolean
+  subproject_id?: number
 }
 
 // Dashboard-specific types
@@ -192,6 +193,7 @@ export interface RecurringTransactionTemplateCreate {
   end_type?: 'No End' | 'After Occurrences' | 'On Date'
   end_date?: string | null
   max_occurrences?: number | null
+  subproject_id?: number
 }
 
 export interface RecurringTransactionTemplate {
