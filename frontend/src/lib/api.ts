@@ -1,16 +1,10 @@
 import axios from 'axios'
 
-// ההגדרה של baseURL - משתמשת ב-relative path ב-production (עבור nginx proxy)
-// וב-localhost ב-development (או דרך vite proxy)
-const getBaseUrl = () => {
-  if (window._env_ && window._env_.VITE_API_URL) {
-    return window._env_.VITE_API_URL;
-  }
-  return import.meta.env.VITE_API_URL || '/api/v1';
-}
+
 
 const api = axios.create({
-  baseURL: getBaseUrl(),
+  baseURL:   'https://project-menager-1-1-0.onrender.com/api/v1/',
+
   timeout: 30000, // avoid ECONNABORTED on heavy endpoints during dev
   withCredentials: false,
 })
