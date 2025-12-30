@@ -1,4 +1,5 @@
-from sqlalchemy import func, select, and_
+from sqlalchemy import func, select, and_, or_
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import date
 from typing import List, Dict, Any
@@ -21,6 +22,137 @@ from openpyxl.styles import Font, PatternFill, Alignment
 class ReportService:
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    async def _calculate_expenses_with_period(
+        self,
+        project_id: int | None,
+        start_date: date,
+        end_date: date,
+        from_fund: bool = False
+    ) -> float:
+        """
+        Calculate total expenses for a period, handling both regular transactions (sum)
+        and period-based transactions (pro-rated split).
+        If project_id is None, calculates for all projects.
+        """
+        # 1. Regular expenses
+        query_regular = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
+            and_(
+                Transaction.type == "Expense",
+                Transaction.from_fund == from_fund,
+                Transaction.tx_date >= start_date,
+                Transaction.tx_date <= end_date,
+                or_(
+                    Transaction.period_start_date.is_(None),
+                    Transaction.period_end_date.is_(None)
+                )
+            )
+        )
+        
+        # 2. Period expenses
+        query_period = select(Transaction).where(
+            and_(
+                Transaction.type == "Expense",
+                Transaction.from_fund == from_fund,
+                Transaction.period_start_date.is_not(None),
+                Transaction.period_end_date.is_not(None),
+                Transaction.period_start_date <= end_date,
+                Transaction.period_end_date >= start_date
+            )
+        )
+        
+        if project_id is not None:
+            query_regular = query_regular.where(Transaction.project_id == project_id)
+            query_period = query_period.where(Transaction.project_id == project_id)
+            
+        regular_expense = float((await self.db.execute(query_regular)).scalar_one())
+        period_txs = (await self.db.execute(query_period)).scalars().all()
+        
+        period_expense = 0.0
+        for tx in period_txs:
+            total_days = (tx.period_end_date - tx.period_start_date).days + 1
+            if total_days <= 0: continue
+            
+            daily_rate = float(tx.amount) / total_days
+            overlap_start = max(tx.period_start_date, start_date)
+            overlap_end = min(tx.period_end_date, end_date)
+            overlap_days = (overlap_end - overlap_start).days + 1
+            
+            if overlap_days > 0:
+                period_expense += daily_rate * overlap_days
+                
+        return regular_expense + period_expense
+
+    async def _calculate_category_expenses_with_period(
+        self,
+        project_id: int | None,
+        start_date: date,
+        end_date: date,
+        from_fund: bool = False
+    ) -> Dict[str, float]:
+        """
+        Calculate expenses per category for a period, handling splitting.
+        Returns {category_name: amount}
+        If project_id is None, calculates for all projects.
+        """
+        # 1. Regular expenses grouped by category
+        query_regular = select(
+            Category.name.label('category'),
+            func.coalesce(func.sum(Transaction.amount), 0).label('total_amount')
+        ).outerjoin(
+            Category, Transaction.category_id == Category.id
+        ).where(
+            and_(
+                Transaction.type == "Expense",
+                Transaction.from_fund == from_fund,
+                Transaction.tx_date >= start_date,
+                Transaction.tx_date <= end_date,
+                or_(
+                    Transaction.period_start_date.is_(None),
+                    Transaction.period_end_date.is_(None)
+                )
+            )
+        ).group_by(Category.name)
+        
+        # 2. Period expenses
+        query_period = select(Transaction).options(selectinload(Transaction.category)).where(
+            and_(
+                Transaction.type == "Expense",
+                Transaction.from_fund == from_fund,
+                Transaction.period_start_date.is_not(None),
+                Transaction.period_end_date.is_not(None),
+                Transaction.period_start_date <= end_date,
+                Transaction.period_end_date >= start_date
+            )
+        )
+        
+        if project_id is not None:
+            query_regular = query_regular.where(Transaction.project_id == project_id)
+            query_period = query_period.where(Transaction.project_id == project_id)
+        
+        regular_results = await self.db.execute(query_regular)
+        category_expenses = {}
+        for row in regular_results:
+            cat_name = row.category or "אחר"
+            category_expenses[cat_name] = float(row.total_amount)
+            
+        period_txs = (await self.db.execute(query_period)).scalars().all()
+        
+        for tx in period_txs:
+            total_days = (tx.period_end_date - tx.period_start_date).days + 1
+            if total_days <= 0: continue
+            
+            daily_rate = float(tx.amount) / total_days
+            overlap_start = max(tx.period_start_date, start_date)
+            overlap_end = min(tx.period_end_date, end_date)
+            overlap_days = (overlap_end - overlap_start).days + 1
+            
+            if overlap_days > 0:
+                amount = daily_rate * overlap_days
+                cat_name = tx.category.name if tx.category else "אחר"
+                category_expenses[cat_name] = category_expenses.get(cat_name, 0.0) + amount
+                
+        return category_expenses
 
     async def project_profitability(self, project_id: int) -> dict:
         income_q = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
@@ -186,17 +318,13 @@ class ReportService:
                 yearly_income = 0.0
 
             try:
-                # Get expense transactions
-                yearly_expense_query = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
-                    and_(
-                        Transaction.project_id == project_id,
-                        Transaction.type == "Expense",
-                        Transaction.tx_date >= calculation_start_date,
-                        Transaction.tx_date <= current_date,
-                        Transaction.from_fund == False
-                    )
+                # Get expense transactions using pro-rata calculation
+                yearly_expense = await self._calculate_expenses_with_period(
+                    project_id,
+                    calculation_start_date,
+                    current_date,
+                    from_fund=False
                 )
-                yearly_expense = float((await self.db.execute(yearly_expense_query)).scalar_one())
             except Exception as e:
                 print(f"⚠️ Error getting expenses for project {project_id}: {e}")
                 try:
@@ -409,31 +537,23 @@ class ReportService:
             if project_start < earliest_start:
                 earliest_start = project_start
         
-        expense_categories_query = select(
-            Category.name.label('category'),
-            func.coalesce(func.sum(Transaction.amount), 0).label('total_amount')
-        ).outerjoin(
-            Category, Transaction.category_id == Category.id
-        ).where(
-            and_(
-                Transaction.type == "Expense",
-                Transaction.tx_date >= earliest_start,
-                Transaction.tx_date <= current_date,
-                Transaction.from_fund == False  # Exclude fund transactions
-            )
-        ).group_by(Category.name)
-        
         expense_categories = []
         try:
-            expense_categories_result = await self.db.execute(expense_categories_query)
-            for row in expense_categories_result:
-                if row.total_amount > 0:  # Only include categories with expenses
+            cat_expenses_map = await self._calculate_category_expenses_with_period(
+                None, # All projects
+                earliest_start,
+                current_date,
+                from_fund=False
+            )
+            for cat_name, amount in cat_expenses_map.items():
+                if amount > 0:
                     expense_categories.append({
-                        "category": row.category or "אחר",
-                        "amount": float(row.total_amount),
-                        "color": self._get_category_color(row.category)
+                        "category": cat_name,
+                        "amount": amount,
+                        "color": self._get_category_color(cat_name)
                     })
-        except Exception:
+        except Exception as e:
+            print(f"Error calculating expense categories: {e}")
             # If query fails, rollback and continue with empty categories
             try:
                 await self.db.rollback()
@@ -471,33 +591,24 @@ class ReportService:
 
     async def get_project_expense_categories(self, project_id: int) -> List[Dict[str, Any]]:
         """Get expense categories breakdown for a specific project"""
-        expense_categories_query = (
-            select(
-                Category.name.label('category_name'),
-                func.coalesce(func.sum(Transaction.amount), 0).label('total_amount')
-            )
-            .select_from(Transaction)
-            .outerjoin(Category, Transaction.category_id == Category.id)
-            .where(
-                and_(
-                    Transaction.project_id == project_id,
-                    Transaction.type == "Expense",
-                    Transaction.from_fund == False  # Exclude fund transactions
-                )
-            )
-            .group_by(Category.name)
+        # Calculate for all time (wide range)
+        start_date = date(2000, 1, 1)
+        end_date = date(2100, 1, 1)
+        
+        cat_expenses_map = await self._calculate_category_expenses_with_period(
+            project_id,
+            start_date,
+            end_date,
+            from_fund=False
         )
         
-        expense_categories_result = await self.db.execute(expense_categories_query)
         expense_categories = []
-        
-        for row in expense_categories_result:
-            if row.total_amount > 0:  # Only include categories with expenses
-                category_name = row.category_name or "אחר"
+        for cat_name, amount in cat_expenses_map.items():
+            if amount > 0:
                 expense_categories.append({
-                    "category": category_name,
-                    "amount": float(row.total_amount),
-                    "color": self._get_category_color(category_name)
+                    "category": cat_name,
+                    "amount": amount,
+                    "color": self._get_category_color(cat_name)
                 })
         
         return expense_categories

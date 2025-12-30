@@ -71,6 +71,46 @@ class TransactionService:
         result = await self.transactions.db.execute(query)
         return list(result.scalars().all())
 
+    async def check_period_overlap(
+        self,
+        project_id: int,
+        category_id: int | None,
+        period_start: date,
+        period_end: date,
+        exclude_tx_id: int | None = None
+    ):
+        from sqlalchemy import select, and_, or_
+        
+        # Only check if category is set (implied context: "Utility" tracking usually per category)
+        if not category_id:
+            return
+
+        query = select(Transaction).where(
+            and_(
+                Transaction.project_id == project_id,
+                Transaction.category_id == category_id,
+                Transaction.period_start_date.is_not(None),
+                Transaction.period_end_date.is_not(None),
+                # Overlap condition:
+                # (StartA <= EndB) and (EndA >= StartB)
+                Transaction.period_start_date <= period_end,
+                Transaction.period_end_date >= period_start
+            )
+        )
+        
+        if exclude_tx_id:
+            query = query.where(Transaction.id != exclude_tx_id)
+            
+        result = await self.transactions.db.execute(query)
+        overlapping = list(result.scalars().all())
+        
+        if overlapping:
+            # Format error
+            msg = "נמצאה חפיפה עם עסקאות קיימות לתקופה זו:\n"
+            for tx in overlapping:
+                msg += f"- {tx.period_start_date} עד {tx.period_end_date} (סכום: {tx.amount})\n"
+            raise ValueError(msg)
+
     async def create(self, **data) -> Transaction:
         # Validate category if provided (unless it's a cash register transaction)
         from_fund = data.get('from_fund', False)
@@ -87,6 +127,18 @@ class TransactionService:
         
         data['category_id'] = resolved_category.id if resolved_category else None
         
+        # Check period overlap if dates provided
+        if data.get('period_start_date') and data.get('period_end_date'):
+            if data['period_start_date'] > data['period_end_date']:
+                raise ValueError("תאריך התחלה חייב להיות לפני תאריך סיום")
+                
+            await self.check_period_overlap(
+                project_id=data['project_id'],
+                category_id=data['category_id'],
+                period_start=data['period_start_date'],
+                period_end=data['period_end_date']
+            )
+
         # Check for duplicate transactions (for invoice payments)
         # Skip check if allow_duplicate is True
         allow_duplicate = data.pop('allow_duplicate', False)

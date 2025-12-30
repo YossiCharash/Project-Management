@@ -60,6 +60,8 @@ export interface Transaction {
   supplier_id?: number | null
   created_at: string
   from_fund?: boolean
+  period_start_date?: string | null
+  period_end_date?: string | null
 }
 
 export interface BudgetCreate {
@@ -107,6 +109,8 @@ export interface TransactionCreate {
   from_fund?: boolean
   allow_duplicate?: boolean
   subproject_id?: number
+  period_start_date?: string | null
+  period_end_date?: string | null
 }
 
 // Dashboard-specific types

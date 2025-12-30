@@ -78,3 +78,7 @@ class Transaction(Base):
     
     # Fund-related fields
     from_fund: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+
+    # Period-based transaction fields
+    period_start_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    period_end_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)

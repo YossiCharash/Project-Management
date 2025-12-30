@@ -51,6 +51,11 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
   const [fundBalance, setFundBalance] = useState<number | null>(null)
   const [filesToUpload, setFilesToUpload] = useState<File[]>([])
   
+  // Period transaction states
+  const [isPeriodTransaction, setIsPeriodTransaction] = useState(false)
+  const [periodStartDate, setPeriodStartDate] = useState('')
+  const [periodEndDate, setPeriodEndDate] = useState('')
+  
   // Recurring transaction states
   const [recurringFormData, setRecurringFormData] = useState<RecurringTransactionTemplateCreate>({
     project_id: projectId,
@@ -152,6 +157,10 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
     setIsExceptional(false)
     setFromFund(false)
     setFilesToUpload([])
+    
+    setIsPeriodTransaction(false)
+    setPeriodStartDate('')
+    setPeriodEndDate('')
     
     // Reset recurring transaction form
     setRecurringFormData({
@@ -261,6 +270,17 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
       return
     }
 
+    if (isPeriodTransaction) {
+      if (!periodStartDate || !periodEndDate) {
+        setError('יש להזין תאריכי התחלה וסיום לתקופה')
+        return
+      }
+      if (periodStartDate > periodEndDate) {
+        setError('תאריך התחלה חייב להיות לפני תאריך סיום')
+        return
+      }
+    }
+
     // Allow negative fund balance - removed validation that prevented it
 
     setLoading(true)
@@ -279,7 +299,9 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
         supplier_id: supplierId ? Number(supplierId) : undefined,
         is_exceptional: isExceptional,
         from_fund: fromFund && type === 'Expense' ? true : false,
-        subproject_id: subprojectId ? Number(subprojectId) : undefined
+        subproject_id: subprojectId ? Number(subprojectId) : undefined,
+        period_start_date: isPeriodTransaction ? periodStartDate : undefined,
+        period_end_date: isPeriodTransaction ? periodEndDate : undefined
       }
 
       let response
@@ -557,7 +579,47 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
                       onChange={e => setTxDate(e.target.value)}
                       required
                     />
+                    {type === 'Expense' && (
+                        <div className="mt-2 flex items-center gap-2">
+                            <input
+                                id="isPeriod"
+                                type="checkbox"
+                                checked={isPeriodTransaction}
+                                onChange={e => setIsPeriodTransaction(e.target.checked)}
+                                className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+                            />
+                            <label htmlFor="isPeriod" className="text-sm text-gray-600 dark:text-gray-400">הוגדר כתקופתי (חשבונות וכו')</label>
+                        </div>
+                    )}
                   </div>
+
+                  {isPeriodTransaction && type === 'Expense' && (
+                    <div className="md:col-span-2 grid grid-cols-2 gap-4 bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg border border-blue-100 dark:border-blue-800">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">תחילת תקופה *</label>
+                            <input
+                                className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                type="date"
+                                value={periodStartDate}
+                                onChange={e => setPeriodStartDate(e.target.value)}
+                                required={isPeriodTransaction}
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">סיום תקופה *</label>
+                            <input
+                                className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                type="date"
+                                value={periodEndDate}
+                                onChange={e => setPeriodEndDate(e.target.value)}
+                                required={isPeriodTransaction}
+                            />
+                        </div>
+                        <div className="col-span-2 text-xs text-blue-600 dark:text-blue-400">
+                            ℹ️ ההוצאה תחולק יחסית לכל חודש בדוחות לפי מספר הימים בחודש
+                        </div>
+                    </div>
+                  )}
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">סכום *</label>

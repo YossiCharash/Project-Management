@@ -217,6 +217,70 @@ class ProjectService:
         }
         return project_data
 
+    async def calculate_period_expenses(
+        self,
+        project_id: int,
+        start_date: date,
+        end_date: date,
+        from_fund: bool = False
+    ) -> float:
+        """
+        Calculate total expenses for a period, handling both regular transactions (sum)
+        and period-based transactions (pro-rated split).
+        """
+        from sqlalchemy import select, and_, func, or_
+        from backend.models.transaction import Transaction
+
+        # 1. Regular expenses (no period dates) in range
+        query_regular = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
+            and_(
+                Transaction.project_id == project_id,
+                Transaction.type == "Expense",
+                Transaction.from_fund == from_fund,
+                Transaction.tx_date >= start_date,
+                Transaction.tx_date <= end_date,
+                # Explicitly exclude period transactions
+                or_(
+                    Transaction.period_start_date.is_(None),
+                    Transaction.period_end_date.is_(None)
+                )
+            )
+        )
+        regular_expense = float((await self.db.execute(query_regular)).scalar_one())
+        
+        # 2. Period expenses that overlap with range
+        query_period = select(Transaction).where(
+            and_(
+                Transaction.project_id == project_id,
+                Transaction.type == "Expense",
+                Transaction.from_fund == from_fund,
+                Transaction.period_start_date.is_not(None),
+                Transaction.period_end_date.is_not(None),
+                # Overlap: (StartA <= EndB) and (EndA >= StartB)
+                Transaction.period_start_date <= end_date,
+                Transaction.period_end_date >= start_date
+            )
+        )
+        period_txs = (await self.db.execute(query_period)).scalars().all()
+        
+        period_expense = 0.0
+        for tx in period_txs:
+            # Total duration of the transaction
+            total_days = (tx.period_end_date - tx.period_start_date).days + 1
+            if total_days <= 0: continue
+            
+            daily_rate = float(tx.amount) / total_days
+            
+            # Calculate overlap with [start_date, end_date]
+            overlap_start = max(tx.period_start_date, start_date)
+            overlap_end = min(tx.period_end_date, end_date)
+            
+            overlap_days = (overlap_end - overlap_start).days + 1
+            if overlap_days > 0:
+                period_expense += daily_rate * overlap_days
+                
+        return regular_expense + period_expense
+
     async def get_project_financial_data(self, project_id: int) -> dict:
         """Get real-time financial calculations for a project - from project start date until now
         Only actual transactions are counted - budget is NOT included in income"""
@@ -255,18 +319,16 @@ class ProjectService:
                 Transaction.from_fund == False  # Exclude fund transactions
             )
         )
-        actual_expense_query = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
-            and_(
-                Transaction.project_id == project_id,
-                Transaction.type == "Expense",
-                Transaction.tx_date >= calculation_start_date,
-                Transaction.tx_date <= current_date,
-                Transaction.from_fund == False  # Exclude fund transactions
-            )
-        )
         
         actual_income = float((await self.db.execute(actual_income_query)).scalar_one())
-        actual_expense = float((await self.db.execute(actual_expense_query)).scalar_one())
+        
+        # Calculate expenses using the new logic that handles period splitting
+        actual_expense = await self.calculate_period_expenses(
+            project_id, 
+            calculation_start_date, 
+            current_date, 
+            from_fund=False
+        )
         
         # Calculate recurring transactions (especially monthly) from start_date to now
         recurring_income = await calculate_recurring_transactions_amount(
