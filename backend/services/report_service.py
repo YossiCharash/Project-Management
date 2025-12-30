@@ -590,6 +590,7 @@ class ReportService:
         """Generate a custom report (PDF, Excel, or ZIP) based on options"""
         # options is expected to be ReportOptions instance, but using dynamic typing to avoid circular import at module level
         from backend.schemas.report import ReportOptions
+        from sqlalchemy.orm import selectinload
         
         # 1. Fetch data based on options
         project_id = options.project_id
@@ -600,7 +601,7 @@ class ReportService:
         # --- Transactions ---
         transactions = []
         if options.include_transactions:
-            query = select(Transaction).where(Transaction.project_id == project_id)
+            query = select(Transaction).options(selectinload(Transaction.category)).where(Transaction.project_id == project_id)
             if options.start_date:
                 query = query.where(Transaction.tx_date >= options.start_date)
             if options.end_date:
