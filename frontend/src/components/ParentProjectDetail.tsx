@@ -4,7 +4,6 @@ import { motion } from 'framer-motion'
 import { 
   ArrowLeft, 
   DollarSign,
-  MapPin,
   RefreshCw,
   Plus,
   Edit
@@ -1210,68 +1209,6 @@ export default function ParentProjectDetail() {
         </div>
       </motion.div>
 
-      {/* Parent Project Details */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
-        className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6"
-      >
-        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">{HebrewText.projects.projectDetails}</h2>
-        
-        {parentProject.image_url && (
-          <div className="mb-6 rounded-lg overflow-hidden">
-            {(() => {
-              const rawUrl = parentProject.image_url
-              // If backend already returned full URL (S3 / CloudFront), use as-is
-              if (rawUrl.startsWith('http')) {
-                return (
-                  <img
-                    src={rawUrl}
-                    alt={parentProject.name}
-                    className="w-full h-64 object-cover"
-                  />
-                )
-              }
-              const apiUrl = import.meta.env.VITE_API_URL || ''
-              // @ts-ignore
-              const baseUrl = apiUrl ? apiUrl.replace('/api/v1', '') : ''
-              const imageUrl = `${baseUrl}/uploads/${rawUrl}`
-              return (
-                <img
-                  src={imageUrl}
-                  alt={parentProject.name}
-                  className="w-full h-64 object-cover"
-                />
-              )
-            })()}
-          </div>
-        )}
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {parentProject.description && (
-            <div>
-              <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{HebrewText.projects.projectDescription}</div>
-              <div className="text-gray-900 dark:text-white">{parentProject.description}</div>
-            </div>
-          )}
-          
-          {parentProject.address && (
-            <div className="flex items-center gap-2">
-              <MapPin className="w-4 h-4 text-gray-400" />
-              <div>
-                <div className="text-sm font-medium text-gray-700 dark:text-gray-300">{HebrewText.projects.projectAddress}</div>
-                <div className="text-gray-900 dark:text-white">{parentProject.address}</div>
-                {parentProject.city && (
-                  <div className="text-sm text-gray-600 dark:text-gray-400">{parentProject.city}</div>
-                )}
-              </div>
-            </div>
-          )}
-          
-          {/* Removed num_residents, monthly_price_per_apartment, and budget display - dashboard is financial only */}
-        </div>
-      </motion.div>
 
       {/* Date Selector removed - moved to Financial Summary */}
 

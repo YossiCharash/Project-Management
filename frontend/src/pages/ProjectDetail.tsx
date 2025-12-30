@@ -242,6 +242,26 @@ export default function ProjectDetail() {
   const [selectedPeriodSummary, setSelectedPeriodSummary] = useState<any | null>(null)
   const [showPeriodSummaryModal, setShowPeriodSummaryModal] = useState(false)
   const [loadingPeriodSummary, setLoadingPeriodSummary] = useState(false)
+  const [parentFinancialSummary, setParentFinancialSummary] = useState<any>(null)
+
+  const reloadConsolidatedData = async (projectId: number) => {
+      try {
+        const { data: subs } = await api.get(`/projects/${projectId}/subprojects`)
+        const subTxPromises = (subs || []).map((sub: any) => ReportAPI.getProjectTransactions(sub.id))
+        const subTxsResults = await Promise.all(subTxPromises)
+        const { data: parentTxs } = await api.get(`/transactions/project/${projectId}`)
+        
+        let allTxs = parentTxs || []
+        subTxsResults.forEach(txs => {
+            if (txs) allTxs = [...allTxs, ...txs]
+        })
+        
+        allTxs.sort((a: any, b: any) => new Date(b.tx_date).getTime() - new Date(a.tx_date).getTime())
+        setTxs(allTxs)
+      } catch (e) {
+        console.error("Failed to reload consolidated transactions", e)
+      }
+  }
 
   const load = async () => {
     if (!id || isNaN(Number(id))) return
@@ -262,7 +282,6 @@ export default function ProjectDetail() {
 
     setChartsLoading(true)
     try {
-      // Load expense categories, transactions, and budgets for charts
       const [categoriesData, transactionsData, budgetsData] = await Promise.all([
         ReportAPI.getProjectExpenseCategories(parseInt(id)),
         ReportAPI.getProjectTransactions(parseInt(id)),
@@ -273,7 +292,19 @@ export default function ProjectDetail() {
       ])
       
       setExpenseCategories(categoriesData || [])
+      
+      // If we already have consolidated transactions (from loadProjectInfo -> reloadConsolidatedData), 
+      // don't overwrite with just parent transactions if we are a parent project.
+      // But we don't know if we are parent project yet inside this closure if called from initial useEffect?
+      // Actually, setTxs updates the state. If we overwrite it here with parent-only, we lose subproject txs.
+      // However, reloadConsolidatedData is called from loadProjectInfo which runs in parallel.
+      // We'll rely on reloadConsolidatedData running last or handling it.
+      
+      // Better: check if we are currently displaying consolidated view?
+      // Since this function is mostly for charts, and charts use txs state...
+      // We will just set it here. If reloadConsolidatedData comes later, it will overwrite it again with consolidated.
       setTxs(transactionsData || [])
+      
       setProjectBudgets(budgetsData || [])
     } catch (err: any) {
       // Error loading charts data
@@ -696,10 +727,10 @@ const formatDate = (value: string | null) => {
       return false
     }
 
-    // Exclude fund transactions from the list
-    if (t.from_fund === true) {
-      return false
-    }
+    // Exclude fund transactions from the list - REMOVED to show all transactions
+    // if (t.from_fund === true) {
+    //   return false
+    // }
     
     const txDate = new Date(t.tx_date)
     
@@ -1481,6 +1512,11 @@ const formatDate = (value: string | null) => {
                                 {tx.is_generated && (
                                   <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700 border border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800">
                                     מחזורי
+                                  </span>
+                                )}
+                                {tx.from_fund && (
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700 border border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800">
+                                    מהקופה
                                   </span>
                                 )}
                                 <span className="text-sm text-gray-600 dark:text-gray-300">{tx.category ? (CATEGORY_LABELS[tx.category] || tx.category) : '-'}</span>

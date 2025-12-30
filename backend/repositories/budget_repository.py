@@ -98,7 +98,7 @@ class BudgetRepository:
             and_(
                 Transaction.project_id == budget.project_id,
                 Transaction.type == "Expense",
-                Transaction.category_id.in_(category_ids),  # Use IN for multiple IDs
+                Transaction.category_id.in_(category_ids),
                 Transaction.tx_date >= start_date,
                 Transaction.tx_date <= end_date,
                 Transaction.from_fund == False  # Exclude fund transactions

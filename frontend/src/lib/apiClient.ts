@@ -186,6 +186,33 @@ export class ProjectAPI {
     const { data } = await api.post(`/projects/${projectId}/check-contract-renewal`)
     return data
   }
+
+  // Get parent project financial summary
+  static async getParentProjectFinancialSummary(projectId: number, startDate?: string, endDate?: string): Promise<{
+    parent_project: any
+    financial_summary: {
+      total_income: number
+      total_expense: number
+      net_profit: number
+      profit_margin: number
+      subproject_count: number
+      active_subprojects: number
+    }
+    parent_financials: any
+    subprojects_financials: any[]
+  }> {
+    let url = `/projects/${projectId}/financial-summary`
+    const params = new URLSearchParams()
+    if (startDate) params.append('start_date', startDate)
+    if (endDate) params.append('end_date', endDate)
+    
+    if (params.toString()) {
+      url += `?${params.toString()}`
+    }
+    
+    const { data } = await api.get(url)
+    return data
+  }
 }
 
 export class TransactionAPI {

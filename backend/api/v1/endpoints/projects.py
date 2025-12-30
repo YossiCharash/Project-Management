@@ -761,8 +761,8 @@ async def get_parent_project_financial_summary(
     parent_transactions = parent_transactions_result.scalars().all()
     
     # Calculate parent project financials
-    parent_transaction_income = sum(t.amount for t in parent_transactions if t.type == 'Income' and not t.from_fund)
-    parent_expense = sum(t.amount for t in parent_transactions if t.type == 'Expense' and not t.from_fund)
+    parent_transaction_income = sum(float(t.amount) for t in parent_transactions if t.type == 'Income' and not t.from_fund)
+    parent_expense = sum(float(t.amount) for t in parent_transactions if t.type == 'Expense' and not t.from_fund)
     
     # Calculate income from parent project's monthly budget (treated as expected monthly income)
     parent_project_income = 0.0
@@ -806,8 +806,8 @@ async def get_parent_project_financial_summary(
         subproject_transactions_result = await db.execute(subproject_transactions_query)
         subproject_transactions = subproject_transactions_result.scalars().all()
         
-        subproject_transaction_income = sum(t.amount for t in subproject_transactions if t.type == 'Income' and not t.from_fund)
-        subproject_expense = sum(t.amount for t in subproject_transactions if t.type == 'Expense' and not t.from_fund)
+        subproject_transaction_income = sum(float(t.amount) for t in subproject_transactions if t.type == 'Income' and not t.from_fund)
+        subproject_expense = sum(float(t.amount) for t in subproject_transactions if t.type == 'Expense' and not t.from_fund)
         
         # Calculate income from subproject monthly budget (treated as expected monthly income)
         subproject_project_income = 0.0
