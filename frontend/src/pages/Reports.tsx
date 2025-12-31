@@ -15,7 +15,7 @@ interface Report {
 }
 interface Project { id: number; name: string; start_date?: string | null; end_date?: string | null }
 interface Category { id: number; name: string }
-interface Supplier { id: number; name: string }
+interface Supplier { id: number; name: string; is_active?: boolean }
 
 export default function Reports() {
   const [projects, setProjects] = useState<Project[]>([])
@@ -45,6 +45,21 @@ export default function Reports() {
   const [includeContract, setIncludeContract] = useState(false)
   const [includeImage, setIncludeImage] = useState(false)
   const [showZipOptions, setShowZipOptions] = useState(false)
+
+  // Chart Options
+  const [includeCharts, setIncludeCharts] = useState(false)
+  const [selectedChartTypes, setSelectedChartTypes] = useState<string[]>([])
+
+  // Supplier Report State
+  const [selectedSupplierId, setSelectedSupplierId] = useState<string>('')
+  const [supplierStartDate, setSupplierStartDate] = useState('')
+  const [supplierEndDate, setSupplierEndDate] = useState('')
+  const [supplierTxType, setSupplierTxType] = useState<string[]>([])
+  const [supplierOnlyRecurring, setSupplierOnlyRecurring] = useState(false)
+  const [supplierSelectedCategories, setSupplierSelectedCategories] = useState<string[]>([])
+  const [supplierSelectedProjects, setSupplierSelectedProjects] = useState<number[]>([])
+  const [supplierShowAdvancedFilters, setSupplierShowAdvancedFilters] = useState(false)
+  const [generatingSupplierReport, setGeneratingSupplierReport] = useState(false)
 
   useEffect(() => {
     const fetchProjects = async () => {
@@ -136,6 +151,8 @@ export default function Reports() {
           suppliers: selectedSuppliers.length > 0 ? selectedSuppliers : null,
           include_project_contract: format === 'zip' ? includeContract : false,
           include_project_image: format === 'zip' ? includeImage : false,
+          include_charts: includeCharts,
+          chart_types: includeCharts && selectedChartTypes.length > 0 ? selectedChartTypes : null,
           format: format
       }
 
@@ -170,11 +187,50 @@ export default function Reports() {
       }
   }
 
-  const toggleTxType = (type: string) => {
-      if (txType.includes(type)) {
-          setTxType(txType.filter(t => t !== type))
-      } else {
-          setTxType([...txType, type])
+  const handleSupplierDownload = async (format: 'pdf' | 'excel' | 'zip') => {
+      if (!selectedSupplierId) {
+          alert("אנא בחר ספק")
+          return
+      }
+
+      setGeneratingSupplierReport(true)
+      
+      const payload = {
+          supplier_id: Number(selectedSupplierId),
+          start_date: supplierStartDate || null,
+          end_date: supplierEndDate || null,
+          include_transactions: true,
+          transaction_types: supplierTxType.length > 0 ? supplierTxType : ["Income", "Expense"],
+          only_recurring: supplierOnlyRecurring,
+          categories: supplierSelectedCategories.length > 0 ? supplierSelectedCategories : null,
+          project_ids: supplierSelectedProjects.length > 0 ? supplierSelectedProjects : null,
+          format: format
+      }
+
+      try {
+        const response = await api.post(`/reports/supplier/${selectedSupplierId}/custom-report`, payload, { responseType: 'blob' })
+        const url = window.URL.createObjectURL(new Blob([response.data]));
+        const link = document.createElement('a');
+        link.href = url;
+        
+        let filename = `supplier_${selectedSupplierId}_report.${format === 'excel' ? 'xlsx' : format}`;
+        const contentDisposition = response.headers['content-disposition'];
+        if (contentDisposition) {
+            const filenameMatch = contentDisposition.match(/filename\*=UTF-8''(.+)/) || contentDisposition.match(/filename="?([^"]+)"?/);
+            if (filenameMatch && filenameMatch[1]) {
+                filename = decodeURIComponent(filenameMatch[1]);
+            }
+        }
+        
+        link.setAttribute('download', filename);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      } catch (e) {
+          console.error("Supplier report export failed", e)
+          alert("שגיאה בהפקת דוח הספק")
+      } finally {
+          setGeneratingSupplierReport(false)
       }
   }
 
@@ -280,6 +336,82 @@ export default function Reports() {
                               רשימת עסקאות
                           </label>
                       </div>
+                  </div>
+
+                  {/* Charts Section */}
+                  <div>
+                      <label className="flex items-center gap-2 cursor-pointer dark:text-gray-300 mb-2">
+                          <input type="checkbox" checked={includeCharts} onChange={e => setIncludeCharts(e.target.checked)} className="rounded text-blue-600" />
+                          <span className="font-medium">הוסף גרפים</span>
+                      </label>
+                      
+                      {includeCharts && (
+                          <div className="bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg text-sm space-y-2 mt-2">
+                              <label className="block text-xs font-medium text-gray-500 mb-1">בחר סוגי גרפים:</label>
+                              <div className="grid grid-cols-2 gap-2">
+                                  <label className="flex items-center gap-2 cursor-pointer dark:text-gray-300">
+                                      <input 
+                                          type="checkbox" 
+                                          checked={selectedChartTypes.includes('income_expense_pie')} 
+                                          onChange={e => {
+                                              if (e.target.checked) {
+                                                  setSelectedChartTypes([...selectedChartTypes, 'income_expense_pie'])
+                                              } else {
+                                                  setSelectedChartTypes(selectedChartTypes.filter(t => t !== 'income_expense_pie'))
+                                              }
+                                          }} 
+                                          className="rounded text-blue-600" 
+                                      />
+                                      עוגה: הכנסות מול הוצאות
+                                  </label>
+                                  <label className="flex items-center gap-2 cursor-pointer dark:text-gray-300">
+                                      <input 
+                                          type="checkbox" 
+                                          checked={selectedChartTypes.includes('expense_by_category_pie')} 
+                                          onChange={e => {
+                                              if (e.target.checked) {
+                                                  setSelectedChartTypes([...selectedChartTypes, 'expense_by_category_pie'])
+                                              } else {
+                                                  setSelectedChartTypes(selectedChartTypes.filter(t => t !== 'expense_by_category_pie'))
+                                              }
+                                          }} 
+                                          className="rounded text-blue-600" 
+                                      />
+                                      עוגה: הוצאות לפי קטגוריה
+                                  </label>
+                                  <label className="flex items-center gap-2 cursor-pointer dark:text-gray-300">
+                                      <input 
+                                          type="checkbox" 
+                                          checked={selectedChartTypes.includes('expense_by_category_bar')} 
+                                          onChange={e => {
+                                              if (e.target.checked) {
+                                                  setSelectedChartTypes([...selectedChartTypes, 'expense_by_category_bar'])
+                                              } else {
+                                                  setSelectedChartTypes(selectedChartTypes.filter(t => t !== 'expense_by_category_bar'))
+                                              }
+                                          }} 
+                                          className="rounded text-blue-600" 
+                                      />
+                                      עמודות: הוצאות לפי קטגוריה
+                                  </label>
+                                  <label className="flex items-center gap-2 cursor-pointer dark:text-gray-300">
+                                      <input 
+                                          type="checkbox" 
+                                          checked={selectedChartTypes.includes('trends_line')} 
+                                          onChange={e => {
+                                              if (e.target.checked) {
+                                                  setSelectedChartTypes([...selectedChartTypes, 'trends_line'])
+                                              } else {
+                                                  setSelectedChartTypes(selectedChartTypes.filter(t => t !== 'trends_line'))
+                                              }
+                                          }} 
+                                          className="rounded text-blue-600" 
+                                      />
+                                      קו: מגמות לאורך זמן
+                                  </label>
+                              </div>
+                          </div>
+                      )}
                   </div>
 
                   {/* Transactions Filters (Conditional) */}
@@ -413,6 +545,168 @@ export default function Reports() {
                   
                   {generating && !showZipOptions && <p className="text-center text-xs text-gray-500 animate-pulse">מפיק דוח... נא להמתין</p>}
               </div>
+          </div>
+      </div>
+
+      {/* Supplier Report Section */}
+      <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
+          <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">דוח ספק</h2>
+          
+          <div className="space-y-4">
+              {/* Supplier Selector */}
+              <div>
+                  <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">בחר ספק</label>
+                  <select 
+                    className="w-full md:w-64 border border-gray-300 dark:border-gray-600 p-2 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white" 
+                    value={selectedSupplierId} 
+                    onChange={e => setSelectedSupplierId(e.target.value)}
+                  >
+                      <option value="">-- בחר ספק --</option>
+                      {suppliers.filter(s => s.is_active !== false).map(sup => (
+                          <option key={sup.id} value={sup.id}>{sup.name}</option>
+                      ))}
+                  </select>
+              </div>
+
+              {/* Date Range */}
+              <div className="grid grid-cols-2 gap-4">
+                  <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">מתאריך</label>
+                      <input 
+                        type="date" 
+                        className="w-full border border-gray-300 dark:border-gray-600 rounded p-1.5 dark:bg-gray-700 dark:text-white" 
+                        value={supplierStartDate} 
+                        onChange={e => setSupplierStartDate(e.target.value)} 
+                      />
+                  </div>
+                  <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">עד תאריך</label>
+                      <input 
+                        type="date" 
+                        className="w-full border border-gray-300 dark:border-gray-600 rounded p-1.5 dark:bg-gray-700 dark:text-white" 
+                        value={supplierEndDate} 
+                        onChange={e => setSupplierEndDate(e.target.value)} 
+                      />
+                  </div>
+              </div>
+
+              {/* Advanced Filters */}
+              <div className="bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg text-sm">
+                  <div className="flex justify-between items-center mb-2 cursor-pointer" onClick={() => setSupplierShowAdvancedFilters(!supplierShowAdvancedFilters)}>
+                      <label className="block text-xs font-medium text-gray-500 cursor-pointer">סינון מתקדם</label>
+                      {supplierShowAdvancedFilters ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+                  </div>
+                  
+                  {supplierShowAdvancedFilters && (
+                      <div className="space-y-3 pt-2 border-t dark:border-gray-600">
+                          <div className="flex gap-4">
+                              <label className="flex items-center gap-1 cursor-pointer dark:text-gray-300">
+                                  <input 
+                                    type="checkbox" 
+                                    checked={supplierTxType.length === 0 || (supplierTxType.includes('Income') && supplierTxType.includes('Expense'))} 
+                                    onChange={() => setSupplierTxType([])}
+                                    className="rounded text-blue-600" 
+                                  />
+                                  הכל
+                              </label>
+                              <label className="flex items-center gap-1 cursor-pointer dark:text-gray-300">
+                                  <input 
+                                    type="checkbox" 
+                                    checked={supplierTxType.includes('Income') && !supplierTxType.includes('Expense')} 
+                                    onChange={() => setSupplierTxType(['Income'])}
+                                    className="rounded text-blue-600" 
+                                  />
+                                  רק הכנסות
+                              </label>
+                              <label className="flex items-center gap-1 cursor-pointer dark:text-gray-300">
+                                  <input 
+                                    type="checkbox" 
+                                    checked={supplierTxType.includes('Expense') && !supplierTxType.includes('Income')} 
+                                    onChange={() => setSupplierTxType(['Expense'])}
+                                    className="rounded text-blue-600" 
+                                  />
+                                  רק הוצאות
+                              </label>
+                          </div>
+                          
+                          <label className="flex items-center gap-2 cursor-pointer dark:text-gray-300">
+                              <input 
+                                type="checkbox" 
+                                checked={supplierOnlyRecurring} 
+                                onChange={e => setSupplierOnlyRecurring(e.target.checked)} 
+                                className="rounded text-blue-600" 
+                              />
+                              רק עסקאות מחזוריות (קבועות)
+                          </label>
+
+                          <div>
+                              <label className="block text-xs font-medium text-gray-500 mb-1">קטגוריות</label>
+                              <select 
+                                  multiple 
+                                  className="w-full border border-gray-300 dark:border-gray-600 rounded p-1.5 dark:bg-gray-700 dark:text-white h-24 text-xs"
+                                  value={supplierSelectedCategories}
+                                  onChange={e => {
+                                      const options = Array.from(e.target.selectedOptions, option => option.value);
+                                      setSupplierSelectedCategories(options);
+                                  }}
+                              >
+                                  {categories.map(cat => (
+                                      <option key={cat.id} value={cat.name}>{cat.name}</option>
+                                  ))}
+                              </select>
+                              <div className="text-[10px] text-gray-400 mt-1">לחץ Ctrl לבחירה מרובה</div>
+                          </div>
+
+                          <div>
+                              <label className="block text-xs font-medium text-gray-500 mb-1">פרויקטים</label>
+                              <select 
+                                  multiple 
+                                  className="w-full border border-gray-300 dark:border-gray-600 rounded p-1.5 dark:bg-gray-700 dark:text-white h-24 text-xs"
+                                  value={supplierSelectedProjects.map(String)}
+                                  onChange={e => {
+                                      const options = Array.from(e.target.selectedOptions, option => Number(option.value));
+                                      setSupplierSelectedProjects(options);
+                                  }}
+                              >
+                                  {projects.map(proj => (
+                                      <option key={proj.id} value={proj.id}>{proj.name}</option>
+                                  ))}
+                              </select>
+                              <div className="text-[10px] text-gray-400 mt-1">לחץ Ctrl לבחירה מרובה (אופציונלי - אם לא נבחר, יוצגו כל הפרויקטים)</div>
+                          </div>
+                      </div>
+                  )}
+              </div>
+
+              {/* Download Buttons */}
+              <div className="pt-4 flex gap-3">
+                  <button 
+                      onClick={() => handleSupplierDownload('pdf')}
+                      disabled={generatingSupplierReport || !selectedSupplierId}
+                      className="flex-1 py-2 px-3 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+                  >
+                      <FileText className="w-4 h-4" />
+                      PDF
+                  </button>
+                  <button 
+                      onClick={() => handleSupplierDownload('excel')}
+                      disabled={generatingSupplierReport || !selectedSupplierId}
+                      className="flex-1 py-2 px-3 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+                  >
+                      <Download className="w-4 h-4" />
+                      Excel
+                  </button>
+                  <button 
+                      onClick={() => handleSupplierDownload('zip')}
+                      disabled={generatingSupplierReport || !selectedSupplierId}
+                      className="flex-1 py-2 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+                  >
+                      <Archive className="w-4 h-4" />
+                      ZIP (עם מסמכים)
+                  </button>
+              </div>
+              
+              {generatingSupplierReport && <p className="text-center text-xs text-gray-500 animate-pulse">מפיק דוח ספק... נא להמתין</p>}
           </div>
       </div>
     </div>

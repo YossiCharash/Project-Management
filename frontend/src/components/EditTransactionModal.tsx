@@ -30,7 +30,9 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     payment_method: '',
     notes: '',
     is_exceptional: false,
-    supplier_id: undefined
+    supplier_id: undefined,
+    period_start_date: undefined,
+    period_end_date: undefined
   })
 
   const [loading, setLoading] = useState(false)
@@ -135,6 +137,8 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     }
   }
 
+  const [isPeriodTransaction, setIsPeriodTransaction] = useState(false)
+
   useEffect(() => {
     if (transaction && isOpen) {
       setFormData({
@@ -146,8 +150,18 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
         payment_method: transaction.payment_method || '',
         notes: transaction.notes || '',
         is_exceptional: transaction.is_exceptional || false,
-        supplier_id: (transaction as any).supplier_id || undefined
+        supplier_id: (transaction as any).supplier_id || undefined,
+        period_start_date: transaction.period_start_date || undefined,
+        period_end_date: transaction.period_end_date || undefined
       })
+      
+      // Check if it's a period transaction (has dates set)
+      if (transaction.period_start_date && transaction.period_end_date) {
+        setIsPeriodTransaction(true)
+      } else {
+        setIsPeriodTransaction(false)
+      }
+
       // Load documents when transaction changes
       loadDocuments()
     }
@@ -163,7 +177,9 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
       payment_method: '',
       notes: '',
       is_exceptional: false,
-      supplier_id: undefined
+      supplier_id: undefined,
+      period_start_date: undefined,
+      period_end_date: undefined
     })
     setError(null)
     setDocuments([])
@@ -209,6 +225,16 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
       return
     }
 
+    if (formData.period_start_date && formData.period_end_date) {
+        if (formData.period_start_date > formData.period_end_date) {
+            setError('תאריך התחלה חייב להיות לפני תאריך סיום')
+            return
+        }
+    } else if (isPeriodTransaction) {
+        setError('עסקה תקופתית חייבת לכלול תאריכי התחלה וסיום')
+        return
+    }
+
     setLoading(true)
     setError(null)
 
@@ -221,7 +247,9 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
       payment_method: formData.payment_method || undefined,
       notes: formData.notes || undefined,
       is_exceptional: formData.is_exceptional,
-      supplier_id: formData.supplier_id!
+      supplier_id: formData.supplier_id!,
+      period_start_date: formData.period_start_date || null,
+      period_end_date: formData.period_end_date || null
     }
 
     try {
@@ -290,11 +318,17 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                 required
                 value={formData.type}
                 onChange={(e) => setFormData({ ...formData, type: e.target.value as 'Income' | 'Expense' })}
-                className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                disabled={isPeriodTransaction}
+                className={`w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white ${isPeriodTransaction ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 <option value="Expense">הוצאה</option>
                 <option value="Income">הכנסה</option>
               </select>
+              {isPeriodTransaction && (
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  לא ניתן לשנות סוג לעסקה תקופתית
+                </p>
+              )}
             </div>
 
             <div>
@@ -309,6 +343,36 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                 className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
               />
             </div>
+
+            {formData.type === 'Expense' && (
+                <div className={`col-span-2 p-3 rounded-lg border grid grid-cols-2 gap-4 mt-2 ${isPeriodTransaction ? 'bg-blue-100 dark:bg-blue-900/40 border-blue-300 dark:border-blue-700' : 'bg-blue-50 dark:bg-blue-900/20 border-blue-100 dark:border-blue-800'}`}>
+                     <div className="col-span-2 flex items-center gap-2 mb-2">
+                        <span className={`text-sm font-medium ${isPeriodTransaction ? 'text-blue-900 dark:text-blue-200 font-bold' : 'text-blue-800 dark:text-blue-300'}`}>
+                            {isPeriodTransaction ? 'תקופת תשלום (חובה לערוך)' : 'תקופת תשלום (אופציונלי)'}
+                        </span>
+                     </div>
+                     <div>
+                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">תאריך התחלה {isPeriodTransaction && '*'}</label>
+                        <input
+                            type="date"
+                            value={formData.period_start_date || ''}
+                            onChange={(e) => setFormData({ ...formData, period_start_date: e.target.value || undefined })}
+                            required={isPeriodTransaction}
+                            className="w-full px-2 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                     </div>
+                     <div>
+                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">תאריך סיום {isPeriodTransaction && '*'}</label>
+                        <input
+                            type="date"
+                            value={formData.period_end_date || ''}
+                            onChange={(e) => setFormData({ ...formData, period_end_date: e.target.value || undefined })}
+                            required={isPeriodTransaction}
+                            className="w-full px-2 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                     </div>
+                </div>
+            )}
 
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">

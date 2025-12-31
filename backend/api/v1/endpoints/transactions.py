@@ -109,7 +109,9 @@ async def list_transactions(project_id: int, db: DBSessionDep, user = Depends(ge
             'created_at': tx.created_at,
             'created_by_user': None,
             'from_fund': tx.from_fund if hasattr(tx, 'from_fund') else False,
-            'recurring_template_id': recurring_template_id
+            'recurring_template_id': recurring_template_id,
+            'period_start_date': getattr(tx, 'period_start_date', None),
+            'period_end_date': getattr(tx, 'period_end_date', None)
         }
 
         # Load user info if exists
@@ -234,7 +236,9 @@ async def create_transaction(db: DBSessionDep, data: TransactionCreate, user = D
         'created_at': transaction.created_at,
         'created_by_user': None,
         'from_fund': transaction.from_fund if hasattr(transaction, 'from_fund') else False,
-        'recurring_template_id': getattr(transaction, 'recurring_template_id', None)
+        'recurring_template_id': getattr(transaction, 'recurring_template_id', None),
+        'period_start_date': getattr(transaction, 'period_start_date', None),
+        'period_end_date': getattr(transaction, 'period_end_date', None)
     }
 
     # Load user info if exists
@@ -289,7 +293,9 @@ async def upload_receipt(tx_id: int, db: DBSessionDep, file: UploadFile = File(.
         'created_by_user_id': result.created_by_user_id,
         'created_at': result.created_at,
         'created_by_user': None,
-        'recurring_template_id': getattr(result, 'recurring_template_id', None)
+        'recurring_template_id': getattr(result, 'recurring_template_id', None),
+        'period_start_date': getattr(result, 'period_start_date', None),
+        'period_end_date': getattr(result, 'period_end_date', None)
     }
 
     # Load user info if exists
@@ -594,7 +600,9 @@ async def update_transaction(tx_id: int, db: DBSessionDep, data: TransactionUpda
         'created_by_user_id': updated_tx.created_by_user_id,
         'created_at': updated_tx.created_at,
         'created_by_user': None,
-        'recurring_template_id': getattr(updated_tx, 'recurring_template_id', None)
+        'recurring_template_id': getattr(updated_tx, 'recurring_template_id', None),
+        'period_start_date': getattr(updated_tx, 'period_start_date', None),
+        'period_end_date': getattr(updated_tx, 'period_end_date', None)
     }
 
     # Load user info if exists

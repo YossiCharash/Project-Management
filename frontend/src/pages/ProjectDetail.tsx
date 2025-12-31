@@ -57,6 +57,8 @@ interface Transaction {
     from_fund?: boolean
     recurring_template_id?: number | null
     file_path?: string | null
+    period_start_date?: string | null
+    period_end_date?: string | null
 }
 
 // Helper to safely get category name whether it's a string or an object
@@ -258,6 +260,16 @@ export default function ProjectDetail() {
     setLoading(true)
     try {
       const { data } = await api.get(`/transactions/project/${id}`)
+      // Debug: Check if period dates are coming through
+      if (data && data.length > 0) {
+        console.log('Total transactions loaded:', data.length)
+        const periodicTx = data.find((tx: any) => tx.period_start_date && tx.period_end_date)
+        if (periodicTx) {
+          console.log('✅ Found periodic transaction:', periodicTx.id, 'Period:', periodicTx.period_start_date, '-', periodicTx.period_end_date)
+        } else {
+          console.log('❌ No periodic transactions found. Sample transaction:', data[0] ? {id: data[0].id, has_period_start: !!data[0].period_start_date, has_period_end: !!data[0].period_end_date} : 'none')
+        }
+      }
       setTxs(data || [])
     } catch (err: any) {
       setTxs([])
@@ -1274,7 +1286,7 @@ const formatDate = (value: string | null) => {
       </motion.div>
 
       {/* Fund and Transactions Section */}
-      <div className="max-w-6xl mx-auto w-full space-y-6 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-6">
+      <div className="max-w-6xl mx-auto w-full space-y-6 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-6 lg:items-start">
           {/* Fund Section */}
           {/* Trends Section (Moved from bottom) */}
           <div className="lg:col-span-1 bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 overflow-hidden">
@@ -1293,16 +1305,16 @@ const formatDate = (value: string | null) => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
-            className="lg:col-span-1 bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6"
+            className="lg:col-span-1 bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 flex flex-col max-h-[80vh] overflow-hidden"
           >
-            <div className="mb-4">
+            <div className="mb-4 flex-shrink-0">
               <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
                 רשימת עסקאות
               </h2>
             </div>
-            <div className="flex flex-col">
-              <div className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
-                  <div className="bg-gray-50 dark:bg-gray-700 px-6 py-4 border-b border-gray-200 dark:border-gray-600">
+            <div className="flex flex-col flex-1 min-h-0">
+              <div className="border border-gray-200 dark:border-gray-700 rounded-xl flex flex-col flex-1 min-h-0">
+                  <div className="bg-gray-50 dark:bg-gray-700 px-6 py-4 border-b border-gray-200 dark:border-gray-600 flex-shrink-0">
                     <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between mb-4">
                       <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
                         רשימת עסקאות
@@ -1347,7 +1359,7 @@ const formatDate = (value: string | null) => {
                     </div>
 
                     {/* Date Filter Options */}
-                    <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 space-y-4">
+                    <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 space-y-4 flex-shrink-0">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                           סינון לפי תאריך
@@ -1444,10 +1456,11 @@ const formatDate = (value: string | null) => {
                     </div>
                   </div>
 
-                  {loading ? (
-                    <div className="text-center py-8 text-gray-500 dark:text-gray-400">טוען...</div>
+                  <div className="flex-1 min-h-0 overflow-y-auto">
+                    {loading ? (
+                    <div className="text-center py-8 text-gray-500 dark:text-gray-400 flex-shrink-0">טוען...</div>
                   ) : filtered.length === 0 ? (
-                    <div className="text-center py-8 space-y-3">
+                    <div className="text-center py-8 space-y-3 flex-shrink-0">
                       <div className="text-gray-500 dark:text-gray-400 font-medium">אין עסקאות להצגה</div>
                       {txs.length > 0 && (
                         <div className="text-sm text-gray-400 dark:text-gray-500 space-y-2">
@@ -1490,7 +1503,7 @@ const formatDate = (value: string | null) => {
                       )}
                     </div>
                   ) : (
-                    <div id="transactions-list" className="space-y-3 p-4 max-h-[600px] overflow-y-auto">
+                    <div id="transactions-list" className="space-y-3 p-4">
                       {filtered.map(tx => {
                         const expanded = transactionsExpandedId === tx.id
                         return (
@@ -1504,11 +1517,16 @@ const formatDate = (value: string | null) => {
                                   {tx.type === 'Income' ? 'הכנסה' : 'הוצאה'}
                                 </span>
                                 {tx.is_generated && (
-                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700 border border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800">
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-purple-100 text-purple-700 border border-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-800">
                                     מחזורי
                                   </span>
                                 )}
-                                <span className="text-sm text-gray-600 dark:text-gray-300">
+                                {tx.period_start_date && tx.period_end_date && (
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700 border border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800">
+                                    תקופתי
+                                  </span>
+                                )}
+                                <span className="text-sm text-gray-600 dark:text-gray-300 truncate max-w-[120px]">
                               {(() => {
                                 const catName = getCategoryName(tx.category);
                                 return catName ? (CATEGORY_LABELS[catName] || catName) : '-';
@@ -1516,7 +1534,14 @@ const formatDate = (value: string | null) => {
                             </span>
                               </div>
                               <div className="flex items-center gap-4">
-                                <span className="text-sm text-gray-500 dark:text-gray-400">{new Date(tx.tx_date).toLocaleDateString('he-IL')}</span>
+                                <div className="text-right">
+                                    <div className="text-sm text-gray-500 dark:text-gray-400">{new Date(tx.tx_date).toLocaleDateString('he-IL')}</div>
+                                    {tx.period_start_date && tx.period_end_date && (
+                                        <div className="text-xs text-blue-600 dark:text-blue-400 font-medium mt-0.5">
+                                            {new Date(tx.period_start_date).toLocaleDateString('he-IL', {day: '2-digit', month: '2-digit'})} - {new Date(tx.period_end_date).toLocaleDateString('he-IL', {day: '2-digit', month: '2-digit'})}
+                                        </div>
+                                    )}
+                                </div>
                                 <span className={`text-lg font-semibold ${tx.type === 'Income' ? 'text-green-600' : 'text-red-600'}`}>
                                   {formatCurrency(tx.amount)} ₪
                                 </span>
@@ -1525,6 +1550,14 @@ const formatDate = (value: string | null) => {
                             </button>
                             {expanded && (
                               <div className="px-4 pb-4 border-t border-gray-100 dark:border-gray-700 text-sm text-gray-700 dark:text-gray-200 space-y-3">
+                                {tx.period_start_date && tx.period_end_date && (
+                                  <div className="bg-blue-50 dark:bg-blue-900/20 p-2 rounded-lg border border-blue-100 dark:border-blue-800 mt-2">
+                                    <div className="text-xs text-blue-800 dark:text-blue-300 font-medium mb-1">תקופת תשלום:</div>
+                                    <div className="text-blue-700 dark:text-blue-200">
+                                      {new Date(tx.period_start_date).toLocaleDateString('he-IL')} - {new Date(tx.period_end_date).toLocaleDateString('he-IL')}
+                                    </div>
+                                  </div>
+                                )}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                   <div>
                                     <div className="text-xs text-gray-500 dark:text-gray-400">אמצעי תשלום</div>
@@ -1596,6 +1629,7 @@ const formatDate = (value: string | null) => {
                       })}
                     </div>
                   )}
+                  </div>
               </div>
             </div>
           </motion.div>
@@ -2452,9 +2486,21 @@ const formatDate = (value: string | null) => {
                             🔄 מחזורי
                           </span>
                         )}
+                        {t.period_start_date && t.period_end_date && (
+                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-300" title="עסקה תקופתית (לפי תאריכים)">
+                            📅 תקופתי
+                          </span>
+                        )}
                       </div>
                     </td>
-                    <td className="p-3 text-gray-700 dark:text-gray-300">{t.tx_date}</td>
+                    <td className="p-3 text-gray-700 dark:text-gray-300">
+                      <div>{t.tx_date}</div>
+                      {t.period_start_date && t.period_end_date && (
+                        <div className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                          תקופה: {t.period_start_date} - {t.period_end_date}
+                        </div>
+                      )}
+                    </td>
                     <td className={`p-3 font-semibold ${t.type === 'Income' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                       {Number(t.amount || 0).toFixed(2)} ₪
                     </td>
@@ -3713,9 +3759,9 @@ const formatDate = (value: string | null) => {
                   </div>
                 ) : (
                   <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
-                    <div className="overflow-x-auto">
+                    <div className="overflow-x-auto overflow-y-auto max-h-[600px]">
                       <table className="w-full">
-                        <thead className="bg-gray-50 dark:bg-gray-700">
+                        <thead className="bg-gray-50 dark:bg-gray-700 sticky top-0 z-10">
                           <tr>
                             <th className="px-4 py-3 text-right text-sm font-semibold text-gray-900 dark:text-white">תאריך</th>
                             <th className="px-4 py-3 text-right text-sm font-semibold text-gray-900 dark:text-white">סוג</th>
@@ -3896,9 +3942,9 @@ const formatDate = (value: string | null) => {
                     <div>
                       <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">עסקאות ({selectedPeriodSummary.transactions.length})</h4>
                       <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
-                        <div className="overflow-x-auto">
+                        <div className="overflow-x-auto overflow-y-auto max-h-[500px]">
                           <table className="w-full text-right">
-                            <thead>
+                            <thead className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-700/50">
                               <tr className="border-b border-gray-200 dark:border-gray-600">
                                 <th className="px-4 py-2 text-sm font-semibold text-gray-700 dark:text-gray-300">תאריך</th>
                                 <th className="px-4 py-2 text-sm font-semibold text-gray-700 dark:text-gray-300">סוג</th>

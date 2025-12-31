@@ -21,4 +21,23 @@ class ReportOptions(BaseModel):
     include_project_image: bool = False
     include_project_contract: bool = False
     
+    # Chart options
+    include_charts: bool = False
+    chart_types: Optional[List[str]] = None  # ["income_expense_pie", "expense_by_category_pie", "expense_by_category_bar", "trends_line"]
+    
     format: str = "pdf"  # "pdf", "excel", "zip"
+
+
+class SupplierReportOptions(BaseModel):
+    supplier_id: int
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    include_transactions: bool = True
+    transaction_types: Optional[List[str]] = None  # ["Income", "Expense"]
+    only_recurring: bool = False
+    
+    # Filter options
+    categories: Optional[List[str]] = None # List of category names
+    project_ids: Optional[List[int]] = None # List of project IDs to filter by
+    
+    format: str = "excel"  # "pdf", "excel", "zip"

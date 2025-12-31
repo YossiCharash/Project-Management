@@ -9,7 +9,7 @@ from backend.models.user import UserRole
 router = APIRouter()
 
 
-from backend.schemas.report import ReportOptions
+from backend.schemas.report import ReportOptions, SupplierReportOptions
 
 @router.post("/project/custom-report")
 async def generate_custom_report(options: ReportOptions, db: DBSessionDep, user = Depends(get_current_user)):
@@ -289,6 +289,58 @@ async def get_project_transactions(project_id: int, db: DBSessionDep, user = Dep
     except Exception as e:
         import traceback
         print(f"❌ [Report API] Error getting transactions for project {project_id}: {str(e)}")
+        traceback.print_exc()
+        raise
+
+
+@router.post("/supplier/{supplier_id}/custom-report")
+async def generate_supplier_report(
+    supplier_id: int,
+    options: SupplierReportOptions,
+    db: DBSessionDep,
+    user = Depends(get_current_user)
+):
+    """Generate a custom report for a specific supplier with all their transactions"""
+    try:
+        # Override supplier_id from path
+        options.supplier_id = supplier_id
+        
+        report_service = ReportService(db)
+        
+        # Get supplier name for filename
+        from sqlalchemy import select
+        from backend.models.supplier import Supplier
+        supplier_result = await db.execute(select(Supplier.name).where(Supplier.id == supplier_id))
+        supplier_name = supplier_result.scalar_one_or_none()
+        
+        content = await report_service.generate_supplier_report(options)
+        
+        # Build filename
+        safe_supplier_name = "".join([c for c in (supplier_name or f"supplier_{supplier_id}") if c.isalnum() or c in (' ', '-', '_')]).strip()
+        filename = f"{safe_supplier_name} דוח"
+        
+        if options.format == "pdf":
+            media_type = "application/pdf"
+            filename += ".pdf"
+        elif options.format == "excel":
+            media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            filename += ".xlsx"
+        elif options.format == "zip":
+            media_type = "application/zip"
+            filename += ".zip"
+        else:
+            raise ValueError("פורמט לא תקין")
+        
+        from urllib.parse import quote
+        encoded_filename = quote(filename)
+        
+        headers = {
+            'Content-Disposition': f"attachment; filename*=UTF-8''{encoded_filename}"
+        }
+        return Response(content=content, media_type=media_type, headers=headers)
+    except Exception as e:
+        import traceback
+        print(f"❌ [Report API] Error generating supplier report: {str(e)}")
         traceback.print_exc()
         raise
 
