@@ -1048,32 +1048,38 @@ export default function ParentProjectDetail() {
         // Error loading parent project transactions
       }
       
-      // Load subprojects transactions
+      // Load subprojects transactions in parallel (not sequentially)
       try {
         const { data: allProjects } = await api.get('/projects')
         const subprojectList = allProjects.filter((p: any) => p.relation_project === parseInt(id))
         
-        for (const subproject of subprojectList) {
+        // Load all subproject transactions in parallel using Promise.all
+        const subprojectTransactionsPromises = subprojectList.map(async (subproject: any) => {
           try {
             const { data: subprojectTransactions } = await api.get(`/transactions/project/${subproject.id}`)
-            
-            // Ensure we have transactions data
             const transactions = subprojectTransactions || []
-            
-            // Filter transactions by date range
             const filteredSubprojectTransactions = filterTransactionsByDate(transactions)
             
-            filteredSubprojectTransactions.forEach((transaction: any) => {
-              allTransactions.push({
-                ...transaction,
-                subproject_name: subproject.name,
-                subproject_id: subproject.id
-              })
-            })
+            return filteredSubprojectTransactions.map((transaction: any) => ({
+              ...transaction,
+              subproject_name: subproject.name,
+              subproject_id: subproject.id
+            }))
           } catch (err) {
-            // Error loading transactions
+            // Error loading transactions for this subproject - return empty array
+            return []
           }
-        }
+        })
+        
+        // Wait for all subproject transactions to load in parallel
+        const subprojectTransactionsResults = await Promise.all(subprojectTransactionsPromises)
+        
+        // Flatten the results into allTransactions
+        subprojectTransactionsResults.forEach((transactions: any[]) => {
+          transactions.forEach((transaction: any) => {
+            allTransactions.push(transaction)
+          })
+        })
       } catch (err) {
         // Error loading subprojects
       }

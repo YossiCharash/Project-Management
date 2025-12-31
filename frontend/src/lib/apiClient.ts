@@ -410,6 +410,12 @@ export class RecurringTransactionAPI {
     return data
   }
 
+  // Ensure all recurring transactions for a project are generated (only missing ones)
+  static async ensureProjectTransactionsGenerated(projectId: number): Promise<{ generated_count: number; project_id: number }> {
+    const { data } = await api.post<{ generated_count: number; project_id: number }>(`/recurring-transactions/project/${projectId}/ensure-generated`)
+    return data
+  }
+
   // Generate transactions for a specific month
   static async generateMonthlyTransactions(year: number, month: number): Promise<{ generated_count: number; transactions: Transaction[] }> {
     const { data } = await api.post<{ generated_count: number; transactions: Transaction[] }>(`/recurring-transactions/generate/${year}/${month}`)

@@ -56,8 +56,17 @@ class FundService:
             return None
         
         fund.current_balance = float(fund.current_balance) - float(amount)
-        if fund.current_balance < 0:
-            fund.current_balance = 0  # Don't allow negative balance
+        # Allow negative balance (removed the check that prevented it)
+        
+        return await self.funds.update(fund)
+
+    async def add_to_fund(self, project_id: int, amount: float) -> Fund | None:
+        """Add amount to fund"""
+        fund = await self.funds.get_by_project_id(project_id)
+        if not fund:
+            return None
+        
+        fund.current_balance = float(fund.current_balance) + float(amount)
         
         return await self.funds.update(fund)
 

@@ -38,16 +38,13 @@ const EditRecurringTemplateModal: React.FC<EditRecurringTemplateModalProps> = ({
   const [availableCategories, setAvailableCategories] = useState<any[]>([])
   const [showConfirmation, setShowConfirmation] = useState(false)
   const [changesSummary, setChangesSummary] = useState<string[]>([])
+  const [templateLoading, setTemplateLoading] = useState(false)
 
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && template) {
       dispatch(fetchSuppliers())
       loadCategories()
-    }
-    if (template && isOpen) {
-      // Find category ID from name if needed, but we rely on availableCategories having IDs
-      // Since template might only have category name, we might need to resolve ID when categories load
-      
+      // Reset form data when modal opens and template is available
       setFormData({
         description: template.description,
         amount: template.amount,
@@ -169,7 +166,21 @@ const EditRecurringTemplateModal: React.FC<EditRecurringTemplateModalProps> = ({
     setShowConfirmation(false)
   }
 
-  if (!isOpen || !template) return null
+  if (!isOpen) return null
+  
+  // Show loading state if template is not loaded yet
+  if (!template) {
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white dark:bg-gray-800 rounded-lg p-6">
+          <div className="flex items-center gap-3">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+            <span className="text-gray-700 dark:text-gray-300">טוען פרטי תבנית...</span>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   if (showConfirmation) {
     return (

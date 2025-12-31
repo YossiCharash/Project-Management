@@ -61,70 +61,42 @@ async def list_transactions(project_id: int, db: DBSessionDep, user = Depends(ge
         details={'project_id': project_id, 'project_name': project_name}
     )
 
-    # Get transactions with user info
-    # Filter by project's current contract period dates if they exist
-    transactions = await TransactionRepository(db).list_by_project(project_id)
+    # Get transactions with user info loaded via JOIN (no N+1 queries)
+    # Filter by project's current contract period dates in SQL if they exist
+    import time
+    endpoint_start = time.time()
+    
+    project_start_date = project.start_date if project else None
+    project_end_date = project.end_date if project else None
+    
+    # Convert datetime to date if needed
+    if project_start_date and hasattr(project_start_date, 'date'):
+        project_start_date = project_start_date.date()
+    if project_end_date and hasattr(project_end_date, 'date'):
+        project_end_date = project_end_date.date()
+    
+    print(f"🚀 [PERF] list_transactions endpoint: Starting for project_id={project_id}")
+    
+    transactions_data = await TransactionRepository(db).list_by_project_with_users(
+        project_id=project_id,
+        project_start_date=project_start_date,
+        project_end_date=project_end_date
+    )
+    
+    endpoint_time = time.time() - endpoint_start
+    print(f"✅ [PERF] list_transactions endpoint: Completed in {endpoint_time:.3f}s, returning {len(transactions_data)} transactions")
 
-    # Filter transactions by current contract period dates (if project has dates)
-    if project and project.start_date and project.end_date:
-        filtered_transactions = []
-        for tx in transactions:
-            # Only include transactions within the current contract period
-            # or fund transactions (which are not tied to contract period)
-            # Both project dates and tx_date are date objects
-            if tx.from_fund or (project.start_date <= tx.tx_date <= project.end_date):
-                filtered_transactions.append(tx)
-        transactions = filtered_transactions
-
-    # Load user info for each transaction
-    from backend.repositories.user_repository import UserRepository
-    user_repo = UserRepository(db)
-
+    # Convert to TransactionOut format
+    from backend.schemas.transaction import TransactionOut
     result = []
-    for tx in transactions:
-        # Get is_generated value - check both attribute and recurring_template_id
-        is_generated_value = getattr(tx, 'is_generated', False)
-        recurring_template_id = getattr(tx, 'recurring_template_id', None)
-
-        # If transaction has recurring_template_id but is_generated is False, set it to True
-        if recurring_template_id and not is_generated_value:
-            is_generated_value = True
-
-        tx_dict = {
-            'id': tx.id,
-            'project_id': tx.project_id,
-            'tx_date': tx.tx_date,
-            'type': tx.type,
-            'amount': float(tx.amount),
-            'description': tx.description,
-            'category': tx.category,
-            'category_id': tx.category_id,
-            'payment_method': tx.payment_method,
-            'notes': tx.notes,
-            'is_exceptional': tx.is_exceptional,
-            'is_generated': is_generated_value,
-            'file_path': tx.file_path,
-            'supplier_id': tx.supplier_id,
-            'created_by_user_id': getattr(tx, 'created_by_user_id', None),
-            'created_at': tx.created_at,
-            'created_by_user': None,
-            'from_fund': tx.from_fund if hasattr(tx, 'from_fund') else False,
-            'recurring_template_id': recurring_template_id,
-            'period_start_date': getattr(tx, 'period_start_date', None),
-            'period_end_date': getattr(tx, 'period_end_date', None)
-        }
-
-        # Load user info if exists
-        if tx_dict['created_by_user_id']:
-            creator = await user_repo.get_by_id(tx_dict['created_by_user_id'])
-            if creator:
-                tx_dict['created_by_user'] = {
-                    'id': creator.id,
-                    'full_name': creator.full_name,
-                    'email': creator.email
-                }
-
-        result.append(tx_dict)
+    for tx_dict in transactions_data:
+        try:
+            # Ensure all required fields are present
+            tx_dict.setdefault('category', None)
+            result.append(TransactionOut.model_validate(tx_dict))
+        except Exception:
+            # Skip malformed transactions
+            continue
 
     return result
 
@@ -157,20 +129,41 @@ async def create_transaction(db: DBSessionDep, data: TransactionCreate, user = D
         # Supplier is required for Expense transactions (not for Income, fund transactions, or when category is "אחר")
         raise HTTPException(status_code=400, detail="Supplier is required for expense transactions")
 
+    # Validate transaction date is not before project contract start date
+    if project and project.start_date:
+        # Convert project.start_date to date if it's datetime
+        project_start_date = project.start_date
+        if hasattr(project_start_date, 'date'):
+            project_start_date = project_start_date.date()
+        
+        if data.tx_date < project_start_date:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"לא ניתן ליצור עסקה לפני תאריך תחילת החוזה. "
+                    f"תאריך תחילת החוזה: {project_start_date.strftime('%d/%m/%Y')}, "
+                    f"תאריך העסקה: {data.tx_date.strftime('%d/%m/%Y')}"
+                )
+            )
+
     # Add user_id to transaction data
     transaction_data = data.model_dump()
     transaction_data['created_by_user_id'] = user.id
 
-    # Handle fund deduction if from_fund is True
-    if data.from_fund and data.type == 'Expense':
+    # Handle fund operations if from_fund is True
+    if data.from_fund:
         from backend.services.fund_service import FundService
         fund_service = FundService(db)
         fund = await fund_service.get_fund_by_project(data.project_id)
         if not fund:
             raise HTTPException(status_code=400, detail="Fund not found for this project")
 
-        # Allow negative balance - deduct from fund (can go into negative)
-        await fund_service.deduct_from_fund(data.project_id, data.amount)
+        if data.type == 'Expense':
+            # Deduct from fund for expenses
+            await fund_service.deduct_from_fund(data.project_id, data.amount)
+        elif data.type == 'Income':
+            # Add to fund for income
+            await fund_service.add_to_fund(data.project_id, data.amount)
 
     # Debug: Print to verify user_id is being set
     print(f"DEBUG: Creating transaction with created_by_user_id={user.id}, user={user.full_name}")
@@ -488,6 +481,23 @@ async def update_transaction(tx_id: int, db: DBSessionDep, data: TransactionUpda
     # Get project name for audit log
     project = await ProjectRepository(db).get_by_id(tx.project_id)
     project_name = project.name if project else f"Project {tx.project_id}"
+
+    # Validate transaction date is not before project contract start date (if updating tx_date)
+    if data.tx_date is not None and project and project.start_date:
+        # Convert project.start_date to date if it's datetime
+        project_start_date = project.start_date
+        if hasattr(project_start_date, 'date'):
+            project_start_date = project_start_date.date()
+        
+        if data.tx_date < project_start_date:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"לא ניתן לעדכן עסקה לתאריך לפני תאריך תחילת החוזה. "
+                    f"תאריך תחילת החוזה: {project_start_date.strftime('%d/%m/%Y')}, "
+                    f"תאריך העסקה: {data.tx_date.strftime('%d/%m/%Y')}"
+                )
+            )
 
     # Store old values for audit log
     old_values = {

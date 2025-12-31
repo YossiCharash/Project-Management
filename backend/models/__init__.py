@@ -17,6 +17,7 @@ from backend.models.fund import Fund
 from backend.models.category import Category
 from backend.models.contract_period import ContractPeriod
 from backend.models.archived_contract import ArchivedContract
+from backend.models.deleted_recurring_instance import DeletedRecurringInstance
 
 __all__ = [
     "User",
@@ -37,5 +38,6 @@ __all__ = [
     "Fund",
     "Category",
     "ContractPeriod",
-    "ArchivedContract"
+    "ArchivedContract",
+    "DeletedRecurringInstance"
 ]

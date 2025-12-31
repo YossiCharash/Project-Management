@@ -11,6 +11,7 @@ from backend.repositories.transaction_repository import TransactionRepository
 from backend.models.transaction import Transaction
 from backend.services.s3_service import S3Service
 from backend.repositories.category_repository import CategoryRepository
+from backend.repositories.project_repository import ProjectRepository
 
 
 class TransactionService:
@@ -112,6 +113,26 @@ class TransactionService:
             raise ValueError(msg)
 
     async def create(self, **data) -> Transaction:
+        # Validate transaction date is not before project contract start date
+        project_id = data.get('project_id')
+        tx_date = data.get('tx_date')
+        
+        if project_id and tx_date:
+            project_repo = ProjectRepository(self.db)
+            project = await project_repo.get_by_id(project_id)
+            if project and project.start_date:
+                # Convert project.start_date to date if it's datetime
+                project_start_date = project.start_date
+                if hasattr(project_start_date, 'date'):
+                    project_start_date = project_start_date.date()
+                
+                if tx_date < project_start_date:
+                    raise ValueError(
+                        f"לא ניתן ליצור עסקה לפני תאריך תחילת החוזה. "
+                        f"תאריך תחילת החוזה: {project_start_date.strftime('%d/%m/%Y')}, "
+                        f"תאריך העסקה: {tx_date.strftime('%d/%m/%Y')}"
+                    )
+        
         # Validate category if provided (unless it's a cash register transaction)
         from_fund = data.get('from_fund', False)
         category_id = data.get('category_id')

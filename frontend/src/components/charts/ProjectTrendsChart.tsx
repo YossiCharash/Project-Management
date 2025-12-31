@@ -10,6 +10,9 @@ interface ProjectTrendsChartProps {
     type: 'Income' | 'Expense'
     amount: number
     category?: string | null
+    from_fund?: boolean
+    period_start_date?: string | null
+    period_end_date?: string | null
   }>
   expenseCategories?: Array<{
     category: string
@@ -50,6 +53,7 @@ export default function ProjectTrendsChart({
     category: string
     amount: number
     color: string
+    transactionCount: number
   }>>([])
 
   useEffect(() => {
@@ -65,38 +69,129 @@ export default function ProjectTrendsChart({
     processExpenseCategories()
   }, [filterType, selectedMonth, selectedYear, customStartDate, customEndDate, transactions, expenseCategories, projectIncome])
 
+  // Helper function to split period transactions by month
+  const splitPeriodTransactionByMonth = (tx: any, filterStart: Date, filterEnd: Date) => {
+    if (!tx.period_start_date || !tx.period_end_date) {
+      return [{ tx, dateKey: tx.tx_date, amount: tx.amount }]
+    }
+
+    const periodStart = new Date(tx.period_start_date)
+    const periodEnd = new Date(tx.period_end_date)
+    const totalDays = Math.floor((periodEnd.getTime() - periodStart.getTime()) / (1000 * 60 * 60 * 24)) + 1
+    
+    if (totalDays <= 0) {
+      return [{ tx, dateKey: tx.tx_date, amount: tx.amount }]
+    }
+
+    const dailyRate = tx.amount / totalDays
+    const splits: Array<{ tx: any; dateKey: string; amount: number }> = []
+    
+    // Iterate through each month in the period that overlaps with filter range
+    const current = new Date(Math.max(periodStart.getTime(), filterStart.getTime()))
+    current.setDate(1) // Start of month
+    
+    while (current <= Math.min(periodEnd, filterEnd)) {
+      const year = current.getFullYear()
+      const month = current.getMonth()
+      const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`
+      
+      // Calculate the first and last day of this month that are within the period and filter range
+      const monthStart = new Date(year, month, 1)
+      const monthEnd = new Date(year, month + 1, 0)
+      
+      const overlapStart = new Date(Math.max(periodStart.getTime(), monthStart.getTime(), filterStart.getTime()))
+      const overlapEnd = new Date(Math.min(periodEnd.getTime(), monthEnd.getTime(), filterEnd.getTime()))
+      
+      if (overlapStart <= overlapEnd) {
+        const daysInMonth = Math.floor((overlapEnd.getTime() - overlapStart.getTime()) / (1000 * 60 * 60 * 24)) + 1
+        const proportionalAmount = dailyRate * daysInMonth
+        
+        // Determine dateKey based on filter type
+        let dateKey: string
+        if (filterType === 'year') {
+          dateKey = monthKey
+        } else if (filterType === 'month') {
+          const day = overlapStart.getDate()
+          dateKey = `${monthKey}-${String(day).padStart(2, '0')}`
+        } else {
+          dateKey = overlapStart.toISOString().split('T')[0]
+        }
+        
+        splits.push({ tx, dateKey, amount: proportionalAmount })
+      }
+      
+      // Move to next month
+      current.setMonth(month + 1)
+    }
+    
+    return splits.length > 0 ? splits : [{ tx, dateKey: tx.tx_date, amount: tx.amount }]
+  }
+
   const processData = () => {
-    let filteredTransactions = [...transactions]
+    // First, filter out cash register transactions (from_fund = true)
+    let filteredTransactions = transactions.filter(tx => !tx.from_fund)
     const now = new Date()
+
+    let filterStart: Date
+    let filterEnd: Date
 
     switch (filterType) {
       case 'month':
-        const monthStart = new Date(selectedMonth + '-01')
-        const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0)
-        filteredTransactions = transactions.filter(tx => {
-          const txDate = new Date(tx.tx_date)
-          return txDate >= monthStart && txDate <= monthEnd
+        filterStart = new Date(selectedMonth + '-01')
+        filterEnd = new Date(filterStart.getFullYear(), filterStart.getMonth() + 1, 0)
+        filteredTransactions = filteredTransactions.filter(tx => {
+          // For period transactions, check if period overlaps with month
+          if (tx.period_start_date && tx.period_end_date) {
+            const periodStart = new Date(tx.period_start_date)
+            const periodEnd = new Date(tx.period_end_date)
+            return periodStart <= filterEnd && periodEnd >= filterStart
+          } else {
+            // Regular transaction - check tx_date
+            const txDate = new Date(tx.tx_date)
+            return txDate >= filterStart && txDate <= filterEnd
+          }
         })
         break
       case 'year':
-        const yearStart = new Date(parseInt(selectedYear), 0, 1)
-        const yearEnd = new Date(parseInt(selectedYear), 11, 31)
-        filteredTransactions = transactions.filter(tx => {
-          const txDate = new Date(tx.tx_date)
-          return txDate >= yearStart && txDate <= yearEnd
+        filterStart = new Date(parseInt(selectedYear), 0, 1)
+        filterEnd = new Date(parseInt(selectedYear), 11, 31)
+        filteredTransactions = filteredTransactions.filter(tx => {
+          // For period transactions, check if period overlaps with year
+          if (tx.period_start_date && tx.period_end_date) {
+            const periodStart = new Date(tx.period_start_date)
+            const periodEnd = new Date(tx.period_end_date)
+            return periodStart <= filterEnd && periodEnd >= filterStart
+          } else {
+            // Regular transaction - check tx_date
+            const txDate = new Date(tx.tx_date)
+            return txDate >= filterStart && txDate <= filterEnd
+          }
         })
         break
       case 'all':
-        // No filtering needed
+        filterStart = new Date(1900, 0, 1)
+        filterEnd = new Date(2100, 11, 31)
+        // No date filtering needed, but from_fund is already filtered
         break
       case 'custom':
         if (customStartDate && customEndDate) {
-          const startDate = new Date(customStartDate)
-          const endDate = new Date(customEndDate)
-          filteredTransactions = transactions.filter(tx => {
-            const txDate = new Date(tx.tx_date)
-            return txDate >= startDate && txDate <= endDate
+          filterStart = new Date(customStartDate)
+          filterEnd = new Date(customEndDate)
+          filteredTransactions = filteredTransactions.filter(tx => {
+            // For period transactions, check if period overlaps with range
+            if (tx.period_start_date && tx.period_end_date) {
+              const periodStart = new Date(tx.period_start_date)
+              const periodEnd = new Date(tx.period_end_date)
+              return periodStart <= filterEnd && periodEnd >= filterStart
+            } else {
+              // Regular transaction - check tx_date
+              const txDate = new Date(tx.tx_date)
+              return txDate >= filterStart && txDate <= filterEnd
+            }
           })
+        } else {
+          filterStart = new Date(1900, 0, 1)
+          filterEnd = new Date(2100, 11, 31)
         }
         break
     }
@@ -123,32 +218,33 @@ export default function ProjectTrendsChart({
       }
     }
     
+    // Process transactions and split period transactions
     filteredTransactions.forEach(tx => {
-      let dateKey = tx.tx_date
+      const splits = splitPeriodTransactionByMonth(tx, filterStart, filterEnd)
       
-      if (filterType === 'year') {
-        dateKey = tx.tx_date.slice(0, 7) // Group by YYYY-MM
-      }
-      
-      if (!groupedData[dateKey]) {
-        // For 'year'/'month' view, keys should be initialized, but for other views we create as needed
-        if (filterType !== 'year' && filterType !== 'month') {
-          groupedData[dateKey] = { income: 0, expense: 0 }
+      splits.forEach(split => {
+        const dateKey = split.dateKey
+        
+        if (!groupedData[dateKey]) {
+          // For 'year'/'month' view, keys should be initialized, but for other views we create as needed
+          if (filterType !== 'year' && filterType !== 'month') {
+            groupedData[dateKey] = { income: 0, expense: 0 }
+          } else {
+            // If transaction is outside the initialized range (shouldn't happen with filter)
+            return
+          }
+        }
+        
+        if (split.tx.type === 'Income') {
+          // If we have a fixed project income and we are in year view (monthly grouping), 
+          // we use the fixed income instead of summing transactions
+          if (!projectIncome || filterType !== 'year') {
+            groupedData[dateKey].income += Math.abs(split.amount)
+          }
         } else {
-          // If transaction is outside the initialized range (shouldn't happen with filter)
-          return
+          groupedData[dateKey].expense += Math.abs(split.amount)
         }
-      }
-      
-      if (tx.type === 'Income') {
-        // If we have a fixed project income and we are in year view (monthly grouping), 
-        // we use the fixed income instead of summing transactions
-        if (!projectIncome || filterType !== 'year') {
-          groupedData[dateKey].income += Math.abs(tx.amount)
-        }
-      } else {
-        groupedData[dateKey].expense += Math.abs(tx.amount)
-      }
+      })
     })
 
     // Convert to array and sort by date
@@ -165,50 +261,83 @@ export default function ProjectTrendsChart({
   }
 
   const processExpenseCategories = () => {
-    // Filter transactions by date
-    let filteredTransactions = [...transactions]
+    // First, filter out cash register transactions (from_fund = true)
+    let filteredTransactions = transactions.filter(tx => !tx.from_fund)
+
+    let filterStart: Date
+    let filterEnd: Date
 
     switch (filterType) {
       case 'month':
-        const monthStart = new Date(selectedMonth + '-01')
-        const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0)
-        filteredTransactions = transactions.filter(tx => {
-          const txDate = new Date(tx.tx_date)
-          return txDate >= monthStart && txDate <= monthEnd
+        filterStart = new Date(selectedMonth + '-01')
+        filterEnd = new Date(filterStart.getFullYear(), filterStart.getMonth() + 1, 0)
+        filteredTransactions = filteredTransactions.filter(tx => {
+          // For period transactions, check if period overlaps with month
+          if (tx.period_start_date && tx.period_end_date) {
+            const periodStart = new Date(tx.period_start_date)
+            const periodEnd = new Date(tx.period_end_date)
+            return periodStart <= filterEnd && periodEnd >= filterStart
+          } else {
+            // Regular transaction - check tx_date
+            const txDate = new Date(tx.tx_date)
+            return txDate >= filterStart && txDate <= filterEnd
+          }
         })
         break
       case 'year':
-        const yearStart = new Date(parseInt(selectedYear), 0, 1)
-        const yearEnd = new Date(parseInt(selectedYear), 11, 31)
-        filteredTransactions = transactions.filter(tx => {
-          const txDate = new Date(tx.tx_date)
-          return txDate >= yearStart && txDate <= yearEnd
+        filterStart = new Date(parseInt(selectedYear), 0, 1)
+        filterEnd = new Date(parseInt(selectedYear), 11, 31)
+        filteredTransactions = filteredTransactions.filter(tx => {
+          // For period transactions, check if period overlaps with year
+          if (tx.period_start_date && tx.period_end_date) {
+            const periodStart = new Date(tx.period_start_date)
+            const periodEnd = new Date(tx.period_end_date)
+            return periodStart <= filterEnd && periodEnd >= filterStart
+          } else {
+            // Regular transaction - check tx_date
+            const txDate = new Date(tx.tx_date)
+            return txDate >= filterStart && txDate <= filterEnd
+          }
         })
         break
       case 'all':
-        // No filtering needed
+        filterStart = new Date(1900, 0, 1)
+        filterEnd = new Date(2100, 11, 31)
+        // No date filtering needed, but from_fund is already filtered
         break
       case 'custom':
         if (customStartDate && customEndDate) {
-          const startDate = new Date(customStartDate)
-          const endDate = new Date(customEndDate)
-          filteredTransactions = transactions.filter(tx => {
-            const txDate = new Date(tx.tx_date)
-            return txDate >= startDate && txDate <= endDate
+          filterStart = new Date(customStartDate)
+          filterEnd = new Date(customEndDate)
+          filteredTransactions = filteredTransactions.filter(tx => {
+            // For period transactions, check if period overlaps with range
+            if (tx.period_start_date && tx.period_end_date) {
+              const periodStart = new Date(tx.period_start_date)
+              const periodEnd = new Date(tx.period_end_date)
+              return periodStart <= filterEnd && periodEnd >= filterStart
+            } else {
+              // Regular transaction - check tx_date
+              const txDate = new Date(tx.tx_date)
+              return txDate >= filterStart && txDate <= filterEnd
+            }
           })
+        } else {
+          filterStart = new Date(1900, 0, 1)
+          filterEnd = new Date(2100, 11, 31)
         }
         break
     }
 
     // Group expenses by category
-    const categoryTotals: { [key: string]: { amount: number; color: string } } = {}
+    const categoryTotals: { [key: string]: { amount: number; color: string; transactionCount: number } } = {}
     
     // Initialize with all known expense categories (with 0 amount)
     // This ensures all categories are shown even if they have no transactions in the period
     expenseCategories.forEach(cat => {
       categoryTotals[cat.category] = {
         amount: 0,
-        color: cat.color
+        color: cat.color,
+        transactionCount: 0
       }
     })
 
@@ -221,10 +350,22 @@ export default function ProjectTrendsChart({
           const originalCategory = expenseCategories.find(cat => cat.category === category)
           categoryTotals[category] = {
             amount: 0,
-            color: originalCategory?.color || '#8884d8'
+            color: originalCategory?.color || '#8884d8',
+            transactionCount: 0
           }
         }
-        categoryTotals[category].amount += Math.abs(tx.amount)
+        
+        // For period transactions, calculate proportional amount
+        if (tx.period_start_date && tx.period_end_date) {
+          const splits = splitPeriodTransactionByMonth(tx, filterStart, filterEnd)
+          const totalAmount = splits.reduce((sum, split) => sum + Math.abs(split.amount), 0)
+          categoryTotals[category].amount += totalAmount
+          categoryTotals[category].transactionCount += 1
+        } else {
+          // Regular transaction - use full amount
+          categoryTotals[category].amount += Math.abs(tx.amount)
+          categoryTotals[category].transactionCount += 1
+        }
       })
 
     // Convert to array and sort by amount
@@ -232,7 +373,8 @@ export default function ProjectTrendsChart({
       .map(([category, data]) => ({
         category,
         amount: data.amount,
-        color: data.color
+        color: data.color,
+        transactionCount: data.transactionCount
       }))
       .sort((a, b) => b.amount - a.amount)
 
@@ -347,8 +489,8 @@ export default function ProjectTrendsChart({
                 data={filteredExpenseCategories.filter(c => c.amount > 0)} // Pie chart looks bad with 0 values
                 cx="50%"
                 cy="50%"
-                labelLine={true}
-                label={({ name }) => name}
+                labelLine={false}
+                label={false}
                 outerRadius={compact ? 80 : 120}
                 fill="#8884d8"
                 dataKey="amount"
@@ -362,18 +504,44 @@ export default function ProjectTrendsChart({
                 content={({ active, payload }) => {
                   if (active && payload && payload.length) {
                     const data = payload[0]
+                    const categoryData = filteredExpenseCategories.find(cat => cat.category === data.name)
                     const total = filteredExpenseCategories.reduce((sum, cat) => sum + cat.amount, 0)
+                    const percentage = total > 0 ? ((Number(data.value) / total) * 100).toFixed(1) : 0
+                    const transactionCount = categoryData?.transactionCount || 0
+                    
                     return (
-                      <div className="bg-white dark:bg-gray-800 p-3 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700">
-                        <p className="font-semibold text-gray-900 dark:text-white">
-                          {data.name}
-                        </p>
-                        <p className="text-sm text-gray-600 dark:text-gray-400">
-                          {data.value?.toLocaleString()} ₪
-                        </p>
-                        <p className="text-xs text-gray-500 dark:text-gray-500">
-                          {total > 0 ? ((Number(data.value) / total) * 100).toFixed(1) : 0}%
-                        </p>
+                      <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 min-w-[200px]">
+                        <div className="flex items-center gap-2 mb-3 pb-2 border-b border-gray-200 dark:border-gray-700">
+                          <div 
+                            className="w-4 h-4 rounded-full flex-shrink-0" 
+                            style={{ backgroundColor: data.payload?.fill || data.payload?.color || '#8884d8' }}
+                          />
+                          <p className="font-bold text-lg text-gray-900 dark:text-white">
+                            {data.name}
+                          </p>
+                        </div>
+                        <div className="space-y-2">
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm text-gray-600 dark:text-gray-400">סכום:</span>
+                            <span className="text-base font-semibold text-gray-900 dark:text-white">
+                              {Number(data.value).toLocaleString('he-IL')} ₪
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm text-gray-600 dark:text-gray-400">אחוז מסך:</span>
+                            <span className="text-base font-semibold text-gray-900 dark:text-white">
+                              {percentage}%
+                            </span>
+                          </div>
+                          {transactionCount > 0 && (
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm text-gray-600 dark:text-gray-400">מספר עסקאות:</span>
+                              <span className="text-base font-semibold text-gray-900 dark:text-white">
+                                {transactionCount}
+                              </span>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     )
                   }

@@ -11,13 +11,15 @@ interface EditTransactionModalProps {
   onClose: () => void
   onSuccess: () => void
   transaction: Transaction | null
+  projectStartDate?: string | null // Contract start date for validation
 }
 
 const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   isOpen,
   onClose,
   onSuccess,
-  transaction
+  transaction,
+  projectStartDate
 }) => {
   const dispatch = useAppDispatch()
   const { items: suppliers } = useAppSelector(s => s.suppliers)
@@ -37,6 +39,8 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [periodStartDateError, setPeriodStartDateError] = useState<string | null>(null)
+  const [periodEndDateError, setPeriodEndDateError] = useState<string | null>(null)
   const [availableCategories, setAvailableCategories] = useState<string[]>([])
   const [documents, setDocuments] = useState<any[]>([])
   const [documentsLoading, setDocumentsLoading] = useState(false)
@@ -167,6 +171,58 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     }
   }, [transaction, isOpen])
 
+  // Validate period start date in real-time
+  useEffect(() => {
+    if (!formData.period_start_date || !projectStartDate) {
+      setPeriodStartDateError(null)
+      return
+    }
+
+    // Parse dates - remove time component for comparison
+    const contractStartDateStr = projectStartDate.split('T')[0]
+    const periodStartDateStr = formData.period_start_date.split('T')[0]
+    
+    const contractStartDate = new Date(contractStartDateStr + 'T00:00:00')
+    const periodStart = new Date(periodStartDateStr + 'T00:00:00')
+    
+    // Compare dates (ignore time)
+    if (periodStart < contractStartDate) {
+      const formattedStartDate = contractStartDate.toLocaleDateString('he-IL')
+      const formattedPeriodStart = periodStart.toLocaleDateString('he-IL')
+      setPeriodStartDateError(
+        `לא ניתן לערוך עסקה תאריכית עם תאריך התחלה לפני תאריך תחילת החוזה. תאריך תחילת החוזה: ${formattedStartDate}, תאריך התחלה של התקופה: ${formattedPeriodStart}`
+      )
+    } else {
+      setPeriodStartDateError(null)
+    }
+  }, [formData.period_start_date, projectStartDate])
+
+  // Validate period end date in real-time
+  useEffect(() => {
+    if (!formData.period_end_date || !projectStartDate) {
+      setPeriodEndDateError(null)
+      return
+    }
+
+    // Parse dates - remove time component for comparison
+    const contractStartDateStr = projectStartDate.split('T')[0]
+    const periodEndDateStr = formData.period_end_date.split('T')[0]
+    
+    const contractStartDate = new Date(contractStartDateStr + 'T00:00:00')
+    const periodEnd = new Date(periodEndDateStr + 'T00:00:00')
+    
+    // Compare dates (ignore time)
+    if (periodEnd < contractStartDate) {
+      const formattedStartDate = contractStartDate.toLocaleDateString('he-IL')
+      const formattedPeriodEnd = periodEnd.toLocaleDateString('he-IL')
+      setPeriodEndDateError(
+        `לא ניתן לערוך עסקה תאריכית עם תאריך סיום לפני תאריך תחילת החוזה. תאריך תחילת החוזה: ${formattedStartDate}, תאריך סיום של התקופה: ${formattedPeriodEnd}`
+      )
+    } else {
+      setPeriodEndDateError(null)
+    }
+  }, [formData.period_end_date, projectStartDate])
+
   const resetForm = () => {
     setFormData({
       tx_date: '',
@@ -182,6 +238,8 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
       period_end_date: undefined
     })
     setError(null)
+    setPeriodStartDateError(null)
+    setPeriodEndDateError(null)
     setDocuments([])
     setShowDuplicateWarning(false)
     setPendingUpdateData(null)
@@ -356,7 +414,7 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
               />
             </div>
 
-            {formData.type === 'Expense' && (
+            {formData.type === 'Expense' && isPeriodTransaction && (
                 <div className={`col-span-2 p-3 rounded-lg border grid grid-cols-2 gap-4 mt-2 ${isPeriodTransaction ? 'bg-blue-100 dark:bg-blue-900/40 border-blue-300 dark:border-blue-700' : 'bg-blue-50 dark:bg-blue-900/20 border-blue-100 dark:border-blue-800'}`}>
                      <div className="col-span-2 flex items-center gap-2 mb-2">
                         <span className={`text-sm font-medium ${isPeriodTransaction ? 'text-blue-900 dark:text-blue-200 font-bold' : 'text-blue-800 dark:text-blue-300'}`}>
@@ -379,8 +437,15 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                                 setError(null)
                             }}
                             required={isPeriodTransaction}
-                            className="w-full px-2 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className={`w-full px-2 py-1.5 bg-white dark:bg-gray-800 border rounded text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 ${
+                              periodStartDateError
+                                ? 'border-red-500 focus:ring-red-500'
+                                : 'border-gray-200 dark:border-gray-600 focus:ring-blue-500'
+                            }`}
                         />
+                        {periodStartDateError && (
+                          <p className="mt-1 text-xs text-red-600 dark:text-red-400">{periodStartDateError}</p>
+                        )}
                      </div>
                      <div>
                         <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">תאריך סיום {isPeriodTransaction && '*'}</label>
@@ -398,8 +463,15 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                                 setError(null)
                             }}
                             required={isPeriodTransaction}
-                            className="w-full px-2 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className={`w-full px-2 py-1.5 bg-white dark:bg-gray-800 border rounded text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 ${
+                              periodEndDateError
+                                ? 'border-red-500 focus:ring-red-500'
+                                : 'border-gray-200 dark:border-gray-600 focus:ring-blue-500'
+                            }`}
                         />
+                        {periodEndDateError && (
+                          <p className="mt-1 text-xs text-red-600 dark:text-red-400">{periodEndDateError}</p>
+                        )}
                      </div>
                 </div>
             )}

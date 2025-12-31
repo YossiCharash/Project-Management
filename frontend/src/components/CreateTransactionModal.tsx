@@ -15,6 +15,7 @@ interface CreateTransactionModalProps {
   isSubproject?: boolean // True if the current project is a subproject
   projectName?: string
   allowSubprojectSelection?: boolean
+  projectStartDate?: string | null // Contract start date for validation
 }
 
 type TransactionType = 'regular' | 'recurring'
@@ -26,7 +27,8 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
   projectId,
   isSubproject = false,
   projectName,
-  allowSubprojectSelection = false
+  allowSubprojectSelection = false,
+  projectStartDate
 }) => {
   const dispatch = useAppDispatch()
   const { items: suppliers } = useAppSelector(s => s.suppliers)
@@ -34,6 +36,12 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
   const [transactionMode, setTransactionMode] = useState<TransactionType>('regular')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  
+  // Date validation states
+  const [dateError, setDateError] = useState<string | null>(null)
+  const [recurringDateError, setRecurringDateError] = useState<string | null>(null)
+  const [periodStartDateError, setPeriodStartDateError] = useState<string | null>(null)
+  const [periodEndDateError, setPeriodEndDateError] = useState<string | null>(null)
   
   // Regular transaction states
   const [type, setType] = useState<'Income' | 'Expense'>('Expense')
@@ -91,6 +99,110 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
     }
   }, [isOpen, projectId, dispatch])
 
+  // Validate transaction date in real-time
+  useEffect(() => {
+    if (!txDate || !projectStartDate) {
+      setDateError(null)
+      return
+    }
+
+    // Parse dates - remove time component for comparison
+    const contractStartDateStr = projectStartDate.split('T')[0]
+    const transactionDateStr = txDate.split('T')[0]
+    
+    const contractStartDate = new Date(contractStartDateStr + 'T00:00:00')
+    const transactionDate = new Date(transactionDateStr + 'T00:00:00')
+    
+    // Compare dates (ignore time)
+    if (transactionDate < contractStartDate) {
+      const formattedStartDate = contractStartDate.toLocaleDateString('he-IL')
+      const formattedTxDate = transactionDate.toLocaleDateString('he-IL')
+      setDateError(
+        `לא ניתן ליצור עסקה לפני תאריך תחילת החוזה. תאריך תחילת החוזה: ${formattedStartDate}, תאריך העסקה: ${formattedTxDate}`
+      )
+    } else {
+      setDateError(null)
+    }
+  }, [txDate, projectStartDate])
+
+  // Validate recurring template start_date in real-time
+  useEffect(() => {
+    if (!recurringFormData.start_date || !projectStartDate) {
+      setRecurringDateError(null)
+      return
+    }
+
+    // Parse dates - remove time component for comparison
+    const contractStartDateStr = projectStartDate.split('T')[0]
+    const templateStartDateStr = recurringFormData.start_date.split('T')[0]
+    
+    const contractStartDate = new Date(contractStartDateStr + 'T00:00:00')
+    const templateStartDate = new Date(templateStartDateStr + 'T00:00:00')
+    
+    // Compare dates (ignore time)
+    if (templateStartDate < contractStartDate) {
+      const formattedStartDate = contractStartDate.toLocaleDateString('he-IL')
+      const formattedTemplateDate = templateStartDate.toLocaleDateString('he-IL')
+      setRecurringDateError(
+        `לא ניתן ליצור תבנית מחזורית עם תאריך התחלה לפני תאריך תחילת החוזה. תאריך תחילת החוזה: ${formattedStartDate}, תאריך התחלה של התבנית: ${formattedTemplateDate}`
+      )
+    } else {
+      setRecurringDateError(null)
+    }
+  }, [recurringFormData.start_date, projectStartDate])
+
+  // Validate period start date in real-time
+  useEffect(() => {
+    if (!periodStartDate || !projectStartDate) {
+      setPeriodStartDateError(null)
+      return
+    }
+
+    // Parse dates - remove time component for comparison
+    const contractStartDateStr = projectStartDate.split('T')[0]
+    const periodStartDateStr = periodStartDate.split('T')[0]
+    
+    const contractStartDate = new Date(contractStartDateStr + 'T00:00:00')
+    const periodStart = new Date(periodStartDateStr + 'T00:00:00')
+    
+    // Compare dates (ignore time)
+    if (periodStart < contractStartDate) {
+      const formattedStartDate = contractStartDate.toLocaleDateString('he-IL')
+      const formattedPeriodStart = periodStart.toLocaleDateString('he-IL')
+      setPeriodStartDateError(
+        `לא ניתן ליצור עסקה תאריכית עם תאריך התחלה לפני תאריך תחילת החוזה. תאריך תחילת החוזה: ${formattedStartDate}, תאריך התחלה של התקופה: ${formattedPeriodStart}`
+      )
+    } else {
+      setPeriodStartDateError(null)
+    }
+  }, [periodStartDate, projectStartDate])
+
+  // Validate period end date in real-time
+  useEffect(() => {
+    if (!periodEndDate || !projectStartDate) {
+      setPeriodEndDateError(null)
+      return
+    }
+
+    // Parse dates - remove time component for comparison
+    const contractStartDateStr = projectStartDate.split('T')[0]
+    const periodEndDateStr = periodEndDate.split('T')[0]
+    
+    const contractStartDate = new Date(contractStartDateStr + 'T00:00:00')
+    const periodEnd = new Date(periodEndDateStr + 'T00:00:00')
+    
+    // Compare dates (ignore time)
+    if (periodEnd < contractStartDate) {
+      const formattedStartDate = contractStartDate.toLocaleDateString('he-IL')
+      const formattedPeriodEnd = periodEnd.toLocaleDateString('he-IL')
+      setPeriodEndDateError(
+        `לא ניתן ליצור עסקה תאריכית עם תאריך סיום לפני תאריך תחילת החוזה. תאריך תחילת החוזה: ${formattedStartDate}, תאריך סיום של התקופה: ${formattedPeriodEnd}`
+      )
+    } else {
+      setPeriodEndDateError(null)
+    }
+  }, [periodEndDate, projectStartDate])
+
   const loadCategories = async () => {
     try {
       const categories = await CategoryAPI.getCategories()
@@ -142,6 +254,17 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
   }
 
   const resetForms = () => {
+    // Remove focus from any active element to prevent button staying "pressed"
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur()
+    }
+    
+    // Reset transaction mode to regular
+    setTransactionMode('regular')
+    
+    // Reset loading state
+    setLoading(false)
+    
     // Reset regular transaction form
     setType('Expense')
     setTxDate(new Date().toISOString().split('T')[0])
@@ -180,6 +303,10 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
     })
     
     setError(null)
+    setDateError(null)
+    setRecurringDateError(null)
+    setPeriodStartDateError(null)
+    setPeriodEndDateError(null)
     setShowDescriptionModal(false)
     setShowDuplicateWarning(false)
     setPendingPayload(null)
@@ -252,6 +379,26 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
       return
     }
 
+    // Validate transaction date is not before contract start date
+    if (projectStartDate) {
+      // Parse dates - remove time component for comparison
+      const contractStartDateStr = projectStartDate.split('T')[0]
+      const transactionDateStr = txDate.split('T')[0]
+      
+      const contractStartDate = new Date(contractStartDateStr + 'T00:00:00')
+      const transactionDate = new Date(transactionDateStr + 'T00:00:00')
+      
+      // Compare dates (ignore time)
+      if (transactionDate < contractStartDate) {
+        const formattedStartDate = contractStartDate.toLocaleDateString('he-IL')
+        const formattedTxDate = transactionDate.toLocaleDateString('he-IL')
+        setError(
+          `לא ניתן ליצור עסקה לפני תאריך תחילת החוזה. תאריך תחילת החוזה: ${formattedStartDate}, תאריך העסקה: ${formattedTxDate}`
+        )
+        return
+      }
+    }
+
     if (amount === '' || Number(amount) <= 0) {
       setError('סכום חיובי נדרש')
       return
@@ -298,7 +445,7 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
         notes: notes || undefined,
         supplier_id: supplierId ? Number(supplierId) : undefined,
         is_exceptional: isExceptional,
-        from_fund: fromFund && type === 'Expense' ? true : false,
+        from_fund: fromFund ? true : false,
         subproject_id: subprojectId ? Number(subprojectId) : undefined,
         period_start_date: isPeriodTransaction ? periodStartDate : undefined,
         period_end_date: isPeriodTransaction ? periodEndDate : undefined
@@ -375,6 +522,26 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
       return
     }
 
+    // Validate recurring template start_date is not before contract start date
+    if (projectStartDate && recurringFormData.start_date) {
+      // Parse dates - remove time component for comparison
+      const contractStartDateStr = projectStartDate.split('T')[0]
+      const templateStartDateStr = recurringFormData.start_date.split('T')[0]
+      
+      const contractStartDate = new Date(contractStartDateStr + 'T00:00:00')
+      const templateStartDate = new Date(templateStartDateStr + 'T00:00:00')
+      
+      // Compare dates (ignore time)
+      if (templateStartDate < contractStartDate) {
+        const formattedStartDate = contractStartDate.toLocaleDateString('he-IL')
+        const formattedTemplateDate = templateStartDate.toLocaleDateString('he-IL')
+        setError(
+          `לא ניתן ליצור תבנית מחזורית עם תאריך התחלה לפני תאריך תחילת החוזה. תאריך תחילת החוזה: ${formattedStartDate}, תאריך התחלה של התבנית: ${formattedTemplateDate}`
+        )
+        return
+      }
+    }
+
       setLoading(true)
       setError(null)
   
@@ -390,18 +557,66 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
   
         const templateResponse = await RecurringTransactionAPI.createTemplate(templateData)
       
-      // Generate transactions for current month and next month
+      // Generate transactions - if start_date is in the past, generate for all months from start_date to current month
       const today = new Date()
       const currentYear = today.getFullYear()
       const currentMonth = today.getMonth() + 1
       
+      // Parse the start_date from the template
+      const startDate = new Date(templateData.start_date)
+      const startYear = startDate.getFullYear()
+      const startMonth = startDate.getMonth() + 1
+      
+      // Parse end_date if it exists
+      let endYear: number | null = null
+      let endMonth: number | null = null
+      if (templateData.end_date) {
+        const endDate = new Date(templateData.end_date)
+        endYear = endDate.getFullYear()
+        endMonth = endDate.getMonth() + 1
+      }
+      
       let generatedTransactionId: number | null = null
       
       try {
-        await RecurringTransactionAPI.generateMonthlyTransactions(currentYear, currentMonth)
+        // If start_date is in the past, generate transactions for all months from start_date to current month
+        if (startYear < currentYear || (startYear === currentYear && startMonth < currentMonth)) {
+          // Generate for all months from start_date to current month (or end_date if earlier)
+          let year = startYear
+          let month = startMonth
+          
+          // Determine the last month to generate (either current month or end_date month, whichever is earlier)
+          let lastYear = currentYear
+          let lastMonth = currentMonth
+          if (endYear !== null && endMonth !== null) {
+            if (endYear < currentYear || (endYear === currentYear && endMonth < currentMonth)) {
+              lastYear = endYear
+              lastMonth = endMonth
+            }
+          }
+          
+          while (year < lastYear || (year === lastYear && month <= lastMonth)) {
+            await RecurringTransactionAPI.generateMonthlyTransactions(year, month)
+            
+            // Move to next month
+            if (month === 12) {
+              month = 1
+              year++
+            } else {
+              month++
+            }
+          }
+        } else {
+          // Start_date is current or future, just generate for current month
+          await RecurringTransactionAPI.generateMonthlyTransactions(currentYear, currentMonth)
+        }
+        
+        // Always generate next month as well (if not past end_date)
         const nextMonth = currentMonth === 12 ? 1 : currentMonth + 1
         const nextYear = currentMonth === 12 ? currentYear + 1 : currentYear
-        await RecurringTransactionAPI.generateMonthlyTransactions(nextYear, nextMonth)
+        if (!endYear || !endMonth || nextYear < endYear || (nextYear === endYear && nextMonth <= endMonth)) {
+          await RecurringTransactionAPI.generateMonthlyTransactions(nextYear, nextMonth)
+        }
         
         if (filesToUpload.length > 0) {
           try {
@@ -484,8 +699,12 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
   }
 
   const handleClose = () => {
-    onClose()
+    // Remove focus from any active element
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur()
+    }
     resetForms()
+    onClose()
   }
 
   if (!isOpen) return null
@@ -524,7 +743,9 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
           {/* Mode Selection Tabs */}
           <div className="flex border-b border-gray-200 dark:border-gray-700">
             <button
+              type="button"
               onClick={() => setTransactionMode('regular')}
+              onMouseDown={(e) => e.preventDefault()}
               className={`flex-1 px-6 py-4 text-center font-medium transition-colors ${
                 transactionMode === 'regular'
                   ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400'
@@ -534,7 +755,9 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
               עסקה רגילה
             </button>
             <button
+              type="button"
               onClick={() => setTransactionMode('recurring')}
+              onMouseDown={(e) => e.preventDefault()}
               className={`flex-1 px-6 py-4 text-center font-medium transition-colors ${
                 transactionMode === 'recurring'
                   ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 border-b-2 border-purple-600 dark:border-purple-400'
@@ -573,12 +796,19 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">תאריך חיוב *</label>
                     <input
-                      className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className={`w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 ${
+                        dateError
+                          ? 'border-red-500 focus:ring-red-500'
+                          : 'border-gray-200 dark:border-gray-600 focus:ring-blue-500'
+                      }`}
                       type="date"
                       value={txDate}
                       onChange={e => setTxDate(e.target.value)}
                       required
                     />
+                    {dateError && (
+                      <p className="mt-1 text-sm text-red-600 dark:text-red-400">{dateError}</p>
+                    )}
                     {type === 'Expense' && (
                         <div className="mt-2 flex items-center gap-2">
                             <input
@@ -598,22 +828,36 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
                         <div>
                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">תחילת תקופה *</label>
                             <input
-                                className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                className={`w-full px-3 py-2 bg-white dark:bg-gray-800 border rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 ${
+                                  periodStartDateError
+                                    ? 'border-red-500 focus:ring-red-500'
+                                    : 'border-gray-200 dark:border-gray-600 focus:ring-blue-500'
+                                }`}
                                 type="date"
                                 value={periodStartDate}
                                 onChange={e => setPeriodStartDate(e.target.value)}
                                 required={isPeriodTransaction}
                             />
+                            {periodStartDateError && (
+                              <p className="mt-1 text-sm text-red-600 dark:text-red-400">{periodStartDateError}</p>
+                            )}
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">סיום תקופה *</label>
                             <input
-                                className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                className={`w-full px-3 py-2 bg-white dark:bg-gray-800 border rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 ${
+                                  periodEndDateError
+                                    ? 'border-red-500 focus:ring-red-500'
+                                    : 'border-gray-200 dark:border-gray-600 focus:ring-blue-500'
+                                }`}
                                 type="date"
                                 value={periodEndDate}
                                 onChange={e => setPeriodEndDate(e.target.value)}
                                 required={isPeriodTransaction}
                             />
+                            {periodEndDateError && (
+                              <p className="mt-1 text-sm text-red-600 dark:text-red-400">{periodEndDateError}</p>
+                            )}
                         </div>
                         <div className="col-span-2 text-xs text-blue-600 dark:text-blue-400">
                             ℹ️ ההוצאה תחולק יחסית לכל חודש בדוחות לפי מספר הימים בחודש
@@ -664,19 +908,21 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
                       }}
                     >
                       <option value="">בחר קטגוריה</option>
-                      {hasFund && type === 'Expense' && (
+                      {hasFund && (
                         <option value="__FUND__" className="bg-blue-50 dark:bg-blue-900/20">
-                          💰 הוריד מהקופה
+                          {type === 'Expense' ? '💰 הוריד מהקופה' : '💰 הוסף לקופה'}
                         </option>
                       )}
                       {availableCategories.map((cat) => (
                         <option key={cat.id} value={cat.id}>{cat.name}</option>
                       ))}
                     </select>
-                    {fromFund && type === 'Expense' && (
+                    {fromFund && (
                       <div className="mt-2 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md">
                         <p className="text-xs text-blue-700 dark:text-blue-300 font-medium mb-1">
-                          ⚠️ עסקה זו תרד מהקופה ולא תיכלל בחישובי ההוצאות הרגילות
+                          {type === 'Expense' 
+                            ? '⚠️ עסקה זו תרד מהקופה ולא תיכלל בחישובי ההוצאות הרגילות'
+                            : '⚠️ עסקה זו תתווסף לקופה ולא תיכלל בחישובי ההכנסות הרגילות'}
                         </p>
                         {fundBalance !== null && (
                           <p className={`text-xs ${fundBalance < 0 ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-blue-600 dark:text-blue-400'}`}>
@@ -989,10 +1235,17 @@ const CreateTransactionModal: React.FC<CreateTransactionModalProps> = ({
                     <input
                       type="date"
                       required
+                      className={`w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 ${
+                        recurringDateError
+                          ? 'border-red-500 focus:ring-red-500'
+                          : 'border-gray-200 dark:border-gray-600 focus:ring-blue-500'
+                      }`}
                       value={recurringFormData.start_date}
                       onChange={(e) => setRecurringFormData({ ...recurringFormData, start_date: e.target.value })}
-                      className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                     />
+                    {recurringDateError && (
+                      <p className="mt-1 text-sm text-red-600 dark:text-red-400">{recurringDateError}</p>
+                    )}
                   </div>
 
                   <div className="md:col-span-2">

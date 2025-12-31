@@ -4,6 +4,7 @@ from datetime import date
 
 from backend.core.deps import DBSessionDep, get_current_user
 from backend.services.recurring_transaction_service import RecurringTransactionService
+from backend.repositories.project_repository import ProjectRepository
 from backend.schemas.recurring_transaction import (
     RecurringTransactionTemplateCreate,
     RecurringTransactionTemplateUpdate,
@@ -45,6 +46,24 @@ async def create_recurring_template(
         # For now, assume supplier is required for all expenses to be safe
         raise HTTPException(status_code=400, detail="Supplier is required for expense transactions")
     
+    # Validate start_date is not before project contract start date
+    project = await ProjectRepository(db).get_by_id(data.project_id)
+    if project and project.start_date:
+        # Convert project.start_date to date if it's datetime
+        project_start_date = project.start_date
+        if hasattr(project_start_date, 'date'):
+            project_start_date = project_start_date.date()
+        
+        if data.start_date < project_start_date:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"לא ניתן ליצור תבנית מחזורית עם תאריך התחלה לפני תאריך תחילת החוזה. "
+                    f"תאריך תחילת החוזה: {project_start_date.strftime('%d/%m/%Y')}, "
+                    f"תאריך התחלה של התבנית: {data.start_date.strftime('%d/%m/%Y')}"
+                )
+            )
+    
     service = RecurringTransactionService(db)
     try:
         template = await service.create_template(data, user_id=user.id)
@@ -78,7 +97,55 @@ async def get_recurring_template(
     
     # Convert to schema objects
     template_schema = RecurringTransactionTemplateOut.model_validate(template)
-    transaction_schemas = [TransactionOut.model_validate(tx) for tx in transactions]
+    
+    # Convert transactions to TransactionOut format, handling created_by_user properly
+    from backend.repositories.user_repository import UserRepository
+    user_repo = UserRepository(db)
+    
+    transaction_schemas = []
+    for tx in transactions:
+        # Build transaction dict similar to list_transactions endpoint
+        is_generated_value = getattr(tx, 'is_generated', False)
+        recurring_template_id = getattr(tx, 'recurring_template_id', None)
+        if recurring_template_id and not is_generated_value:
+            is_generated_value = True
+        
+        tx_dict = {
+            'id': tx.id,
+            'project_id': tx.project_id,
+            'tx_date': tx.tx_date,
+            'type': tx.type,
+            'amount': float(tx.amount),
+            'description': tx.description,
+            'category': tx.category,
+            'category_id': tx.category_id,
+            'payment_method': tx.payment_method,
+            'notes': tx.notes,
+            'is_exceptional': tx.is_exceptional,
+            'is_generated': is_generated_value,
+            'file_path': tx.file_path,
+            'supplier_id': tx.supplier_id,
+            'created_by_user_id': getattr(tx, 'created_by_user_id', None),
+            'created_at': tx.created_at,
+            'created_by_user': None,
+            'from_fund': tx.from_fund if hasattr(tx, 'from_fund') else False,
+            'recurring_template_id': recurring_template_id,
+            'period_start_date': getattr(tx, 'period_start_date', None),
+            'period_end_date': getattr(tx, 'period_end_date', None)
+        }
+        
+        # Load user info if exists
+        if tx_dict['created_by_user_id']:
+            creator = await user_repo.get_by_id(tx_dict['created_by_user_id'])
+            if creator:
+                tx_dict['created_by_user'] = {
+                    'id': creator.id,
+                    'full_name': creator.full_name,
+                    'email': creator.email
+                }
+        
+        # Convert to TransactionOut schema
+        transaction_schemas.append(TransactionOut.model_validate(tx_dict))
     
     # Create response with transactions
     return RecurringTransactionTemplateWithTransactions(
@@ -95,6 +162,28 @@ async def update_recurring_template(
     user = Depends(get_current_user)
 ):
     """Update a recurring transaction template"""
+    # Validate start_date is not before project contract start date (if updating start_date)
+    if data.start_date is not None:
+        service = RecurringTransactionService(db)
+        template = await service.get_template(template_id)
+        if template:
+            project = await ProjectRepository(db).get_by_id(template.project_id)
+            if project and project.start_date:
+                # Convert project.start_date to date if it's datetime
+                project_start_date = project.start_date
+                if hasattr(project_start_date, 'date'):
+                    project_start_date = project_start_date.date()
+                
+                if data.start_date < project_start_date:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            f"לא ניתן לעדכן תבנית מחזורית לתאריך התחלה לפני תאריך תחילת החוזה. "
+                            f"תאריך תחילת החוזה: {project_start_date.strftime('%d/%m/%Y')}, "
+                            f"תאריך התחלה של התבנית: {data.start_date.strftime('%d/%m/%Y')}"
+                        )
+                    )
+    
     try:
         template = await RecurringTransactionService(db).update_template(template_id, data)
     except ValueError as e:
@@ -214,6 +303,41 @@ async def generate_all_active_transactions(
         raise HTTPException(
             status_code=500,
             detail=f"שגיאה: {str(e)}\n{traceback.format_exc()}"
+        )
+
+
+@router.post("/project/{project_id}/ensure-generated")
+async def ensure_project_transactions_generated(
+    project_id: int,
+    db: DBSessionDep,
+    user = Depends(get_current_user)
+):
+    """
+    Ensure all recurring transactions for a project are generated up to current month.
+    Only generates missing transactions (safe to call multiple times).
+    """
+    try:
+        service = RecurringTransactionService(db)
+        
+        # Verify project exists
+        from backend.repositories.project_repository import ProjectRepository
+        project = await ProjectRepository(db).get_by_id(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        generated_count = await service.ensure_project_transactions_generated(project_id)
+        
+        return {
+            "generated_count": generated_count,
+            "project_id": project_id
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        raise HTTPException(
+            status_code=500,
+            detail=f"שגיאה ביצירת עסקאות מחזוריות: {str(e)}\n{traceback.format_exc()}"
         )
 
 

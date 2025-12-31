@@ -10,13 +10,15 @@ interface CreateRecurringTransactionModalProps {
   onClose: () => void
   onSuccess: () => void
   projectId: number
+  projectStartDate?: string | null // Contract start date for validation
 }
 
 const CreateRecurringTransactionModal: React.FC<CreateRecurringTransactionModalProps> = ({
   isOpen,
   onClose,
   onSuccess,
-  projectId
+  projectId,
+  projectStartDate
 }) => {
   const dispatch = useAppDispatch()
   const { items: suppliers } = useAppSelector(s => s.suppliers)
@@ -39,6 +41,7 @@ const CreateRecurringTransactionModal: React.FC<CreateRecurringTransactionModalP
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [dateError, setDateError] = useState<string | null>(null)
   const [filesToUpload, setFilesToUpload] = useState<File[]>([])
   const [showDescriptionModal, setShowDescriptionModal] = useState(false)
   const [uploadedDocuments, setUploadedDocuments] = useState<Array<{id: number, fileName: string, description: string}>>([])
@@ -55,6 +58,32 @@ const CreateRecurringTransactionModal: React.FC<CreateRecurringTransactionModalP
       })
     }
   }, [isOpen, projectId])
+
+  // Validate recurring template start_date in real-time
+  useEffect(() => {
+    if (!formData.start_date || !projectStartDate) {
+      setDateError(null)
+      return
+    }
+
+    // Parse dates - remove time component for comparison
+    const contractStartDateStr = projectStartDate.split('T')[0]
+    const templateStartDateStr = formData.start_date.split('T')[0]
+    
+    const contractStartDate = new Date(contractStartDateStr + 'T00:00:00')
+    const templateStartDate = new Date(templateStartDateStr + 'T00:00:00')
+    
+    // Compare dates (ignore time)
+    if (templateStartDate < contractStartDate) {
+      const formattedStartDate = contractStartDate.toLocaleDateString('he-IL')
+      const formattedTemplateDate = templateStartDate.toLocaleDateString('he-IL')
+      setDateError(
+        `לא ניתן ליצור תבנית מחזורית עם תאריך התחלה לפני תאריך תחילת החוזה. תאריך תחילת החוזה: ${formattedStartDate}, תאריך התחלה של התבנית: ${formattedTemplateDate}`
+      )
+    } else {
+      setDateError(null)
+    }
+  }, [formData.start_date, projectStartDate])
 
   useEffect(() => {
     if (isOpen) {
@@ -78,6 +107,7 @@ const CreateRecurringTransactionModal: React.FC<CreateRecurringTransactionModalP
       })
       setUseProjectStartDate(false)
       setError(null)
+      setDateError(null)
       setFilesToUpload([])
       setShowDescriptionModal(false)
       setUploadedDocuments([])
@@ -114,6 +144,7 @@ const CreateRecurringTransactionModal: React.FC<CreateRecurringTransactionModalP
     })
     setUseProjectStartDate(false)
     setError(null)
+    setDateError(null)
     setFilesToUpload([])
     setShowDescriptionModal(false)
     setUploadedDocuments([])
@@ -148,6 +179,26 @@ const CreateRecurringTransactionModal: React.FC<CreateRecurringTransactionModalP
       return
     }
 
+    // Validate recurring template start_date is not before contract start date
+    if (projectStartDate && formData.start_date) {
+      // Parse dates - remove time component for comparison
+      const contractStartDateStr = projectStartDate.split('T')[0]
+      const templateStartDateStr = formData.start_date.split('T')[0]
+      
+      const contractStartDate = new Date(contractStartDateStr + 'T00:00:00')
+      const templateStartDate = new Date(templateStartDateStr + 'T00:00:00')
+      
+      // Compare dates (ignore time)
+      if (templateStartDate < contractStartDate) {
+        const formattedStartDate = contractStartDate.toLocaleDateString('he-IL')
+        const formattedTemplateDate = templateStartDate.toLocaleDateString('he-IL')
+        setError(
+          `לא ניתן ליצור תבנית מחזורית עם תאריך התחלה לפני תאריך תחילת החוזה. תאריך תחילת החוזה: ${formattedStartDate}, תאריך התחלה של התבנית: ${formattedTemplateDate}`
+        )
+        return
+      }
+    }
+
     setLoading(true)
     setError(null)
 
@@ -163,19 +214,66 @@ const CreateRecurringTransactionModal: React.FC<CreateRecurringTransactionModalP
 
       const templateResponse = await RecurringTransactionAPI.createTemplate(templateData)
       
-      // Generate transactions for current month and next month to show immediate effect
+      // Generate transactions - if start_date is in the past, generate for all months from start_date to current month
       const today = new Date()
       const currentYear = today.getFullYear()
       const currentMonth = today.getMonth() + 1
       
+      // Parse the start_date from the template
+      const startDate = new Date(templateData.start_date)
+      const startYear = startDate.getFullYear()
+      const startMonth = startDate.getMonth() + 1
+      
+      // Parse end_date if it exists
+      let endYear: number | null = null
+      let endMonth: number | null = null
+      if (templateData.end_date) {
+        const endDate = new Date(templateData.end_date)
+        endYear = endDate.getFullYear()
+        endMonth = endDate.getMonth() + 1
+      }
+      
       let generatedTransactionId: number | null = null
       
       try {
-        await RecurringTransactionAPI.generateMonthlyTransactions(currentYear, currentMonth)
-        // Also generate next month
+        // If start_date is in the past, generate transactions for all months from start_date to current month
+        if (startYear < currentYear || (startYear === currentYear && startMonth < currentMonth)) {
+          // Generate for all months from start_date to current month (or end_date if earlier)
+          let year = startYear
+          let month = startMonth
+          
+          // Determine the last month to generate (either current month or end_date month, whichever is earlier)
+          let lastYear = currentYear
+          let lastMonth = currentMonth
+          if (endYear !== null && endMonth !== null) {
+            if (endYear < currentYear || (endYear === currentYear && endMonth < currentMonth)) {
+              lastYear = endYear
+              lastMonth = endMonth
+            }
+          }
+          
+          while (year < lastYear || (year === lastYear && month <= lastMonth)) {
+            await RecurringTransactionAPI.generateMonthlyTransactions(year, month)
+            
+            // Move to next month
+            if (month === 12) {
+              month = 1
+              year++
+            } else {
+              month++
+            }
+          }
+        } else {
+          // Start_date is current or future, just generate for current month
+          await RecurringTransactionAPI.generateMonthlyTransactions(currentYear, currentMonth)
+        }
+        
+        // Always generate next month as well (if not past end_date)
         const nextMonth = currentMonth === 12 ? 1 : currentMonth + 1
         const nextYear = currentMonth === 12 ? currentYear + 1 : currentYear
-        await RecurringTransactionAPI.generateMonthlyTransactions(nextYear, nextMonth)
+        if (!endYear || !endMonth || nextYear < endYear || (nextYear === endYear && nextMonth <= endMonth)) {
+          await RecurringTransactionAPI.generateMonthlyTransactions(nextYear, nextMonth)
+        }
         
         // Try to find the generated transaction for the current month
         // We'll need to fetch transactions for the project and find the one that matches
@@ -446,8 +544,15 @@ const CreateRecurringTransactionModal: React.FC<CreateRecurringTransactionModalP
                   setUseProjectStartDate(false)
                 }}
                 disabled={useProjectStartDate}
-                className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500"
+                className={`w-full border rounded-md px-3 py-2 focus:outline-none focus:ring-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 ${
+                  dateError
+                    ? 'border-red-500 focus:ring-red-500'
+                    : 'border-gray-300 dark:border-gray-600 focus:ring-blue-500'
+                }`}
               />
+              {dateError && (
+                <p className="mt-1 text-sm text-red-600 dark:text-red-400">{dateError}</p>
+              )}
               <div className="flex items-center mt-2">
                 <input
                   type="checkbox"

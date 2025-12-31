@@ -70,6 +70,88 @@ const getCategoryName = (category: any): string => {
   return String(category);
 }
 
+// Helper function to split period transactions by month
+interface SplitTransaction extends Transaction {
+  monthKey: string // YYYY-MM format
+  proportionalAmount: number
+  fullAmount: number
+  daysInMonth: number
+  totalDays: number
+}
+
+const splitPeriodTransactionByMonth = (tx: Transaction): SplitTransaction[] => {
+  if (!tx.period_start_date || !tx.period_end_date) {
+    // Not a period transaction, return as-is
+    const txDate = new Date(tx.tx_date)
+    const monthKey = `${txDate.getFullYear()}-${String(txDate.getMonth() + 1).padStart(2, '0')}`
+    return [{
+      ...tx,
+      monthKey,
+      proportionalAmount: tx.amount,
+      fullAmount: tx.amount,
+      daysInMonth: 0,
+      totalDays: 0
+    }]
+  }
+
+  const startDate = new Date(tx.period_start_date)
+  const endDate = new Date(tx.period_end_date)
+  const totalDays = Math.floor((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
+  
+  if (totalDays <= 0) {
+    // Invalid period, return as-is
+    const txDate = new Date(tx.tx_date)
+    const monthKey = `${txDate.getFullYear()}-${String(txDate.getMonth() + 1).padStart(2, '0')}`
+    return [{
+      ...tx,
+      monthKey,
+      proportionalAmount: tx.amount,
+      fullAmount: tx.amount,
+      daysInMonth: 0,
+      totalDays: 0
+    }]
+  }
+
+  const dailyRate = tx.amount / totalDays
+  const splits: SplitTransaction[] = []
+  
+  // Iterate through each month in the period
+  const current = new Date(startDate)
+  current.setDate(1) // Start of month
+  
+  while (current <= endDate) {
+    const year = current.getFullYear()
+    const month = current.getMonth()
+    const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`
+    
+    // Calculate the first and last day of this month that are within the period
+    const monthStart = new Date(year, month, 1)
+    const monthEnd = new Date(year, month + 1, 0) // Last day of month
+    
+    const overlapStart = new Date(Math.max(startDate.getTime(), monthStart.getTime()))
+    const overlapEnd = new Date(Math.min(endDate.getTime(), monthEnd.getTime()))
+    
+    if (overlapStart <= overlapEnd) {
+      const daysInMonth = Math.floor((overlapEnd.getTime() - overlapStart.getTime()) / (1000 * 60 * 60 * 24)) + 1
+      const proportionalAmount = dailyRate * daysInMonth
+      
+      splits.push({
+        ...tx,
+        monthKey,
+        proportionalAmount,
+        fullAmount: tx.amount,
+        daysInMonth,
+        totalDays
+      })
+    }
+    
+    // Move to next month
+    current.setMonth(month + 1)
+  }
+  
+  return splits
+}
+
 export default function ProjectDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -123,6 +205,7 @@ export default function ProjectDetail() {
   const [transactionTypeFilter, setTransactionTypeFilter] = useState<'all' | 'regular' | 'recurring'>('all')
   const [editTemplateModalOpen, setEditTemplateModalOpen] = useState(false)
   const [selectedTemplateForEdit, setSelectedTemplateForEdit] = useState<RecurringTransactionTemplate | null>(null)
+  const [pendingTemplateLoad, setPendingTemplateLoad] = useState(false)
   const [recurringTemplates, setRecurringTemplates] = useState<RecurringTransactionTemplate[]>([])
 
   const loadRecurringTemplates = async () => {
@@ -140,6 +223,86 @@ export default function ProjectDetail() {
       loadRecurringTemplates()
     }
   }, [transactionTypeFilter, id])
+
+  // Ensure modal stays open when template loads
+  useEffect(() => {
+    if (selectedTemplateForEdit && pendingTemplateLoad && editTemplateModalOpen) {
+      // Template loaded, clear pending flag
+      setPendingTemplateLoad(false)
+    }
+  }, [selectedTemplateForEdit, pendingTemplateLoad, editTemplateModalOpen])
+
+  // Generate recurring transactions for selected month, date range, or all_time when user changes filter
+  useEffect(() => {
+    if (!id || isNaN(Number(id))) return
+
+    const generateForSelectedPeriod = async () => {
+      try {
+        if (dateFilterMode === 'selected_month' && selectedMonth) {
+          // First, ensure all transactions up to current month are generated (optimized single API call)
+          try {
+            await RecurringTransactionAPI.ensureProjectTransactionsGenerated(parseInt(id))
+          } catch (genErr) {
+            // Silently fail - transactions might already exist
+            console.log('Could not ensure recurring transactions:', genErr)
+          }
+          
+          // Then, generate for selected month if it's in the future
+          const [year, month] = selectedMonth.split('-').map(Number)
+          const selectedDate = new Date(year, month - 1, 1)
+          const today = new Date()
+          today.setHours(0, 0, 0, 0)
+          selectedDate.setHours(0, 0, 0, 0)
+          
+          // If selected month is in the future, generate transactions for it
+          if (selectedDate > today) {
+            try {
+              await RecurringTransactionAPI.generateMonthlyTransactions(year, month)
+            } catch (genErr) {
+              // Silently fail - transactions might already exist
+              console.log('Could not generate recurring transactions for selected month:', genErr)
+            }
+          }
+        } else if (dateFilterMode === 'date_range' && startDate && endDate) {
+          // Ensure all recurring transactions are generated (only missing ones)
+          // This will generate from template start_date to current month, which includes the date range
+          try {
+            await RecurringTransactionAPI.ensureProjectTransactionsGenerated(parseInt(id))
+          } catch (genErr) {
+            // Silently fail - transactions might already exist
+            console.log('Could not generate recurring transactions:', genErr)
+          }
+        } else if (dateFilterMode === 'all_time') {
+          // Ensure all recurring transactions are generated (only missing ones)
+          try {
+            await RecurringTransactionAPI.ensureProjectTransactionsGenerated(parseInt(id))
+          } catch (genErr) {
+            // Silently fail - transactions might already exist
+            console.log('Could not generate recurring transactions:', genErr)
+          }
+        } else if (dateFilterMode === 'current_month') {
+          // Ensure all recurring transactions are generated (only missing ones)
+          try {
+            await RecurringTransactionAPI.ensureProjectTransactionsGenerated(parseInt(id))
+          } catch (genErr) {
+            // Silently fail - transactions might already exist
+            console.log('Could not generate recurring transactions:', genErr)
+          }
+        }
+        
+        // Reload transactions to show the newly generated ones (except for current_month which is handled by load())
+        if (dateFilterMode !== 'current_month') {
+          const { data } = await api.get(`/transactions/project/${id}`)
+          setTxs(data || [])
+        }
+      } catch (err) {
+        // Silently fail - transactions might already exist or there might be no active templates
+        console.log('Could not generate recurring transactions:', err)
+      }
+    }
+
+    generateForSelectedPeriod()
+  }, [selectedMonth, dateFilterMode, startDate, endDate, id])
   const [showRecurringSelectionModal, setShowRecurringSelectionModal] = useState(false)
   const [showCreateTransactionModal, setShowCreateTransactionModal] = useState(false)
   const [showDocumentsModal, setShowDocumentsModal] = useState(false)
@@ -260,6 +423,15 @@ export default function ProjectDetail() {
 
     setLoading(true)
     try {
+      // Ensure all recurring transactions are generated (only missing ones - safe to call multiple times)
+      try {
+        await RecurringTransactionAPI.ensureProjectTransactionsGenerated(parseInt(id))
+      } catch (genErr) {
+        // Silently fail - transactions might already exist or there might be no templates
+        console.log('Could not generate recurring transactions on load:', genErr)
+      }
+      
+      // Then load all transactions
       const { data } = await api.get(`/transactions/project/${id}`)
       // Debug: Check if period dates are coming through
       if (data && data.length > 0) {
@@ -683,14 +855,12 @@ const formatDate = (value: string | null) => {
 
 
   const handleEditAnyTransaction = async (transaction: Transaction) => {
-    // If it's a recurring transaction, ask the user whether to edit the instance or the template
-    if (transaction.is_generated && transaction.recurring_template_id) {
-       // Check if we want to edit the template (if in recurring filter or user choice)
-       if (transactionTypeFilter === 'recurring' || transaction.is_generated) {
-         setSelectedTransactionForEdit(transaction)
-         setShowRecurringSelectionModal(true)
-         return
-      }
+    // If it's a recurring transaction (has recurring_template_id), always ask the user whether to edit the instance or the template
+    // Check both is_generated and recurring_template_id to catch all recurring transactions
+    if (transaction.recurring_template_id || transaction.is_generated) {
+      setSelectedTransactionForEdit(transaction)
+      setShowRecurringSelectionModal(true)
+      return
     }
     
     setSelectedTransactionForEdit(transaction)
@@ -699,26 +869,69 @@ const formatDate = (value: string | null) => {
   
   // Selection Modal Handler
   const handleEditRecurringSelection = async (mode: 'instance' | 'series') => {
-      setShowRecurringSelectionModal(false)
-      
-      if (!selectedTransactionForEdit) return
+      if (!selectedTransactionForEdit) {
+        setShowRecurringSelectionModal(false)
+        return
+      }
 
       if (mode === 'instance') {
+           // Close selection modal and open edit transaction modal
+           setShowRecurringSelectionModal(false)
            setEditTransactionModalOpen(true)
       } else {
-           // Series mode
+           // Series mode - edit the entire template
            try {
-             const templateId = selectedTransactionForEdit.recurring_template_id
+             let templateId = selectedTransactionForEdit.recurring_template_id
+             
+             // If templateId is not found, try to find it by matching transaction details
              if (!templateId) {
-                 alert('לא נמצא מזהה תבנית')
+               try {
+                 // Load all templates for the project
+                 const templates = await RecurringTransactionAPI.getProjectRecurringTemplates(parseInt(id || '0'))
+                 // Find matching template by description, amount, supplier, and type
+                 const matchingTemplate = templates.find(t => 
+                   t.description === selectedTransactionForEdit.description &&
+                   t.amount === selectedTransactionForEdit.amount &&
+                   t.type === selectedTransactionForEdit.type &&
+                   (t.supplier_id === selectedTransactionForEdit.supplier_id || 
+                    (!t.supplier_id && !selectedTransactionForEdit.supplier_id))
+                 )
+                 
+                 if (matchingTemplate) {
+                   templateId = matchingTemplate.id
+                 }
+               } catch (searchErr) {
+                 console.error('Failed to search for template', searchErr)
+               }
+             }
+             
+             if (!templateId) {
+                 alert('לא נמצא מזהה תבנית. לא ניתן לערוך את כל הסדרה.')
+                 setShowRecurringSelectionModal(false)
                  return
              }
-             const response = await api.get(`/recurring-transactions/${templateId}`)
-             setSelectedTemplateForEdit(response.data)
+             
+             // Close selection modal first
+             setShowRecurringSelectionModal(false)
+             
+             // Set pending flag and open modal (will show loading state)
+             setPendingTemplateLoad(true)
              setEditTemplateModalOpen(true)
-           } catch (err) {
+             
+             // Then load the template
+             const templateResponse = await RecurringTransactionAPI.getTemplate(templateId)
+             // The API returns template with generated_transactions, but we only need the template part
+             // Extract just the template properties (exclude generated_transactions if it exists)
+             const { generated_transactions, ...templateData } = templateResponse as any
+             // Set the template - this will trigger the form to load
+             setSelectedTemplateForEdit(templateData as RecurringTransactionTemplate)
+             setPendingTemplateLoad(false)
+           } catch (err: any) {
              console.error('Failed to fetch template', err)
-             alert('שגיאה בטעינת פרטי המחזוריות')
+             setPendingTemplateLoad(false)
+             setEditTemplateModalOpen(false)
+             setShowRecurringSelectionModal(false)
+             alert('שגיאה בטעינת פרטי המחזוריות: ' + (err.response?.data?.detail || err.message))
            }
       }
   }
@@ -764,31 +977,65 @@ const formatDate = (value: string | null) => {
     
     let dateMatches = false
 
-    if (dateFilterMode === 'current_month') {
-      // Show only current month
-      const txMonth = txDate.getMonth() + 1
-      const txYear = txDate.getFullYear()
-      dateMatches = txMonth === currentMonth && txYear === currentYear
-    } else if (dateFilterMode === 'selected_month') {
-      // Show selected month
-      const [year, month] = selectedMonth.split('-').map(Number)
-      const txMonth = txDate.getMonth() + 1
-      const txYear = txDate.getFullYear()
-      dateMatches = txMonth === month && txYear === year
-    } else if (dateFilterMode === 'date_range') {
-      // Show date range
-      if (startDate && endDate) {
-        // Use string comparison to avoid timezone issues with Date objects
-        // tx_date is YYYY-MM-DD, startDate/endDate are YYYY-MM-DD
-        const txDateStr = typeof t.tx_date === 'string' ? t.tx_date.split('T')[0] : new Date(t.tx_date).toISOString().split('T')[0]
-        dateMatches = txDateStr >= startDate && txDateStr <= endDate
+    // For period transactions, check if the period overlaps with the filter range
+    if (t.period_start_date && t.period_end_date) {
+      const periodStart = new Date(t.period_start_date)
+      const periodEnd = new Date(t.period_end_date)
+      
+      if (dateFilterMode === 'current_month') {
+        // Check if period overlaps with current month
+        const monthStart = new Date(currentYear, currentMonth - 1, 1)
+        const monthEnd = new Date(currentYear, currentMonth, 0, 23, 59, 59, 999)
+        dateMatches = periodStart <= monthEnd && periodEnd >= monthStart
+      } else if (dateFilterMode === 'selected_month') {
+        // Check if period overlaps with selected month
+        const [year, month] = selectedMonth.split('-').map(Number)
+        const monthStart = new Date(year, month - 1, 1)
+        const monthEnd = new Date(year, month, 0, 23, 59, 59, 999)
+        dateMatches = periodStart <= monthEnd && periodEnd >= monthStart
+      } else if (dateFilterMode === 'date_range') {
+        // Check if period overlaps with date range
+        if (startDate && endDate) {
+          const rangeStart = new Date(startDate)
+          const rangeEnd = new Date(endDate)
+          rangeEnd.setHours(23, 59, 59, 999)
+          dateMatches = periodStart <= rangeEnd && periodEnd >= rangeStart
+        } else {
+          dateMatches = true // Show all if dates not set
+        }
+      } else if (dateFilterMode === 'all_time') {
+        dateMatches = true
       } else {
-        dateMatches = true // Show all if dates not set
+        dateMatches = true // Show all if no date filter mode
       }
-    } else if (dateFilterMode === 'all_time') {
-      dateMatches = true
     } else {
-      dateMatches = true // Show all if no date filter mode
+      // Regular transaction - check tx_date
+      if (dateFilterMode === 'current_month') {
+        // Show only current month
+        const txMonth = txDate.getMonth() + 1
+        const txYear = txDate.getFullYear()
+        dateMatches = txMonth === currentMonth && txYear === currentYear
+      } else if (dateFilterMode === 'selected_month') {
+        // Show selected month
+        const [year, month] = selectedMonth.split('-').map(Number)
+        const txMonth = txDate.getMonth() + 1
+        const txYear = txDate.getFullYear()
+        dateMatches = txMonth === month && txYear === year
+      } else if (dateFilterMode === 'date_range') {
+        // Show date range
+        if (startDate && endDate) {
+          // Use string comparison to avoid timezone issues with Date objects
+          // tx_date is YYYY-MM-DD, startDate/endDate are YYYY-MM-DD
+          const txDateStr = typeof t.tx_date === 'string' ? t.tx_date.split('T')[0] : new Date(t.tx_date).toISOString().split('T')[0]
+          dateMatches = txDateStr >= startDate && txDateStr <= endDate
+        } else {
+          dateMatches = true // Show all if dates not set
+        }
+      } else if (dateFilterMode === 'all_time') {
+        dateMatches = true
+      } else {
+        dateMatches = true // Show all if no date filter mode
+      }
     }
     
     // Category filter: if 'all', show all transactions
@@ -820,6 +1067,79 @@ const formatDate = (value: string | null) => {
     return result
   })
   
+  // Expand period transactions into monthly splits for display
+  // When filtering by month, show each period transaction split by month with proportional amounts
+  const expandedTransactions = useMemo(() => {
+    const expanded: (Transaction & { monthKey?: string; proportionalAmount?: number; fullAmount?: number; daysInMonth?: number; totalDays?: number })[] = []
+    
+    filtered.forEach(tx => {
+      // If it's a period transaction, always split it by month
+      if (tx.period_start_date && tx.period_end_date) {
+        const splits = splitPeriodTransactionByMonth(tx)
+        
+        console.log('📅 Period transaction split:', {
+          txId: tx.id,
+          amount: tx.amount,
+          period: `${tx.period_start_date} - ${tx.period_end_date}`,
+          splits: splits.map(s => ({
+            month: s.monthKey,
+            proportional: s.proportionalAmount,
+            full: s.fullAmount,
+            days: s.daysInMonth,
+            totalDays: s.totalDays
+          }))
+        })
+        
+        // If filtering by month, show only the relevant month
+        if (dateFilterMode === 'current_month') {
+          const currentMonthKey = `${currentYear}-${String(currentMonth).padStart(2, '0')}`
+          const monthSplit = splits.find(s => s.monthKey === currentMonthKey)
+          if (monthSplit) {
+            expanded.push(monthSplit)
+          }
+        } else if (dateFilterMode === 'selected_month' && selectedMonth) {
+          const monthSplit = splits.find(s => s.monthKey === selectedMonth)
+          if (monthSplit) {
+            expanded.push(monthSplit)
+          }
+        } else if (dateFilterMode === 'date_range' && startDate && endDate) {
+          // For date range, show all splits that fall within the range
+          const rangeStart = new Date(startDate)
+          const rangeEnd = new Date(endDate)
+          splits.forEach(split => {
+            const splitMonth = new Date(split.monthKey + '-01')
+            const monthStart = new Date(splitMonth.getFullYear(), splitMonth.getMonth(), 1)
+            const monthEnd = new Date(splitMonth.getFullYear(), splitMonth.getMonth() + 1, 0)
+            
+            // Check if this month overlaps with the date range
+            if (monthStart <= rangeEnd && monthEnd >= rangeStart) {
+              expanded.push(split)
+            }
+          })
+        } else {
+          // For 'all_time' or no filter, show all splits
+          expanded.push(...splits)
+        }
+      } else {
+        // Regular transaction - add as-is
+        expanded.push(tx)
+      }
+    })
+    
+    console.log('📊 Expanded transactions:', {
+      total: expanded.length,
+      withProportional: expanded.filter(t => (t as any).proportionalAmount !== undefined).length,
+      periodSplits: expanded.filter(t => (t as any).proportionalAmount !== undefined).map(t => ({
+        id: t.id,
+        month: (t as any).monthKey,
+        proportional: (t as any).proportionalAmount,
+        full: (t as any).fullAmount
+      }))
+    })
+    
+    return expanded
+  }, [filtered, dateFilterMode, currentMonth, currentYear, selectedMonth, startDate, endDate])
+  
   // Calculate how many transactions match category (regardless of date filter)
   const transactionsMatchingCategory = categoryFilter === 'all' 
     ? txs.filter(t => !t.from_fund).length 
@@ -836,14 +1156,41 @@ const formatDate = (value: string | null) => {
 
 
 
-  const handleDeleteTransaction = async (transactionId: number) => {
-    if (!confirm('האם אתה בטוח שברצונך למחוק את העסקה?')) {
+  const loadTransactionsOnly = async () => {
+    // Load transactions without regenerating recurring transactions
+    if (!id || isNaN(Number(id))) return
+    
+    try {
+      const { data } = await api.get(`/transactions/project/${id}`)
+      setTxs(data || [])
+    } catch (err: any) {
+      setTxs([])
+    }
+  }
+
+  const handleDeleteTransaction = async (transactionId: number, transaction?: Transaction) => {
+    // Check if this is a recurring transaction instance
+    const isRecurring = transaction?.recurring_template_id || transaction?.is_generated
+    
+    const confirmMessage = isRecurring 
+      ? 'האם אתה בטוח שברצונך למחוק את העסקה הזו? פעולה זו תמחק רק את העסקה הספציפית הזו ולא תשפיע על התבנית החוזרת.'
+      : 'האם אתה בטוח שברצונך למחוק את העסקה?'
+    
+    if (!confirm(confirmMessage)) {
       return
     }
     
     try {
-      await api.delete(`/transactions/${transactionId}`)
-      await load() // Reload transactions list
+      // Use the appropriate endpoint based on whether it's a recurring transaction
+      if (isRecurring) {
+        await RecurringTransactionAPI.deleteTransactionInstance(transactionId)
+        // For recurring transactions, only reload transactions without regenerating
+        // to prevent recreating the deleted instance
+        await loadTransactionsOnly()
+      } else {
+        await api.delete(`/transactions/${transactionId}`)
+        await load() // For regular transactions, use full load
+      }
       await loadChartsData()
       if (hasFund) {
         await loadFundData() // Reload fund data
@@ -909,32 +1256,29 @@ const formatDate = (value: string | null) => {
     
     // Filter transactions from calculationStartDate to calculationEndDate (current contract period only)
     // Exclude fund transactions (from_fund == true) - only include regular transactions
+    // For period transactions, check if the period overlaps with the calculation range
     const summaryTransactions = txs.filter(t => {
-      const txDate = new Date(t.tx_date)
-      const isInDateRange = txDate >= calculationStartDate && txDate <= calculationEndDate
       const isNotFromFund = !(t.from_fund === true)  // Exclude fund transactions
-      const passes = isInDateRange && isNotFromFund
+      if (!isNotFromFund) return false
       
-      // Debug income transactions
-      if (t.type === 'Income') {
-        console.log('🔍 Income transaction:', {
-          id: t.id,
-          amount: t.amount,
-          date: t.tx_date,
-          txDate: txDate.toISOString(),
-          calculationStartDate: calculationStartDate.toISOString(),
-          isInDateRange,
-          from_fund: t.from_fund,
-          isNotFromFund,
-          passes
-        })
+      // For period transactions, check if period overlaps with calculation range
+      if (t.period_start_date && t.period_end_date) {
+        const periodStart = new Date(t.period_start_date)
+        const periodEnd = new Date(t.period_end_date)
+        // Check if periods overlap: (StartA <= EndB) and (EndA >= StartB)
+        const overlaps = periodStart <= calculationEndDate && periodEnd >= calculationStartDate
+        return overlaps
+      } else {
+        // Regular transaction - check if tx_date is in range
+        const txDate = new Date(t.tx_date)
+        const isInDateRange = txDate >= calculationStartDate && txDate <= calculationEndDate
+        return isInDateRange
       }
-      
-      return passes
     })
     
     // Calculate actual transaction income and expense (excluding fund transactions)
     // Only actual transactions are counted - budget is NOT included
+    // For period transactions, use proportional amounts based on overlap with calculation period
     const incomeTransactions = summaryTransactions.filter(t => t.type === 'Income')
     const expenseTransactions = summaryTransactions.filter(t => t.type === 'Expense')
     
@@ -946,8 +1290,56 @@ const formatDate = (value: string | null) => {
     })
     
     const monthlyIncome = Number(projectBudget?.budget_monthly || 0)
-    const transactionIncome = incomeTransactions.reduce((s, t) => s + Number(t.amount || 0), 0)
-    const transactionExpense = expenseTransactions.reduce((s, t) => s + Number(t.amount || 0), 0)
+    
+    // Calculate income: regular transactions use full amount, period transactions use proportional
+    const transactionIncome = incomeTransactions.reduce((s, t) => {
+      if (t.period_start_date && t.period_end_date) {
+        // Period transaction - calculate proportional amount
+        const periodStart = new Date(t.period_start_date)
+        const periodEnd = new Date(t.period_end_date)
+        const totalDays = Math.floor((periodEnd.getTime() - periodStart.getTime()) / (1000 * 60 * 60 * 24)) + 1
+        
+        if (totalDays > 0) {
+          const overlapStart = new Date(Math.max(periodStart.getTime(), calculationStartDate.getTime()))
+          const overlapEnd = new Date(Math.min(periodEnd.getTime(), calculationEndDate.getTime()))
+          
+          if (overlapStart <= overlapEnd) {
+            const overlapDays = Math.floor((overlapEnd.getTime() - overlapStart.getTime()) / (1000 * 60 * 60 * 24)) + 1
+            const dailyRate = Number(t.amount) / totalDays
+            return s + (dailyRate * overlapDays)
+          }
+        }
+        return s
+      } else {
+        // Regular transaction - use full amount
+        return s + Number(t.amount || 0)
+      }
+    }, 0)
+    
+    // Calculate expense: regular transactions use full amount, period transactions use proportional
+    const transactionExpense = expenseTransactions.reduce((s, t) => {
+      if (t.period_start_date && t.period_end_date) {
+        // Period transaction - calculate proportional amount
+        const periodStart = new Date(t.period_start_date)
+        const periodEnd = new Date(t.period_end_date)
+        const totalDays = Math.floor((periodEnd.getTime() - periodStart.getTime()) / (1000 * 60 * 60 * 24)) + 1
+        
+        if (totalDays > 0) {
+          const overlapStart = new Date(Math.max(periodStart.getTime(), calculationStartDate.getTime()))
+          const overlapEnd = new Date(Math.min(periodEnd.getTime(), calculationEndDate.getTime()))
+          
+          if (overlapStart <= overlapEnd) {
+            const overlapDays = Math.floor((overlapEnd.getTime() - overlapStart.getTime()) / (1000 * 60 * 60 * 24)) + 1
+            const dailyRate = Number(t.amount) / totalDays
+            return s + (dailyRate * overlapDays)
+          }
+        }
+        return s
+      } else {
+        // Regular transaction - use full amount
+        return s + Number(t.amount || 0)
+      }
+    }, 0)
     
     // Calculate income from project monthly budget (treated as expected monthly income)
     // Calculate only for the current year, from project start date (or start of year if project started earlier)
@@ -1333,10 +1725,10 @@ const formatDate = (value: string | null) => {
                       <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
                         רשימת עסקאות
                       </h3>
-                      <div className="flex flex-wrap items-center gap-4">
-                        <div className="flex items-center gap-3">
+                      <div className="flex flex-wrap items-center gap-3 sm:gap-4">
+                        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
                           <select
-                            className="px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 whitespace-nowrap"
                             value={filterType}
                             onChange={e => setFilterType(e.target.value as any)}
                           >
@@ -1344,27 +1736,27 @@ const formatDate = (value: string | null) => {
                             <option value="Income">הכנסות</option>
                             <option value="Expense">הוצאות</option>
                           </select>
-                          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">
                             <input
                               type="checkbox"
                               checked={filterExceptional === 'only'}
                               onChange={e => setFilterExceptional(e.target.checked ? 'only' : 'all')}
-                              className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+                              className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 flex-shrink-0"
                             />
                             רק חריגות
                           </label>
-                          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">
                             <input
                               type="checkbox"
                               checked={filterDated === 'only'}
                               onChange={e => setFilterDated(e.target.checked ? 'only' : 'all')}
-                              className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+                              className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 flex-shrink-0"
                             />
                             רק תאריכיות
                           </label>
                         </div>
                         <div>
-                          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">
                             <span>קטגוריה:</span>
                             <select
                               className="px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -1387,48 +1779,48 @@ const formatDate = (value: string | null) => {
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                           סינון לפי תאריך
                         </label>
-                        <div className="flex flex-wrap gap-4">
-                          <label className="flex items-center gap-2">
+                        <div className="flex flex-wrap gap-3 sm:gap-4">
+                          <label className="flex items-center gap-2 whitespace-nowrap">
                             <input
                               type="radio"
                               name="dateFilter"
                               value="current_month"
                               checked={dateFilterMode === 'current_month'}
                               onChange={() => setDateFilterMode('current_month')}
-                              className="w-4 h-4 text-blue-600"
+                              className="w-4 h-4 text-blue-600 flex-shrink-0"
                             />
                             <span className="text-sm text-gray-700 dark:text-gray-300">חודש נוכחי</span>
                           </label>
-                          <label className="flex items-center gap-2">
+                          <label className="flex items-center gap-2 whitespace-nowrap">
                             <input
                               type="radio"
                               name="dateFilter"
                               value="selected_month"
                               checked={dateFilterMode === 'selected_month'}
                               onChange={() => setDateFilterMode('selected_month')}
-                              className="w-4 h-4 text-blue-600"
+                              className="w-4 h-4 text-blue-600 flex-shrink-0"
                             />
                             <span className="text-sm text-gray-700 dark:text-gray-300">חודש מסוים</span>
                           </label>
-                          <label className="flex items-center gap-2">
+                          <label className="flex items-center gap-2 whitespace-nowrap">
                             <input
                               type="radio"
                               name="dateFilter"
                               value="all_time"
                               checked={dateFilterMode === 'all_time'}
                               onChange={() => setDateFilterMode('all_time')}
-                              className="w-4 h-4 text-blue-600"
+                              className="w-4 h-4 text-blue-600 flex-shrink-0"
                             />
                             <span className="text-sm text-gray-700 dark:text-gray-300">כל הזמן</span>
                           </label>
-                          <label className="flex items-center gap-2">
+                          <label className="flex items-center gap-2 whitespace-nowrap">
                             <input
                               type="radio"
                               name="dateFilter"
                               value="date_range"
                               checked={dateFilterMode === 'date_range'}
                               onChange={() => setDateFilterMode('date_range')}
-                              className="w-4 h-4 text-blue-600"
+                              className="w-4 h-4 text-blue-600 flex-shrink-0"
                             />
                             <span className="text-sm text-gray-700 dark:text-gray-300">טווח תאריכים</span>
                           </label>
@@ -1482,7 +1874,7 @@ const formatDate = (value: string | null) => {
                   <div className="flex-1 min-h-0 overflow-y-auto">
                     {loading ? (
                     <div className="text-center py-8 text-gray-500 dark:text-gray-400 flex-shrink-0">טוען...</div>
-                  ) : filtered.length === 0 ? (
+                  ) : expandedTransactions.length === 0 ? (
                     <div className="text-center py-8 space-y-3 flex-shrink-0">
                       <div className="text-gray-500 dark:text-gray-400 font-medium">אין עסקאות להצגה</div>
                       {txs.length > 0 && (
@@ -1527,48 +1919,57 @@ const formatDate = (value: string | null) => {
                     </div>
                   ) : (
                     <div id="transactions-list" className="space-y-3 p-4">
-                      {filtered.map(tx => {
+                      {expandedTransactions.map(tx => {
                         const expanded = transactionsExpandedId === tx.id
+                        // Use monthKey for period transactions to ensure unique keys
+                        const uniqueKey = (tx as any).monthKey ? `${tx.id}-${(tx as any).monthKey}` : tx.id
                         return (
-                          <div key={tx.id} className="border border-gray-200 dark:border-gray-700 rounded-xl">
+                          <div key={uniqueKey} className="border border-gray-200 dark:border-gray-700 rounded-xl">
                             <button
-                              className="w-full px-4 py-3 text-right flex items-center gap-4 justify-between"
+                              className="w-full px-4 py-3 text-right flex items-center gap-2 sm:gap-4 justify-between min-w-0"
                               onClick={() => setTransactionsExpandedId(expanded ? null : tx.id)}
                             >
-                              <div className="flex items-center gap-3">
-                                <span className={`px-3 py-1 rounded-full text-xs font-semibold ${tx.type === 'Income' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                              <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+                                <span className={`px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap flex-shrink-0 ${tx.type === 'Income' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                                   {tx.type === 'Income' ? 'הכנסה' : 'הוצאה'}
                                 </span>
                                 {tx.is_generated && (
-                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-purple-100 text-purple-700 border border-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-800">
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-purple-100 text-purple-700 border border-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-800 whitespace-nowrap flex-shrink-0">
                                     מחזורי
                                   </span>
                                 )}
                                 {tx.period_start_date && tx.period_end_date ? (
-                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700 border border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800" key={`dated-${tx.id}`}>
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700 border border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800 whitespace-nowrap flex-shrink-0" key={`dated-${tx.id}`}>
                                     תאריכית
                                   </span>
                                 ) : null}
-                                <span className="text-sm text-gray-600 dark:text-gray-300 truncate max-w-[120px]">
+                                <span className="text-sm text-gray-600 dark:text-gray-300 truncate min-w-0">
                               {(() => {
                                 const catName = getCategoryName(tx.category);
                                 return catName ? (CATEGORY_LABELS[catName] || catName) : '-';
                               })()}
                             </span>
                               </div>
-                              <div className="flex items-center gap-4">
+                              <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
                                 <div className="text-right">
-                                    <div className="text-sm text-gray-500 dark:text-gray-400">{new Date(tx.tx_date).toLocaleDateString('he-IL')}</div>
+                                    <div className="text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">{new Date(tx.tx_date).toLocaleDateString('he-IL')}</div>
                                     {tx.period_start_date && tx.period_end_date ? (
-                                        <div className="text-xs text-blue-600 dark:text-blue-400 font-medium mt-0.5" key={`dates-${tx.id}`}>
+                                        <div className="text-xs text-blue-600 dark:text-blue-400 font-medium mt-0.5 whitespace-nowrap" key={`dates-${tx.id}`}>
                                             {new Date(tx.period_start_date).toLocaleDateString('he-IL', {day: '2-digit', month: '2-digit'})} - {new Date(tx.period_end_date).toLocaleDateString('he-IL', {day: '2-digit', month: '2-digit'})}
                                         </div>
                                     ) : null}
                                 </div>
-                                <span className={`text-lg font-semibold ${tx.type === 'Income' ? 'text-green-600' : 'text-red-600'}`}>
-                                  {formatCurrency(tx.amount)} ₪
-                                </span>
-                                <ChevronDown className={`w-5 h-5 text-gray-400 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+                                <div className="text-right">
+                                  <span className={`text-lg font-semibold whitespace-nowrap ${tx.type === 'Income' ? 'text-green-600' : 'text-red-600'}`}>
+                                    {formatCurrency((tx as any).proportionalAmount !== undefined ? (tx as any).proportionalAmount : tx.amount)} ₪
+                                  </span>
+                                  {(tx as any).proportionalAmount !== undefined && (tx as any).proportionalAmount !== (tx as any).fullAmount && (
+                                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                      מתוך {formatCurrency((tx as any).fullAmount)} ₪
+                                    </div>
+                                  )}
+                                </div>
+                                <ChevronDown className={`w-5 h-5 text-gray-400 transition-transform flex-shrink-0 ${expanded ? 'rotate-180' : ''}`} />
                               </div>
                             </button>
                             {expanded && (
@@ -1577,9 +1978,16 @@ const formatDate = (value: string | null) => {
                                   <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg border-2 border-blue-200 dark:border-blue-700 mt-2" key={`period-details-${tx.id}`}>
                                     <div className="text-sm text-blue-800 dark:text-blue-300 font-bold mb-2">עסקה תאריכית</div>
                                     <div className="text-xs text-blue-700 dark:text-blue-400 mb-1">תקופת תשלום:</div>
-                                    <div className="text-base text-blue-900 dark:text-blue-200 font-semibold">
+                                    <div className="text-base text-blue-900 dark:text-blue-200 font-semibold mb-2">
                                       {new Date(tx.period_start_date).toLocaleDateString('he-IL')} - {new Date(tx.period_end_date).toLocaleDateString('he-IL')}
                                     </div>
+                                    {(tx as any).proportionalAmount !== undefined && (tx as any).daysInMonth !== undefined && (tx as any).totalDays !== undefined ? (
+                                      <div className="text-xs text-blue-700 dark:text-blue-400 space-y-1 mt-2 pt-2 border-t border-blue-200 dark:border-blue-700">
+                                        <div>סכום מלא: {formatCurrency((tx as any).fullAmount)} ₪</div>
+                                        <div>סכום בחודש זה: {formatCurrency((tx as any).proportionalAmount)} ₪</div>
+                                        <div>ימים בחודש זה: {(tx as any).daysInMonth} מתוך {(tx as any).totalDays} ימים</div>
+                                      </div>
+                                    ) : null}
                                   </div>
                                 ) : null}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1640,7 +2048,7 @@ const formatDate = (value: string | null) => {
                                     ערוך
                                   </button>
                                   <button
-                                    onClick={() => handleDeleteTransaction(tx.id)}
+                                    onClick={() => handleDeleteTransaction(tx.id, tx)}
                                     className="px-3 py-1.5 text-xs bg-red-600 text-white rounded hover:bg-red-700"
                                   >
                                     מחק
@@ -1949,8 +2357,12 @@ const formatDate = (value: string | null) => {
                           </div>
                         </div>
                         <div className="flex items-center gap-4">
-                          <span className="text-lg font-bold text-red-600 dark:text-red-400">
-                            -{tx.amount.toLocaleString('he-IL')} ₪
+                          <span className={`text-lg font-bold ${
+                            tx.type === 'Income' 
+                              ? 'text-green-600 dark:text-green-400' 
+                              : 'text-red-600 dark:text-red-400'
+                          }`}>
+                            {tx.type === 'Income' ? '+' : '-'}{tx.amount.toLocaleString('he-IL')} ₪
                           </span>
                         </div>
                       </div>
@@ -2009,7 +2421,7 @@ const formatDate = (value: string | null) => {
                           ערוך
                         </button>
                         <button
-                          onClick={() => handleDeleteTransaction(tx.id)}
+                          onClick={() => handleDeleteTransaction(tx.id, tx as Transaction)}
                           className="px-3 py-1.5 text-xs bg-red-600 text-white rounded hover:bg-red-700"
                         >
                           מחק
@@ -2087,21 +2499,21 @@ const formatDate = (value: string | null) => {
               {/* Fund Section - Right Side */}
               <div>
                     <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 h-full">
-                        <div className="mb-4 flex items-center justify-between">
+                        <div className="mb-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                             <div className="min-w-0 flex-1">
-                                <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2 break-words">פרטי הקופה</h2>
-                                <p className="text-sm text-gray-600 dark:text-gray-400 break-words">מעקב אחר יתרת הקופה ועסקאות מהקופה</p>
+                                <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2 whitespace-nowrap">פרטי הקופה</h2>
+                                <p className="text-sm text-gray-600 dark:text-gray-400">מעקב אחר יתרת הקופה ועסקאות מהקופה</p>
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                                 {fundData && fundData.transactions && fundData.transactions.length > 0 && (
-                                    <button onClick={() => setShowFundTransactionsModal(true)} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm flex items-center gap-2">
-                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+                                    <button onClick={() => setShowFundTransactionsModal(true)} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm flex items-center gap-2 whitespace-nowrap">
+                                        <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
                                         עסקאות קופה ({fundData.transactions.length})
                                     </button>
                                 )}
                                 {fundData && (
-                                    <button onClick={() => { setMonthlyFundAmount(fundData.monthly_amount); setCurrentBalance(fundData.current_balance); setShowEditFundModal(true) }} className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm flex items-center gap-2">
-                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                                    <button onClick={() => { setMonthlyFundAmount(fundData.monthly_amount); setCurrentBalance(fundData.current_balance); setShowEditFundModal(true) }} className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm flex items-center gap-2 whitespace-nowrap">
+                                        <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                                         ערוך קופה
                                     </button>
                                 )}
@@ -2111,21 +2523,37 @@ const formatDate = (value: string | null) => {
                             <div className="text-center py-8 text-gray-500 dark:text-gray-400">טוען פרטי קופה...</div>
                         ) : fundData ? (
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 border border-blue-200 dark:border-blue-800 rounded-xl p-6 overflow-hidden">
-                                    <div className="flex items-center justify-between mb-2 min-w-0"><h3 className="text-sm font-medium text-blue-700 dark:text-blue-300 break-words min-w-0 flex-1">יתרה נוכחית</h3><svg className="w-6 h-6 text-blue-600 dark:text-blue-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg></div>
-                                    <p className="text-3xl font-bold text-blue-900 dark:text-blue-100 break-words">{fundData.current_balance.toLocaleString('he-IL')} ₪</p><p className="text-xs text-blue-600 dark:text-blue-400 mt-1 break-words">יתרה זמינה כעת</p>
+                                <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 border border-blue-200 dark:border-blue-800 rounded-xl p-6 overflow-hidden min-w-0">
+                                    <div className="flex items-center justify-between mb-2 min-w-0 gap-2">
+                                        <h3 className="text-sm font-medium text-blue-700 dark:text-blue-300 whitespace-nowrap min-w-0 flex-1">יתרה נוכחית</h3>
+                                        <svg className="w-6 h-6 text-blue-600 dark:text-blue-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                                    </div>
+                                    <p className="text-3xl font-bold text-blue-900 dark:text-blue-100 whitespace-nowrap">{fundData.current_balance.toLocaleString('he-IL')} ₪</p>
+                                    <p className="text-xs text-blue-600 dark:text-blue-400 mt-1 whitespace-nowrap">יתרה זמינה כעת</p>
                                 </div>
-                                <div className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 border border-green-200 dark:border-green-800 rounded-xl p-6 overflow-hidden">
-                                    <div className="flex items-center justify-between mb-2 min-w-0"><h3 className="text-sm font-medium text-green-700 dark:text-green-300 break-words min-w-0 flex-1">כמה היה מתחילה</h3><svg className="w-6 h-6 text-green-600 dark:text-green-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></div>
-                                    <p className="text-3xl font-bold text-green-900 dark:text-green-100 break-words">{fundData.initial_total.toLocaleString('he-IL')} ₪</p><p className="text-xs text-green-600 dark:text-green-400 mt-1 break-words">סכום כולל שנכנס לקופה</p>
+                                <div className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 border border-green-200 dark:border-green-800 rounded-xl p-6 overflow-hidden min-w-0">
+                                    <div className="flex items-center justify-between mb-2 min-w-0 gap-2">
+                                        <h3 className="text-sm font-medium text-green-700 dark:text-green-300 whitespace-nowrap min-w-0 flex-1">כמה היה מתחילה</h3>
+                                        <svg className="w-6 h-6 text-green-600 dark:text-green-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                    </div>
+                                    <p className="text-3xl font-bold text-green-900 dark:text-green-100 whitespace-nowrap">{fundData.initial_total.toLocaleString('he-IL')} ₪</p>
+                                    <p className="text-xs text-green-600 dark:text-green-400 mt-1 whitespace-nowrap">סכום כולל שנכנס לקופה</p>
                                 </div>
-                                <div className="bg-gradient-to-br from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20 border border-red-200 dark:border-red-800 rounded-xl p-6 overflow-hidden">
-                                    <div className="flex items-center justify-between mb-2 min-w-0"><h3 className="text-sm font-medium text-red-700 dark:text-red-300 break-words min-w-0 flex-1">כמה יצא</h3><svg className="w-6 h-6 text-red-600 dark:text-red-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg></div>
-                                    <p className="text-3xl font-bold text-red-900 dark:text-red-100 break-words">{fundData.total_deductions.toLocaleString('he-IL')} ₪</p><p className="text-xs text-red-600 dark:text-red-400 mt-1 break-words">סה"כ סכום שירד מהקופה</p>
+                                <div className="bg-gradient-to-br from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20 border border-red-200 dark:border-red-800 rounded-xl p-6 overflow-hidden min-w-0">
+                                    <div className="flex items-center justify-between mb-2 min-w-0 gap-2">
+                                        <h3 className="text-sm font-medium text-red-700 dark:text-red-300 whitespace-nowrap min-w-0 flex-1">כמה יצא</h3>
+                                        <svg className="w-6 h-6 text-red-600 dark:text-red-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+                                    </div>
+                                    <p className="text-3xl font-bold text-red-900 dark:text-red-100 whitespace-nowrap">{fundData.total_deductions.toLocaleString('he-IL')} ₪</p>
+                                    <p className="text-xs text-red-600 dark:text-red-400 mt-1 whitespace-nowrap">סה"כ סכום שירד מהקופה</p>
                                 </div>
-                                <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 border border-purple-200 dark:border-purple-800 rounded-xl p-6 overflow-hidden">
-                                    <div className="flex items-center justify-between mb-2 min-w-0"><h3 className="text-sm font-medium text-purple-700 dark:text-purple-300 break-words min-w-0 flex-1">סכום חודשי</h3><svg className="w-6 h-6 text-purple-600 dark:text-purple-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg></div>
-                                    <p className="text-3xl font-bold text-purple-900 dark:text-purple-100 break-words">{fundData.monthly_amount.toLocaleString('he-IL')} ₪</p><p className="text-xs text-purple-600 dark:text-purple-400 mt-1 break-words">מתווסף אוטומטית כל חודש</p>
+                                <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 border border-purple-200 dark:border-purple-800 rounded-xl p-6 overflow-hidden min-w-0">
+                                    <div className="flex items-center justify-between mb-2 min-w-0 gap-2">
+                                        <h3 className="text-sm font-medium text-purple-700 dark:text-purple-300 whitespace-nowrap min-w-0 flex-1">סכום חודשי</h3>
+                                        <svg className="w-6 h-6 text-purple-600 dark:text-purple-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                                    </div>
+                                    <p className="text-3xl font-bold text-purple-900 dark:text-purple-100 whitespace-nowrap">{fundData.monthly_amount.toLocaleString('he-IL')} ₪</p>
+                                    <p className="text-xs text-purple-600 dark:text-purple-400 mt-1 whitespace-nowrap">מתווסף אוטומטית כל חודש</p>
                                 </div>
                             </div>
                         ) : (
@@ -2501,7 +2929,7 @@ const formatDate = (value: string | null) => {
                       </td>
                     </tr>
                   ))
-                ) : filtered.map(t => {
+                ) : expandedTransactions.map((t: Transaction) => {
                   return (
                   <tr key={t.id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700">
                     <td className="p-3">
@@ -2535,7 +2963,14 @@ const formatDate = (value: string | null) => {
                       )}
                     </td>
                     <td className={`p-3 font-semibold ${t.type === 'Income' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                      {Number(t.amount || 0).toFixed(2)} ₪
+                      <div>
+                        {Number((t as any).proportionalAmount !== undefined ? (t as any).proportionalAmount : t.amount || 0).toFixed(2)} ₪
+                        {(t as any).proportionalAmount !== undefined && (t as any).proportionalAmount !== (t as any).fullAmount && (
+                          <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                            מתוך {Number((t as any).fullAmount || 0).toFixed(2)} ₪
+                          </div>
+                        )}
+                      </div>
                     </td>
                     <td className="p-3 text-gray-700 dark:text-gray-300">
                       {t.category ? (CATEGORY_LABELS[t.category] || t.category) : '-'}
@@ -2576,7 +3011,7 @@ const formatDate = (value: string | null) => {
                           ערוך
                         </button>
                         <button
-                          onClick={() => handleDeleteTransaction(t.id)}
+                          onClick={() => handleDeleteTransaction(t.id, t)}
                           className="px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700"
                         >
                           מחק
@@ -2627,6 +3062,7 @@ const formatDate = (value: string | null) => {
         projectId={parseInt(id || '0')}
         isSubproject={!!relationProject}
         projectName={projectName}
+        projectStartDate={projectStartDate}
       />
 
       <EditTransactionModal
@@ -2645,6 +3081,7 @@ const formatDate = (value: string | null) => {
           await loadChartsData()
         }}
         transaction={selectedTransactionForEdit}
+        projectStartDate={projectStartDate}
       />
 
       <EditRecurringSelectionModal 
@@ -2662,6 +3099,7 @@ const formatDate = (value: string | null) => {
         onClose={() => {
           setEditTemplateModalOpen(false)
           setSelectedTemplateForEdit(null)
+          setPendingTemplateLoad(false)
         }}
         onSuccess={async () => {
           setEditTemplateModalOpen(false)

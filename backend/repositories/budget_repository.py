@@ -1,4 +1,4 @@
-from sqlalchemy import select, and_, func
+from sqlalchemy import select, and_, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import date
 from typing import Tuple
@@ -93,36 +93,110 @@ class BudgetRepository:
         if not category_ids:
             return 0.0, 0.0
         
-        # Calculate expenses for transactions in this category within the period
-        expenses_query = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
+        # 1. Regular expenses (no period dates) in range
+        regular_expenses_query = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
             and_(
                 Transaction.project_id == budget.project_id,
                 Transaction.type == "Expense",
                 Transaction.category_id.in_(category_ids),
                 Transaction.tx_date >= start_date,
                 Transaction.tx_date <= end_date,
-                Transaction.from_fund == False  # Exclude fund transactions
+                Transaction.from_fund == False,  # Exclude fund transactions
+                # Explicitly exclude period transactions
+                or_(
+                    Transaction.period_start_date.is_(None),
+                    Transaction.period_end_date.is_(None)
+                )
             )
         )
         
-        # Calculate income for transactions in this category within the period
-        income_query = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
+        # 2. Regular income (no period dates) in range
+        regular_income_query = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
             and_(
                 Transaction.project_id == budget.project_id,
                 Transaction.type == "Income",
-                Transaction.category_id.in_(category_ids),  # Use IN for multiple IDs
+                Transaction.category_id.in_(category_ids),
                 Transaction.tx_date >= start_date,
                 Transaction.tx_date <= end_date,
-                Transaction.from_fund == False  # Exclude fund transactions
+                Transaction.from_fund == False,  # Exclude fund transactions
+                # Explicitly exclude period transactions
+                or_(
+                    Transaction.period_start_date.is_(None),
+                    Transaction.period_end_date.is_(None)
+                )
             )
         )
         
-        expenses_result = await self.db.execute(expenses_query)
-        income_result = await self.db.execute(income_query)
+        regular_expenses_result = await self.db.execute(regular_expenses_query)
+        regular_income_result = await self.db.execute(regular_income_query)
         
-        # Ensure values are floats, defaulting to 0.0 if None
-        total_expenses = float(expenses_result.scalar_one() or 0.0)
-        total_income = float(income_result.scalar_one() or 0.0)
+        total_expenses = float(regular_expenses_result.scalar_one() or 0.0)
+        total_income = float(regular_income_result.scalar_one() or 0.0)
+        
+        # 3. Period expenses that overlap with budget period
+        period_expenses_query = select(Transaction).where(
+            and_(
+                Transaction.project_id == budget.project_id,
+                Transaction.type == "Expense",
+                Transaction.category_id.in_(category_ids),
+                Transaction.from_fund == False,  # Exclude fund transactions
+                Transaction.period_start_date.is_not(None),
+                Transaction.period_end_date.is_not(None),
+                # Overlap: (StartA <= EndB) and (EndA >= StartB)
+                Transaction.period_start_date <= end_date,
+                Transaction.period_end_date >= start_date
+            )
+        )
+        
+        # 4. Period income that overlaps with budget period
+        period_income_query = select(Transaction).where(
+            and_(
+                Transaction.project_id == budget.project_id,
+                Transaction.type == "Income",
+                Transaction.category_id.in_(category_ids),
+                Transaction.from_fund == False,  # Exclude fund transactions
+                Transaction.period_start_date.is_not(None),
+                Transaction.period_end_date.is_not(None),
+                # Overlap: (StartA <= EndB) and (EndA >= StartB)
+                Transaction.period_start_date <= end_date,
+                Transaction.period_end_date >= start_date
+            )
+        )
+        
+        period_expenses = (await self.db.execute(period_expenses_query)).scalars().all()
+        period_income = (await self.db.execute(period_income_query)).scalars().all()
+        
+        # Calculate proportional amounts for period expenses
+        for tx in period_expenses:
+            total_days = (tx.period_end_date - tx.period_start_date).days + 1
+            if total_days <= 0:
+                continue
+            
+            daily_rate = float(tx.amount) / total_days
+            
+            # Calculate overlap with budget period
+            overlap_start = max(tx.period_start_date, start_date)
+            overlap_end = min(tx.period_end_date, end_date)
+            
+            overlap_days = (overlap_end - overlap_start).days + 1
+            if overlap_days > 0:
+                total_expenses += daily_rate * overlap_days
+        
+        # Calculate proportional amounts for period income
+        for tx in period_income:
+            total_days = (tx.period_end_date - tx.period_start_date).days + 1
+            if total_days <= 0:
+                continue
+            
+            daily_rate = float(tx.amount) / total_days
+            
+            # Calculate overlap with budget period
+            overlap_start = max(tx.period_start_date, start_date)
+            overlap_end = min(tx.period_end_date, end_date)
+            
+            overlap_days = (overlap_end - overlap_start).days + 1
+            if overlap_days > 0:
+                total_income += daily_rate * overlap_days
         
         return total_expenses, total_income
 

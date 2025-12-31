@@ -933,7 +933,7 @@ async def get_project_fund(
     transactions_result = await db.execute(transactions_query)
     transactions = transactions_result.scalars().all()
     
-    # Calculate total deductions (total amount withdrawn from fund)
+    # Calculate total deductions (total amount withdrawn from fund - Expense transactions)
     total_deductions_query = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
         and_(
             Transaction.project_id == project_id,
@@ -944,13 +944,24 @@ async def get_project_fund(
     total_deductions_result = await db.execute(total_deductions_query)
     total_deductions = float(total_deductions_result.scalar_one())
     
-    # Calculate initial balance and total additions
+    # Calculate total additions from Income transactions to fund
+    total_additions_from_transactions_query = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
+        and_(
+            Transaction.project_id == project_id,
+            Transaction.from_fund == True,
+            Transaction.type == 'Income'
+        )
+    )
+    total_additions_from_transactions_result = await db.execute(total_additions_from_transactions_query)
+    total_additions_from_transactions = float(total_additions_from_transactions_result.scalar_one())
+    
+    # Calculate initial balance and total monthly additions
     # Initial balance is 0 (fund starts with 0)
     initial_balance = 0.0
     monthly_amount = float(fund.monthly_amount)
     
     # Calculate total monthly additions based on creation date and last addition
-    total_additions = 0.0
+    total_monthly_additions = 0.0
     if fund.last_monthly_addition and monthly_amount > 0:
         # Calculate months between creation and last addition (inclusive)
         created_date = fund.created_at.date() if hasattr(fund.created_at, 'date') else date.today()
@@ -960,7 +971,7 @@ async def get_project_fund(
         if last_addition_date >= created_date:
             # Calculate number of months (including the creation month)
             months_count = (last_addition_date.year - created_date.year) * 12 + (last_addition_date.month - created_date.month) + 1
-            total_additions = months_count * monthly_amount
+            total_monthly_additions = months_count * monthly_amount
     elif monthly_amount > 0:
         # If no monthly addition yet, but fund exists, at least the current month should count
         # This handles the case where fund was just created
@@ -970,9 +981,12 @@ async def get_project_fund(
             months_count = (today.year - created_date.year) * 12 + (today.month - created_date.month) + 1
             # Only count if this month's addition should have been made
             if today.year > created_date.year or (today.year == created_date.year and today.month > created_date.month) or (today.year == created_date.year and today.month == created_date.month and today.day >= 1):
-                total_additions = months_count * monthly_amount
+                total_monthly_additions = months_count * monthly_amount
     
-    # Initial total = initial_balance + total_additions
+    # Total additions = monthly additions + income transactions to fund
+    total_additions = total_monthly_additions + total_additions_from_transactions
+    
+    # Initial total = initial_balance + total_additions (monthly + income transactions)
     initial_total = initial_balance + total_additions
     
     # Load user repository for created_by_user
