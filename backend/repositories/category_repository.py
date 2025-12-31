@@ -59,11 +59,14 @@ class CategoryRepository:
         """Create a new category"""
         self.db.add(category)
         await self.db.commit()
-        await self.db.refresh(category)
-        # Explicitly set empty children list to avoid lazy loading error
-        # since we know a new category has no children
-        setattr(category, 'children', [])
-        return category
+        # Reload with children relationship eagerly loaded to avoid lazy loading issues
+        # This ensures the children list is available for the response model
+        result = await self.db.execute(
+            select(Category)
+            .options(selectinload(Category.children))
+            .where(Category.id == category.id)
+        )
+        return result.scalar_one()
 
     async def update(self, category: Category) -> Category:
         """Update an existing category"""

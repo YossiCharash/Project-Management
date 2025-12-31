@@ -14,6 +14,7 @@ from backend.services.budget_service import BudgetService
 from backend.services.fund_service import FundService
 from backend.services.project_service import calculate_start_date, calculate_monthly_income_amount
 import io
+from io import BytesIO
 import zipfile
 import csv
 from openpyxl import Workbook
@@ -23,7 +24,7 @@ try:
     CHARTS_AVAILABLE = True
 except ImportError:
     CHARTS_AVAILABLE = False
-    print("⚠️ openpyxl.chart not available - charts will be skipped")
+    print("WARNING: openpyxl.chart not available - charts will be skipped")
 
 # Hebrew Labels to avoid hardcoded strings in logic
 REPORT_LABELS = {
@@ -51,6 +52,7 @@ REPORT_LABELS = {
     "description": "תיאור",
     "income": "הכנסה",
     "expense": "הוצאה",
+    "expenses": "הוצאות",
     "payment_method": "אמצעי תשלום",
     "notes": "הערות",
     "file": "קובץ",
@@ -309,7 +311,7 @@ class ReportService:
                 }
                 projects_data.append(project_dict)
             except Exception as e:
-                print(f"⚠️ Error loading project data: {e}")
+                print(f"WARNING: Error loading project data: {e}")
                 continue
 
         # Initialize result collections
@@ -358,7 +360,7 @@ class ReportService:
                 )
                 yearly_income = float((await self.db.execute(yearly_income_query)).scalar_one())
             except Exception as e:
-                print(f"⚠️ Error getting income for project {project_id}: {e}")
+                print(f"WARNING: Error getting income for project {project_id}: {e}")
                 try:
                     await self.db.rollback()
                 except Exception:
@@ -374,7 +376,7 @@ class ReportService:
                     from_fund=False
                 )
             except Exception as e:
-                print(f"⚠️ Error getting expenses for project {project_id}: {e}")
+                print(f"WARNING: Error getting expenses for project {project_id}: {e}")
                 try:
                     await self.db.rollback()
                 except Exception:
@@ -749,7 +751,7 @@ class ReportService:
             'period_end': end_date.isoformat() if end_date else None
         }
 
-    async def generate_custom_report(self, options) -> bytes:
+    async def generate_custom_report(self, options, chart_images: Dict[str, bytes] = None) -> bytes:
         """Generate a custom report (PDF, Excel, or ZIP) based on options"""
         # options is expected to be ReportOptions instance, but using dynamic typing to avoid circular import at module level
         from backend.schemas.report import ReportOptions
@@ -843,17 +845,17 @@ class ReportService:
 
         # 2. Generate Output
         if options.format == "pdf":
-            return await self._generate_pdf(proj, options, transactions, budgets_data, fund_data, summary_data)
+            return await self._generate_pdf(proj, options, transactions, budgets_data, fund_data, summary_data, chart_images)
         elif options.format == "excel":
-            return await self._generate_excel(proj, options, transactions, budgets_data, fund_data, summary_data)
+            return await self._generate_excel(proj, options, transactions, budgets_data, fund_data, summary_data, chart_images)
         elif options.format == "zip":
             # For ZIP, we generate the PDF/Excel report AND include documents
-            report_content = await self._generate_excel(proj, options, transactions, budgets_data, fund_data, summary_data)
+            report_content = await self._generate_excel(proj, options, transactions, budgets_data, fund_data, summary_data, chart_images)
             return await self._generate_zip(proj, options, report_content, transactions)
             
         raise ValueError("Invalid format")
 
-    async def generate_supplier_report(self, options) -> bytes:
+    async def generate_supplier_report(self, options, chart_images: Dict[str, bytes] = None) -> bytes:
         """Generate a report for a specific supplier with all their transactions"""
         from backend.schemas.report import SupplierReportOptions
         from backend.models.supplier import Supplier
@@ -940,16 +942,16 @@ class ReportService:
         
         # 4. Generate output
         if options.format == "pdf":
-            return await self._generate_supplier_pdf(supplier, options, transactions, summary_data)
+            return await self._generate_supplier_pdf(supplier, options, transactions, summary_data, chart_images)
         elif options.format == "excel":
-            return await self._generate_supplier_excel(supplier, options, transactions, summary_data)
+            return await self._generate_supplier_excel(supplier, options, transactions, summary_data, chart_images)
         elif options.format == "zip":
-            report_content = await self._generate_supplier_excel(supplier, options, transactions, summary_data)
+            report_content = await self._generate_supplier_excel(supplier, options, transactions, summary_data, chart_images)
             return await self._generate_supplier_zip(supplier, options, report_content, transactions)
         
         raise ValueError("פורמט לא תקין")
 
-    async def _generate_supplier_pdf(self, supplier, options, transactions, summary) -> bytes:
+    async def _generate_supplier_pdf(self, supplier, options, transactions, summary, chart_images=None) -> bytes:
         from reportlab.lib import colors
         from reportlab.lib.pagesizes import A4
         from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
@@ -1083,7 +1085,7 @@ class ReportService:
         buffer.seek(0)
         return buffer.read()
 
-    async def _generate_supplier_excel(self, supplier, options, transactions, summary) -> bytes:
+    async def _generate_supplier_excel(self, supplier, options, transactions, summary, chart_images=None) -> bytes:
         wb = Workbook()
         wb.remove(wb.active)
         
@@ -1224,6 +1226,9 @@ class ReportService:
             import matplotlib.pyplot as plt
             import matplotlib.font_manager as fm
             
+            # Reset matplotlib to default state to avoid style conflicts
+            plt.rcdefaults()
+            
             # Set Hebrew font if available
             try:
                 # Try to find Hebrew font
@@ -1239,20 +1244,62 @@ class ReportService:
             except:
                 pass
             
-            # Create figure
-            fig, ax = plt.subplots(figsize=(8, 6))
+            # Create figure - don't use style that might override colors
+            fig, ax = plt.subplots(figsize=(10, 6))
             fig.patch.set_facecolor('white')
+            ax.set_facecolor('white')
             
             if chart_type == "income_expense_pie" and summary:
                 # Pie chart: Income vs Expenses
-                labels = [REPORT_LABELS['income'], REPORT_LABELS['expenses']]
-                sizes = [summary.get('income', 0), summary.get('expenses', 0)]
-                colors = ['#10b981', '#ef4444']  # Green for income, red for expenses
-                explode = (0.05, 0.05)
+                income = summary.get('income', 0)
+                expenses = summary.get('expenses', 0)
                 
-                ax.pie(sizes, explode=explode, labels=labels, colors=colors, autopct='%1.1f%%',
-                       shadow=True, startangle=90, textprops={'fontsize': 12})
-                ax.set_title(f"{REPORT_LABELS['income']} מול {REPORT_LABELS['expenses']}", fontsize=14, fontweight='bold')
+                # Filter out zero values to avoid rendering issues
+                labels = []
+                sizes = []
+                colors_list = []
+                
+                if income > 0:
+                    labels.append(REPORT_LABELS['income'])
+                    sizes.append(income)
+                    colors_list.append('#10b981')  # Green for income
+                
+                if expenses > 0:
+                    labels.append(REPORT_LABELS['expenses'])
+                    sizes.append(expenses)
+                    colors_list.append('#ef4444')  # Red for expenses
+                
+                if not sizes or sum(sizes) == 0:
+                    ax.text(0.5, 0.5, 'אין נתונים', ha='center', va='center', fontsize=14, color='black')
+                else:
+                    # Don't use explode to avoid rendering issues
+                    ax.axis('equal') # Ensure pie is round
+                    
+                    # Create pie chart with explicit colors - ensure colors are preserved
+                    wedges, texts, autotexts = ax.pie(
+                        sizes, 
+                        explode=None,  # No explode to avoid rendering issues
+                        labels=None, 
+                        colors=colors_list,  # Explicit colors list
+                        autopct='%1.1f%%',
+                        shadow=False,  # Disabled shadow to prevent rendering issues
+                        startangle=90,
+                        textprops={'fontsize': 12, 'color': 'black', 'weight': 'bold'}
+                    )
+                    
+                    # Explicitly set wedge colors and edges to ensure they're preserved
+                    for i, wedge in enumerate(wedges):
+                        wedge.set_facecolor(colors_list[i])
+                        wedge.set_edgecolor('white')
+                        wedge.set_linewidth(2)
+                    
+                    # Add Legend
+                    ax.legend(wedges, labels,
+                              title="מקרא",
+                              loc="center left",
+                              bbox_to_anchor=(1, 0, 0.5, 1))
+                
+                ax.set_title(f"{REPORT_LABELS['income']} מול {REPORT_LABELS['expenses']}", fontsize=14, fontweight='bold', color='#1f2937')
                 
             elif chart_type == "expense_by_category_pie" and transactions:
                 # Pie chart: Expenses by category
@@ -1262,16 +1309,47 @@ class ReportService:
                         cat = tx.get('category') or REPORT_LABELS['general']
                         category_expenses[cat] = category_expenses.get(cat, 0) + tx.get('amount', 0)
                 
+                # Filter out zero values
+                category_expenses = {k: v for k, v in category_expenses.items() if v > 0}
+                
                 if category_expenses:
                     labels = list(category_expenses.keys())
                     sizes = list(category_expenses.values())
-                    colors = plt.cm.Set3(range(len(labels)))
                     
-                    ax.pie(sizes, labels=labels, colors=colors, autopct='%1.1f%%',
-                           shadow=True, startangle=90, textprops={'fontsize': 10})
-                    ax.set_title(f"{REPORT_LABELS['expenses']} לפי {REPORT_LABELS['category']}", fontsize=14, fontweight='bold')
+                    # Sort by size to make chart look better
+                    sorted_pairs = sorted(zip(sizes, labels), reverse=True)
+                    sizes = [s for s, l in sorted_pairs]
+                    labels = [l for s, l in sorted_pairs]
+                    
+                    # Use explicit colors that will render well
+                    colors = plt.cm.Pastel1(range(len(labels)))
+                    
+                    ax.axis('equal') # Ensure pie is round
+                    
+                    wedges, texts, autotexts = ax.pie(
+                        sizes, 
+                        labels=None, 
+                        colors=colors, 
+                        autopct='%1.1f%%',
+                        shadow=False,  # Disabled shadow to prevent rendering issues
+                        startangle=90, 
+                        textprops={'fontsize': 9, 'color': 'black', 'weight': 'bold'}
+                    )
+                    
+                    # Explicitly set wedge edges for better visibility
+                    for wedge in wedges:
+                        wedge.set_edgecolor('white')
+                        wedge.set_linewidth(2)
+                    
+                    # Add Legend
+                    ax.legend(wedges, labels,
+                              title="מקרא",
+                              loc="center left",
+                              bbox_to_anchor=(1, 0, 0.5, 1))
+
+                    ax.set_title(f"{REPORT_LABELS['expenses']} לפי {REPORT_LABELS['category']}", fontsize=14, fontweight='bold', color='#1f2937')
                 else:
-                    ax.text(0.5, 0.5, 'אין נתונים', ha='center', va='center', fontsize=14)
+                    ax.text(0.5, 0.5, 'אין נתונים', ha='center', va='center', fontsize=14, color='black')
                     
             elif chart_type == "expense_by_category_bar" and transactions:
                 # Bar chart: Expenses by category
@@ -1282,22 +1360,30 @@ class ReportService:
                         category_expenses[cat] = category_expenses.get(cat, 0) + tx.get('amount', 0)
                 
                 if category_expenses:
-                    categories = list(category_expenses.keys())
-                    amounts = list(category_expenses.values())
-                    colors = plt.cm.Set3(range(len(categories)))
+                    # Sort categories by amount
+                    sorted_cats = sorted(category_expenses.items(), key=lambda x: x[1], reverse=True)
+                    categories = [x[0] for x in sorted_cats]
+                    amounts = [x[1] for x in sorted_cats]
                     
-                    bars = ax.bar(categories, amounts, color=colors)
+                    colors = plt.cm.Pastel1(range(len(categories)))
+                    
+                    bars = ax.bar(categories, amounts, color=colors, edgecolor='grey', alpha=0.8)
                     ax.set_xlabel(REPORT_LABELS['category'], fontsize=12)
                     ax.set_ylabel(REPORT_LABELS['amount'] + ' (₪)', fontsize=12)
-                    ax.set_title(f"{REPORT_LABELS['expenses']} לפי {REPORT_LABELS['category']}", fontsize=14, fontweight='bold')
+                    ax.set_title(f"{REPORT_LABELS['expenses']} לפי {REPORT_LABELS['category']}", fontsize=14, fontweight='bold', color='#1f2937')
                     ax.tick_params(axis='x', rotation=45)
+                    
+                    # Clean up plot
+                    ax.spines['top'].set_visible(False)
+                    ax.spines['right'].set_visible(False)
+                    ax.grid(axis='y', linestyle='--', alpha=0.5)
                     
                     # Add value labels on bars
                     for bar in bars:
                         height = bar.get_height()
                         ax.text(bar.get_x() + bar.get_width()/2., height,
                                f'{height:,.0f}',
-                               ha='center', va='bottom', fontsize=9)
+                               ha='center', va='bottom', fontsize=9, fontweight='bold')
                 else:
                     ax.text(0.5, 0.5, 'אין נתונים', ha='center', va='center', fontsize=14)
                     
@@ -1326,40 +1412,58 @@ class ReportService:
                     
                     ax.plot(sorted_dates, incomes, marker='o', label=REPORT_LABELS['income'], color='#10b981', linewidth=2)
                     ax.plot(sorted_dates, expenses, marker='s', label=REPORT_LABELS['expenses'], color='#ef4444', linewidth=2)
+                    
+                    ax.fill_between(sorted_dates, incomes, alpha=0.1, color='#10b981')
+                    ax.fill_between(sorted_dates, expenses, alpha=0.1, color='#ef4444')
+                    
                     ax.set_xlabel(REPORT_LABELS['date'], fontsize=12)
                     ax.set_ylabel(REPORT_LABELS['amount'] + ' (₪)', fontsize=12)
-                    ax.set_title("מגמות לאורך זמן", fontsize=14, fontweight='bold')
-                    ax.legend()
+                    ax.set_title("מגמות לאורך זמן", fontsize=14, fontweight='bold', color='#1f2937')
+                    ax.legend(loc='upper left')
                     ax.tick_params(axis='x', rotation=45)
-                    ax.grid(True, alpha=0.3)
+                    
+                    # Clean up plot
+                    ax.spines['top'].set_visible(False)
+                    ax.spines['right'].set_visible(False)
+                    ax.grid(True, linestyle='--', alpha=0.5)
                 else:
                     ax.text(0.5, 0.5, 'אין נתונים', ha='center', va='center', fontsize=14)
             
-            plt.tight_layout()
+            # Use bbox_inches='tight' in savefig instead of tight_layout
+            # to ensure everything fits, including legend outside
             
-            # Save to BytesIO
+            # Save to BytesIO with explicit color settings
             img_buffer = io.BytesIO()
-            plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
+            plt.savefig(
+                img_buffer, 
+                format='png', 
+                dpi=150, 
+                bbox_inches='tight', 
+                facecolor='white', 
+                edgecolor='none',
+                transparent=False,
+                pad_inches=0.1
+            )
             plt.close(fig)
             img_buffer.seek(0)
             return img_buffer
             
         except ImportError:
             # If matplotlib is not available, return empty buffer
-            print("⚠️ matplotlib not available, skipping chart generation")
+            print("WARNING: matplotlib not available, skipping chart generation")
             import traceback
             traceback.print_exc()
             return io.BytesIO()
         except Exception as e:
-            print(f"⚠️ Error creating chart {chart_type}: {e}")
+            print(f"WARNING: Error creating chart {chart_type}: {e}")
             import traceback
             traceback.print_exc()
             return io.BytesIO()
 
-    async def _generate_pdf(self, project, options, transactions, budgets, fund, summary) -> bytes:
+    async def _generate_pdf(self, project, options, transactions, budgets, fund, summary, chart_images=None) -> bytes:
         from reportlab.lib import colors
         from reportlab.lib.pagesizes import A4
-        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image as RLImage
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
         from reportlab.pdfbase import pdfmetrics
         from reportlab.pdfbase.ttfonts import TTFont
@@ -1408,7 +1512,7 @@ class ReportService:
                         test_font.close()
                         print(f"✓ Existing font file is valid")
                     except Exception:
-                        print(f"⚠️ Existing font file appears corrupted, will try to re-download")
+                        print(f"WARNING: Existing font file appears corrupted, will try to re-download")
                         font_path = None  # Mark as not found so we try to download
                 
                 if not font_path:
@@ -1451,7 +1555,7 @@ class ReportService:
                                 continue
                                 
                         if not downloaded:
-                            print("⚠️ Could not download valid font file")
+                            print("WARNING: Could not download valid font file")
                     except Exception as e:
                         print(f"Failed to download font: {e}")
 
@@ -1502,12 +1606,12 @@ class ReportService:
             font_loaded = False
 
         if not font_loaded:
-            print("⚠️ WARNING: Hebrew font not loaded! Text will not display correctly.")
+            print("WARNING: WARNING: Hebrew font not loaded! Text will not display correctly.")
 
         styles = getSampleStyleSheet()
-        style_normal = ParagraphStyle('HebrewNormal', parent=styles['Normal'], fontName=font_name, fontSize=10, alignment=1) # Center
-        style_title = ParagraphStyle('HebrewTitle', parent=styles['Heading1'], fontName=font_name, fontSize=16, alignment=1, textColor=colors.HexColor('#1E3A8A')) # Navy Blue
-        style_h2 = ParagraphStyle('HebrewHeading2', parent=styles['Heading2'], fontName=font_name, fontSize=12, alignment=1, textColor=colors.HexColor('#1F2937')) # Gray
+        style_normal = ParagraphStyle('HebrewNormal', parent=styles['Normal'], fontName=font_name, fontSize=11, alignment=1, leading=16, spaceAfter=10, textColor=colors.HexColor('#111827')) # שחור כהה ונגיש יותר
+        style_title = ParagraphStyle('HebrewTitle', parent=styles['Heading1'], fontName=font_name, fontSize=22, alignment=1, textColor=colors.HexColor('#0B2353'), leading=30, spaceAfter=25, spaceBefore=10, backColor=colors.HexColor('#DBEAFE')) # רקע ותוספות ניגוד
+        style_h2 = ParagraphStyle('HebrewHeading2', parent=styles['Heading2'], fontName=font_name, fontSize=15, alignment=1, textColor=colors.HexColor('#173162'), leading=22, spaceBefore=15, spaceAfter=12, backColor=colors.HexColor('#E0E7FF')) # highlight מעודכן
 
         elements = []
         
@@ -1518,7 +1622,7 @@ class ReportService:
             bidi_available = True
         except ImportError:
             bidi_available = False
-            print("⚠️ arabic-reshaper or python-bidi not available, using simple text formatting")
+            print("WARNING: arabic-reshaper or python-bidi not available, using simple text formatting")
         
         def format_text(text):
             if not text: return ""
@@ -1535,7 +1639,7 @@ class ReportService:
                 except Exception as e:
                     # Only log first error to avoid spam
                     if not hasattr(format_text, '_logged_error'):
-                        print(f"⚠️ Error in bidi processing: {e}, using text as-is")
+                        print(f"WARNING: Error in bidi processing: {e}, using text as-is")
                         format_text._logged_error = True
                     return text
             else:
@@ -1579,18 +1683,17 @@ class ReportService:
                 [format_text(REPORT_LABELS['total_expenses']), f"{summary['expenses']:,.2f} ₪"],
                 [format_text(REPORT_LABELS['balance_profit']), f"{summary['profit']:,.2f} ₪"],
             ]
-            t = Table(data, colWidths=[200, 150])
-            t.setStyle(TableStyle([
+            t = Table(data, colWidths=[200, 150], style=[
                 ('FONT', (0, 0), (-1, -1), font_name),
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-                ('BACKGROUND', (0, 0), (1, 0), colors.HexColor('#DBEAFE')), # Blue-100 header
-                ('BACKGROUND', (0, 1), (-1, -1), colors.white),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+                ('GRID', (0, 0), (-1, -1), 1.2, colors.HexColor('#64748B')), # גבול עבה יותר
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1E3A8A')), # header כחול כהה
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#F8FAFC')), # תאים פנימיים לבן
                 ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('PADDING', (0, 0), (-1, -1), 8),
-            ]))
+                ('PADDING', (0, 0), (-1, -1), 12),
+            ])
             elements.append(t)
-            elements.append(Spacer(1, 20))
+            elements.append(Spacer(1, 28))
 
         # Fund
         if options.include_funds and fund:
@@ -1625,16 +1728,17 @@ class ReportService:
                     f"{b['remaining_amount']:,.2f}"
                 ])
             
-            bt = Table(budget_table_data, colWidths=[120, 100, 100, 100])
-            bt.setStyle(TableStyle([
+            bt = Table(budget_table_data, colWidths=[120, 100, 100, 100], style=[
                 ('FONT', (0, 0), (-1, -1), font_name),
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#EDE9FE')), # Violet-100 header
+                ('GRID', (0, 0), (-1, -1), 1.2, colors.HexColor('#7C3AED')),
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#7C3AED')), # Violet-700 header
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#F3F4F6')), # bg
                 ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('PADDING', (0, 0), (-1, -1), 6),
-            ]))
+                ('PADDING', (0, 0), (-1, -1), 10),
+            ])
             elements.append(bt)
-            elements.append(Spacer(1, 20))
+            elements.append(Spacer(1, 28))
 
         # Transactions - Group by category and create separate tables
         if options.include_transactions and transactions:
@@ -1662,14 +1766,14 @@ class ReportService:
             for cat_name, cat_transactions in transactions_by_category.items():
                 # Category header
                 elements.append(Paragraph(format_text(f"{REPORT_LABELS['category']}: {cat_name}"), style_h2))
-                elements.append(Spacer(1, 5))
-                
+                elements.append(Spacer(1, 7))
+                elements.append(Table([[""]], colWidths=[520], rowHeights=[4], style=[('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#E0E7FF'))]))  # קו צבעוני בעובי 4
+                elements.append(Spacer(1, 7))
                 # Check if any transaction has a supplier
                 has_suppliers = any(
                     (tx.get('supplier_name') if isinstance(tx, dict) else (tx.supplier.name if tx.supplier else None))
                     for tx in cat_transactions
                 ) if cat_transactions else False
-                
                 # Build table headers
                 if has_suppliers:
                     tx_data = [[
@@ -1688,36 +1792,30 @@ class ReportService:
                         format_text(REPORT_LABELS['description'])
                     ]]
                     col_widths = [80, 60, 80, 250]
-                
                 # Add transaction rows
                 for tx in cat_transactions:
                     if isinstance(tx, dict):
                         tx_type = REPORT_LABELS['income'] if tx.get('type') == "Income" else REPORT_LABELS['expense']
                         tx_desc = tx.get('description') or ""
                         # Truncate description nicely
-                        if len(tx_desc) > 30:
-                            tx_desc = tx_desc[:27] + "..."
-                        
+                        if len(tx_desc) > 40:
+                            tx_desc = tx_desc[:37] + "..."
                         supplier_name = tx.get('supplier_name') or ""
-                        if len(supplier_name) > 20:
-                            supplier_name = supplier_name[:17] + "..."
-                        
+                        if len(supplier_name) > 25:
+                            supplier_name = supplier_name[:22] + "..."
                         tx_date = tx.get('tx_date')
                         tx_amount = tx.get('amount', 0)
                     else:
                         tx_type = REPORT_LABELS['income'] if tx.type == "Income" else REPORT_LABELS['expense']
                         tx_desc = tx.description or ""
                         # Truncate description nicely
-                        if len(tx_desc) > 30:
-                            tx_desc = tx_desc[:27] + "..."
-                        
+                        if len(tx_desc) > 40:
+                            tx_desc = tx_desc[:37] + "..."
                         supplier_name = tx.supplier.name if tx.supplier else ""
-                        if len(supplier_name) > 20:
-                            supplier_name = supplier_name[:17] + "..."
-                        
+                        if len(supplier_name) > 25:
+                            supplier_name = supplier_name[:22] + "..."
                         tx_date = tx.tx_date
                         tx_amount = tx.amount
-                    
                     if has_suppliers:
                         tx_data.append([
                             str(tx_date),
@@ -1733,65 +1831,71 @@ class ReportService:
                             f"{tx_amount:,.2f}",
                             format_text(tx_desc)
                         ])
-                
                 # Create and style table
-                tx_table = Table(tx_data, repeatRows=1, colWidths=col_widths)
-                tx_table.setStyle(TableStyle([
+                tx_table = Table(tx_data, repeatRows=1, colWidths=col_widths, style=[
                     ('FONT', (0, 0), (-1, -1), font_name),
-                    ('GRID', (0, 0), (-1, -1), 0.25, colors.grey),
-                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#FFEDD5')), # Orange-100 header
-                    ('FONTSIZE', (0, 0), (-1, -1), 9),
+                    ('GRID', (0, 0), (-1, -1), 0.75, colors.HexColor('#C2410C')),
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#C2410C')), # Orange-800 header
+                    ('FONTSIZE', (0, 0), (-1, -1), 10),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                    ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#FFFBEB')),
                     ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                    ('PADDING', (0, 0), (-1, -1), 4),
-                ]))
+                    ('PADDING', (0, 0), (-1, -1), 5),
+                ])
                 elements.append(tx_table)
-                elements.append(Spacer(1, 15))  # Space between category tables
+                elements.append(Spacer(1, 18))  # Space between category tables
 
         # Charts
-        if options.include_charts and options.chart_types:
+        if options.include_charts:
             elements.append(Spacer(1, 20))
             elements.append(Paragraph(format_text("גרפים"), style_h2))
             elements.append(Spacer(1, 10))
             
-            from reportlab.platypus import Image
-            from reportlab.lib.utils import ImageReader
+            CHART_TITLES = {
+                "income_expense_pie": "הכנסות מול הוצאות",
+                "expense_by_category_pie": "הוצאות לפי קטגוריה (עוגה)",
+                "expense_by_category_bar": "הוצאות לפי קטגוריה (עמודות)",
+                "trends_line": "מגמות לאורך זמן"
+            }
+
+            charts_to_render = {}
             
-            for chart_type in options.chart_types:
-                try:
-                    print(f"📊 Creating chart: {chart_type}")
-                    chart_img = self._create_chart_image(chart_type, {}, summary, transactions)
-                    
-                    if chart_img:
-                        # Check if buffer has content
-                        chart_img.seek(0)
-                        img_data = chart_img.read()
-                        img_size = len(img_data)
-                        print(f"📊 Chart image size: {img_size} bytes")
-                        
-                        if img_size > 0:
-                            # Create ImageReader from the image data
-                            img_reader = ImageReader(io.BytesIO(img_data))
-                            
-                            # Create image element
-                            chart_image = Image(img_reader, width=500, height=375)
-                            chart_image.hAlign = 'CENTER'
-                            elements.append(chart_image)
-                            elements.append(Spacer(1, 15))
-                            print(f"✅ Chart {chart_type} added to PDF successfully")
-                        else:
-                            print(f"⚠️ Chart image is empty (0 bytes) for type: {chart_type}")
-                    else:
-                        print(f"⚠️ Chart image buffer is None for type: {chart_type}")
-                except Exception as e:
-                    import traceback
-                    print(f"⚠️ Error creating/adding chart {chart_type} to PDF: {e}")
-                    traceback.print_exc()
+            # Use provided images if available
+            if chart_images:
+                charts_to_render = chart_images
+            # Otherwise generate them if chart_types provided
+            elif options.chart_types:
+                for chart_type in options.chart_types:
+                    try:
+                        print(f"INFO: Creating chart: {chart_type}")
+                        chart_buffer = self._create_chart_image(chart_type, {}, summary, transactions)
+                        if chart_buffer:
+                            chart_buffer.seek(0)
+                            chart_bytes = chart_buffer.read()
+                            if chart_bytes:
+                                chart_name = CHART_TITLES.get(chart_type, chart_type)
+                                charts_to_render[chart_name] = chart_bytes
+                    except Exception as e:
+                        print(f"WARNING: Error preparing chart {chart_type}: {e}")
+
+            if charts_to_render:
+                for chart_name, image_bytes in charts_to_render.items():
+                    try:
+                        img_buffer = BytesIO(image_bytes)
+                        # Reduced size: width=320, height=240 (was 400x250)
+                        img = RLImage(img_buffer, width=320, height=240)
+                        elements.append(Paragraph(format_text(f"גרף: {chart_name}"), styles['Heading2']))
+                        elements.append(Spacer(1, 10))
+                        elements.append(img)
+                        elements.append(Spacer(1, 20))
+                    except Exception as e:
+                        print(f"WARNING: Failed to add chart {chart_name} to PDF: {e}")
 
         doc.build(elements)
         buffer.seek(0)
         return buffer.read()
 
-    async def _generate_excel(self, project, options, transactions, budgets, fund, summary) -> bytes:
+    async def _generate_excel(self, project, options, transactions, budgets, fund, summary, chart_images=None) -> bytes:
         wb = Workbook()
         ws = wb.active
         ws.title = "דוח"
@@ -2068,7 +2172,7 @@ class ReportService:
             ws.column_dimensions['E'].width = 30  # Description when supplier exists
 
         # Charts - Add as images (same as PDF)
-        if options.include_charts and options.chart_types:
+        if options.include_charts:
             try:
                 current_row += 2  # Spacer
                 
@@ -2082,59 +2186,65 @@ class ReportService:
                 charts_header.border = thin_border
                 current_row += 2
                 
-                # Import openpyxl image support
-                from openpyxl.drawing.image import Image as ExcelImage
+                from openpyxl.drawing.image import Image as XLImage
                 
-                for chart_type in options.chart_types:
-                    try:
-                        print(f"📊 Creating chart image for Excel: {chart_type}")
-                        chart_img = self._create_chart_image(chart_type, {}, summary, transactions)
-                        
-                        if chart_img:
-                            # Check if buffer has content
-                            chart_img.seek(0)
-                            img_data = chart_img.read()
-                            img_size = len(img_data)
-                            print(f"📊 Chart image size: {img_size} bytes")
+                CHART_TITLES = {
+                    "income_expense_pie": "הכנסות מול הוצאות",
+                    "expense_by_category_pie": "הוצאות לפי קטגוריה (עוגה)",
+                    "expense_by_category_bar": "הוצאות לפי קטגוריה (עמודות)",
+                    "trends_line": "מגמות לאורך זמן"
+                }
+
+                charts_to_render = {}
+                
+                # Use provided images if available
+                if chart_images:
+                    charts_to_render = chart_images
+                # Otherwise generate them if chart_types provided
+                elif options.chart_types:
+                    for chart_type in options.chart_types:
+                        try:
+                            print(f"INFO: Creating chart for Excel: {chart_type}")
+                            chart_buffer = self._create_chart_image(chart_type, {}, summary, transactions)
+                            if chart_buffer:
+                                chart_buffer.seek(0)
+                                chart_bytes = chart_buffer.read()
+                                if chart_bytes:
+                                    chart_name = CHART_TITLES.get(chart_type, chart_type)
+                                    charts_to_render[chart_name] = chart_bytes
+                        except Exception as e:
+                            print(f"WARNING: Error preparing chart {chart_type}: {e}")
+
+                if charts_to_render:
+                    # Note: We use current_row instead of fixed row=5 to append after existing content
+                    row = current_row 
+                    for chart_name, image_bytes in charts_to_render.items():
+                        try:
+                            # המר bytes לתמונה
+                            img_buffer = BytesIO(image_bytes)
+                            img = XLImage(img_buffer)
                             
-                            if img_size > 0:
-                                # Create image from BytesIO
-                                img_buffer = io.BytesIO(img_data)
-                                excel_img = ExcelImage(img_buffer)
-                                
-                                # Set image size (in pixels, will be converted to Excel units)
-                                # Excel uses EMU (English Metric Units), 1 pixel ≈ 9525 EMU
-                                excel_img.width = 600  # pixels
-                                excel_img.height = 450  # pixels
-                                
-                                # Add image to worksheet at current row
-                                # Anchor the image to a cell
-                                cell_ref = f'A{current_row}'
-                                ws.add_image(excel_img, cell_ref)
-                                
-                                # Adjust row height to accommodate image
-                                # Excel row height is in points (1 point = 1/72 inch)
-                                # Image height is 450 pixels, at 96 DPI that's ~4.7 inches = ~338 points
-                                ws.row_dimensions[current_row].height = 338
-                                
-                                # Merge cells to make space for image (columns A-E)
-                                ws.merge_cells(f'A{current_row}:E{current_row + 14}')  # ~15 rows for the image
-                                
-                                current_row += 16  # Move to next position (image + spacing)
-                                print(f"✅ Chart {chart_type} added to Excel successfully")
-                            else:
-                                print(f"⚠️ Chart image is empty (0 bytes) for type: {chart_type}")
-                        else:
-                            print(f"⚠️ Chart image buffer is None for type: {chart_type}")
-                    except Exception as e:
-                        import traceback
-                        print(f"⚠️ Error creating/adding chart {chart_type} to Excel: {e}")
-                        traceback.print_exc()
-                        # Continue with next chart
-                        continue
+                            # Fixed Aspect Ratio: 480x360 (4:3) roughly matches figsize(10, 6) cropped
+                            # Using 480 width and calculating height to maintain aspect if possible, 
+                            # but simpler to use fixed nice size that matches cells roughly.
+                            img.width = 480
+                            img.height = 320
+
+                            # הוסף תמונה לגיליון
+                            ws.add_image(img, f'A{row}')
+                            
+                            # Adjust row height
+                            ws.row_dimensions[row].height = 240
+                            
+                            row += 16  # Spacer
+                        except Exception as e:
+                            print(f"WARNING: Failed to add chart {chart_name} to Excel: {e}")
+                            
+                    current_row = row # Update global row tracker
+                    
             except Exception as e:
                 import traceback
-                print(f"⚠️ Error in charts section in Excel: {e}")
+                print(f"WARNING: Error in charts section in Excel: {e}")
                 traceback.print_exc()
                 # Continue without charts
 

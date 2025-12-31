@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict
 from datetime import date
 
 class ReportOptions(BaseModel):
@@ -27,6 +27,8 @@ class ReportOptions(BaseModel):
     
     format: str = "pdf"  # "pdf", "excel", "zip"
 
+class CustomReportRequest(ReportOptions):
+    chart_images: Optional[Dict[str, str]] = None
 
 class SupplierReportOptions(BaseModel):
     supplier_id: int
@@ -41,3 +43,6 @@ class SupplierReportOptions(BaseModel):
     project_ids: Optional[List[int]] = None # List of project IDs to filter by
     
     format: str = "excel"  # "pdf", "excel", "zip"
+
+class SupplierReportRequest(SupplierReportOptions):
+    chart_images: Optional[Dict[str, str]] = None
