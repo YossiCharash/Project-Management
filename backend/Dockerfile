@@ -12,7 +12,6 @@ RUN apt-get update && apt-get install -y \
     libpq-dev \
     postgresql-client \
     curl \
-    fonts-dejavu \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -21,7 +20,8 @@ WORKDIR /app
 COPY backend/requirements.txt .
 
 # Install Python dependencies
-RUN pip install --no-cache-dir --root-user-action=ignore -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
 # Copy backend source code (assuming build context is project root)
 COPY backend/ ./backend/
