@@ -215,6 +215,8 @@ async def get_project_transactions(project_id: int, db: DBSessionDep, user=Depen
                                     t.supplier_id,
                                     t.created_by_user_id,
                                     COALESCE(t.from_fund, false) as from_fund,
+                                    t.period_start_date,
+                                    t.period_end_date,
                                     CASE
                                         WHEN u.id IS NOT NULL THEN json_build_object(
                                                 'id', u.id,
@@ -283,7 +285,7 @@ async def get_project_transactions(project_id: int, db: DBSessionDep, user=Depen
                         for attr in ['id', 'project_id', 'tx_date', 'type', 'amount', 'description',
                                      'category', 'notes', 'is_exceptional', 'file_path', 'created_at',
                                      'recurring_template_id', 'is_generated', 'payment_method',
-                                     'supplier_id', 'created_by_user_id', 'created_by_user']:
+                                     'supplier_id', 'created_by_user_id', 'period_start_date', 'period_end_date', 'created_by_user']:
                             if hasattr(row, attr):
                                 row_dict[attr] = getattr(row, attr)
 
@@ -320,6 +322,8 @@ async def get_project_transactions(project_id: int, db: DBSessionDep, user=Depen
                         "supplier_id": row_dict.get('supplier_id'),
                         "created_by_user_id": row_dict.get('created_by_user_id'),
                         "from_fund": row_dict.get('from_fund', False),
+                        "period_start_date": row_dict.get('period_start_date'),
+                        "period_end_date": row_dict.get('period_end_date'),
                         "created_by_user": created_by_user
                     }
                     transactions.append(tx_dict)
@@ -370,6 +374,8 @@ async def get_project_transactions(project_id: int, db: DBSessionDep, user=Depen
                             "supplier_id": getattr(tx, 'supplier_id', None),
                             "created_by_user_id": getattr(tx, 'created_by_user_id', None),
                             "from_fund": getattr(tx, 'from_fund', False),
+                            "period_start_date": getattr(tx, 'period_start_date', None),
+                            "period_end_date": getattr(tx, 'period_end_date', None),
                             "created_by_user": created_by_user
                         }
                         result.append(TransactionOut.model_validate(tx_dict))

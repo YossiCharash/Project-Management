@@ -225,14 +225,26 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
       return
     }
 
-    if (formData.period_start_date && formData.period_end_date) {
+    // Validate period dates for period transactions
+    if (isPeriodTransaction) {
+        if (!formData.period_start_date || !formData.period_end_date) {
+            setError('עסקה תאריכית חייבת לכלול תאריך התחלה ותאריך סיום')
+            return
+        }
         if (formData.period_start_date > formData.period_end_date) {
             setError('תאריך התחלה חייב להיות לפני תאריך סיום')
             return
         }
-    } else if (isPeriodTransaction) {
-        setError('עסקה תקופתית חייבת לכלול תאריכי התחלה וסיום')
-        return
+    } else if (formData.period_start_date || formData.period_end_date) {
+        // If one date is filled, both must be filled
+        if (!formData.period_start_date || !formData.period_end_date) {
+            setError('יש למלא גם תאריך התחלה וגם תאריך סיום')
+            return
+        }
+        if (formData.period_start_date > formData.period_end_date) {
+            setError('תאריך התחלה חייב להיות לפני תאריך סיום')
+            return
+        }
     }
 
     setLoading(true)
@@ -356,7 +368,16 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                         <input
                             type="date"
                             value={formData.period_start_date || ''}
-                            onChange={(e) => setFormData({ ...formData, period_start_date: e.target.value || undefined })}
+                            onChange={(e) => {
+                                const newValue = e.target.value || undefined
+                                // Prevent clearing date if it's a period transaction
+                                if (isPeriodTransaction && !newValue) {
+                                    setError('לא ניתן למחוק תאריך התחלה בעסקה תאריכית')
+                                    return
+                                }
+                                setFormData({ ...formData, period_start_date: newValue })
+                                setError(null)
+                            }}
                             required={isPeriodTransaction}
                             className="w-full px-2 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
@@ -366,7 +387,16 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                         <input
                             type="date"
                             value={formData.period_end_date || ''}
-                            onChange={(e) => setFormData({ ...formData, period_end_date: e.target.value || undefined })}
+                            onChange={(e) => {
+                                const newValue = e.target.value || undefined
+                                // Prevent clearing date if it's a period transaction
+                                if (isPeriodTransaction && !newValue) {
+                                    setError('לא ניתן למחוק תאריך סיום בעסקה תאריכית')
+                                    return
+                                }
+                                setFormData({ ...formData, period_end_date: newValue })
+                                setError(null)
+                            }}
                             required={isPeriodTransaction}
                             className="w-full px-2 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />

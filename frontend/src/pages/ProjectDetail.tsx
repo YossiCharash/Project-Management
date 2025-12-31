@@ -116,6 +116,7 @@ export default function ProjectDetail() {
   const [financialCustomEnd, setFinancialCustomEnd] = useState<string>('')
   
   const [categoryFilter, setCategoryFilter] = useState<string>('all')
+  const [filterDated, setFilterDated] = useState<'all' | 'only'>('all')
 
   const [editTransactionModalOpen, setEditTransactionModalOpen] = useState(false)
   const [selectedTransactionForEdit, setSelectedTransactionForEdit] = useState<any | null>(null)
@@ -268,6 +269,15 @@ export default function ProjectDetail() {
           console.log('✅ Found periodic transaction:', periodicTx.id, 'Period:', periodicTx.period_start_date, '-', periodicTx.period_end_date)
         } else {
           console.log('❌ No periodic transactions found. Sample transaction:', data[0] ? {id: data[0].id, has_period_start: !!data[0].period_start_date, has_period_end: !!data[0].period_end_date} : 'none')
+        }
+        // Log all transactions with period dates for debugging
+        const allPeriodicTxs = data.filter((tx: any) => tx.period_start_date && tx.period_end_date)
+        if (allPeriodicTxs.length > 0) {
+          console.log('📅 All dated transactions:', allPeriodicTxs.map((tx: any) => ({
+            id: tx.id,
+            period_start: tx.period_start_date,
+            period_end: tx.period_end_date
+          })))
         }
       }
       setTxs(data || [])
@@ -798,10 +808,14 @@ const formatDate = (value: string | null) => {
     const exceptionalMatches = filterExceptional === 'all' || 
       (filterExceptional === 'only' && t.is_exceptional === true)
     
+    // Dated transactions filter: if 'all', show all; if 'only', show only dated transactions
+    const datedMatches = filterDated === 'all' || 
+      (filterDated === 'only' && t.period_start_date && t.period_end_date)
+    
     // Type filter
     const typeMatches = filterType === 'all' || t.type === filterType
     
-    const result = dateMatches && typeMatches && exceptionalMatches && categoryMatches
+    const result = dateMatches && typeMatches && exceptionalMatches && categoryMatches && datedMatches
     
     return result
   })
@@ -1339,6 +1353,15 @@ const formatDate = (value: string | null) => {
                             />
                             רק חריגות
                           </label>
+                          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                            <input
+                              type="checkbox"
+                              checked={filterDated === 'only'}
+                              onChange={e => setFilterDated(e.target.checked ? 'only' : 'all')}
+                              className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+                            />
+                            רק תאריכיות
+                          </label>
                         </div>
                         <div>
                           <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
@@ -1521,11 +1544,11 @@ const formatDate = (value: string | null) => {
                                     מחזורי
                                   </span>
                                 )}
-                                {tx.period_start_date && tx.period_end_date && (
-                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700 border border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800">
-                                    תקופתי
+                                {tx.period_start_date && tx.period_end_date ? (
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700 border border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800" key={`dated-${tx.id}`}>
+                                    תאריכית
                                   </span>
-                                )}
+                                ) : null}
                                 <span className="text-sm text-gray-600 dark:text-gray-300 truncate max-w-[120px]">
                               {(() => {
                                 const catName = getCategoryName(tx.category);
@@ -1536,11 +1559,11 @@ const formatDate = (value: string | null) => {
                               <div className="flex items-center gap-4">
                                 <div className="text-right">
                                     <div className="text-sm text-gray-500 dark:text-gray-400">{new Date(tx.tx_date).toLocaleDateString('he-IL')}</div>
-                                    {tx.period_start_date && tx.period_end_date && (
-                                        <div className="text-xs text-blue-600 dark:text-blue-400 font-medium mt-0.5">
+                                    {tx.period_start_date && tx.period_end_date ? (
+                                        <div className="text-xs text-blue-600 dark:text-blue-400 font-medium mt-0.5" key={`dates-${tx.id}`}>
                                             {new Date(tx.period_start_date).toLocaleDateString('he-IL', {day: '2-digit', month: '2-digit'})} - {new Date(tx.period_end_date).toLocaleDateString('he-IL', {day: '2-digit', month: '2-digit'})}
                                         </div>
-                                    )}
+                                    ) : null}
                                 </div>
                                 <span className={`text-lg font-semibold ${tx.type === 'Income' ? 'text-green-600' : 'text-red-600'}`}>
                                   {formatCurrency(tx.amount)} ₪
@@ -1550,14 +1573,15 @@ const formatDate = (value: string | null) => {
                             </button>
                             {expanded && (
                               <div className="px-4 pb-4 border-t border-gray-100 dark:border-gray-700 text-sm text-gray-700 dark:text-gray-200 space-y-3">
-                                {tx.period_start_date && tx.period_end_date && (
-                                  <div className="bg-blue-50 dark:bg-blue-900/20 p-2 rounded-lg border border-blue-100 dark:border-blue-800 mt-2">
-                                    <div className="text-xs text-blue-800 dark:text-blue-300 font-medium mb-1">תקופת תשלום:</div>
-                                    <div className="text-blue-700 dark:text-blue-200">
+                                {tx.period_start_date && tx.period_end_date ? (
+                                  <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg border-2 border-blue-200 dark:border-blue-700 mt-2" key={`period-details-${tx.id}`}>
+                                    <div className="text-sm text-blue-800 dark:text-blue-300 font-bold mb-2">עסקה תאריכית</div>
+                                    <div className="text-xs text-blue-700 dark:text-blue-400 mb-1">תקופת תשלום:</div>
+                                    <div className="text-base text-blue-900 dark:text-blue-200 font-semibold">
                                       {new Date(tx.period_start_date).toLocaleDateString('he-IL')} - {new Date(tx.period_end_date).toLocaleDateString('he-IL')}
                                     </div>
                                   </div>
-                                )}
+                                ) : null}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                   <div>
                                     <div className="text-xs text-gray-500 dark:text-gray-400">אמצעי תשלום</div>
@@ -2064,9 +2088,9 @@ const formatDate = (value: string | null) => {
               <div>
                     <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 h-full">
                         <div className="mb-4 flex items-center justify-between">
-                            <div>
-                                <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">פרטי הקופה</h2>
-                                <p className="text-sm text-gray-600 dark:text-gray-400">מעקב אחר יתרת הקופה ועסקאות מהקופה</p>
+                            <div className="min-w-0 flex-1">
+                                <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2 break-words">פרטי הקופה</h2>
+                                <p className="text-sm text-gray-600 dark:text-gray-400 break-words">מעקב אחר יתרת הקופה ועסקאות מהקופה</p>
                             </div>
                             <div className="flex items-center gap-2">
                                 {fundData && fundData.transactions && fundData.transactions.length > 0 && (
@@ -2087,21 +2111,21 @@ const formatDate = (value: string | null) => {
                             <div className="text-center py-8 text-gray-500 dark:text-gray-400">טוען פרטי קופה...</div>
                         ) : fundData ? (
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 border border-blue-200 dark:border-blue-800 rounded-xl p-6">
-                                    <div className="flex items-center justify-between mb-2"><h3 className="text-sm font-medium text-blue-700 dark:text-blue-300">יתרה נוכחית</h3><svg className="w-6 h-6 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg></div>
-                                    <p className="text-3xl font-bold text-blue-900 dark:text-blue-100">{fundData.current_balance.toLocaleString('he-IL')} ₪</p><p className="text-xs text-blue-600 dark:text-blue-400 mt-1">יתרה זמינה כעת</p>
+                                <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 border border-blue-200 dark:border-blue-800 rounded-xl p-6 overflow-hidden">
+                                    <div className="flex items-center justify-between mb-2 min-w-0"><h3 className="text-sm font-medium text-blue-700 dark:text-blue-300 break-words min-w-0 flex-1">יתרה נוכחית</h3><svg className="w-6 h-6 text-blue-600 dark:text-blue-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg></div>
+                                    <p className="text-3xl font-bold text-blue-900 dark:text-blue-100 break-words">{fundData.current_balance.toLocaleString('he-IL')} ₪</p><p className="text-xs text-blue-600 dark:text-blue-400 mt-1 break-words">יתרה זמינה כעת</p>
                                 </div>
-                                <div className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 border border-green-200 dark:border-green-800 rounded-xl p-6">
-                                    <div className="flex items-center justify-between mb-2"><h3 className="text-sm font-medium text-green-700 dark:text-green-300">כמה היה מתחילה</h3><svg className="w-6 h-6 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></div>
-                                    <p className="text-3xl font-bold text-green-900 dark:text-green-100">{fundData.initial_total.toLocaleString('he-IL')} ₪</p><p className="text-xs text-green-600 dark:text-green-400 mt-1">סכום כולל שנכנס לקופה</p>
+                                <div className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 border border-green-200 dark:border-green-800 rounded-xl p-6 overflow-hidden">
+                                    <div className="flex items-center justify-between mb-2 min-w-0"><h3 className="text-sm font-medium text-green-700 dark:text-green-300 break-words min-w-0 flex-1">כמה היה מתחילה</h3><svg className="w-6 h-6 text-green-600 dark:text-green-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></div>
+                                    <p className="text-3xl font-bold text-green-900 dark:text-green-100 break-words">{fundData.initial_total.toLocaleString('he-IL')} ₪</p><p className="text-xs text-green-600 dark:text-green-400 mt-1 break-words">סכום כולל שנכנס לקופה</p>
                                 </div>
-                                <div className="bg-gradient-to-br from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20 border border-red-200 dark:border-red-800 rounded-xl p-6">
-                                    <div className="flex items-center justify-between mb-2"><h3 className="text-sm font-medium text-red-700 dark:text-red-300">כמה יצא</h3><svg className="w-6 h-6 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg></div>
-                                    <p className="text-3xl font-bold text-red-900 dark:text-red-100">{fundData.total_deductions.toLocaleString('he-IL')} ₪</p><p className="text-xs text-red-600 dark:text-red-400 mt-1">סה"כ סכום שירד מהקופה</p>
+                                <div className="bg-gradient-to-br from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20 border border-red-200 dark:border-red-800 rounded-xl p-6 overflow-hidden">
+                                    <div className="flex items-center justify-between mb-2 min-w-0"><h3 className="text-sm font-medium text-red-700 dark:text-red-300 break-words min-w-0 flex-1">כמה יצא</h3><svg className="w-6 h-6 text-red-600 dark:text-red-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg></div>
+                                    <p className="text-3xl font-bold text-red-900 dark:text-red-100 break-words">{fundData.total_deductions.toLocaleString('he-IL')} ₪</p><p className="text-xs text-red-600 dark:text-red-400 mt-1 break-words">סה"כ סכום שירד מהקופה</p>
                                 </div>
-                                <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 border border-purple-200 dark:border-purple-800 rounded-xl p-6">
-                                    <div className="flex items-center justify-between mb-2"><h3 className="text-sm font-medium text-purple-700 dark:text-purple-300">סכום חודשי</h3><svg className="w-6 h-6 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg></div>
-                                    <p className="text-3xl font-bold text-purple-900 dark:text-purple-100">{fundData.monthly_amount.toLocaleString('he-IL')} ₪</p><p className="text-xs text-purple-600 dark:text-purple-400 mt-1">מתווסף אוטומטית כל חודש</p>
+                                <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 border border-purple-200 dark:border-purple-800 rounded-xl p-6 overflow-hidden">
+                                    <div className="flex items-center justify-between mb-2 min-w-0"><h3 className="text-sm font-medium text-purple-700 dark:text-purple-300 break-words min-w-0 flex-1">סכום חודשי</h3><svg className="w-6 h-6 text-purple-600 dark:text-purple-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg></div>
+                                    <p className="text-3xl font-bold text-purple-900 dark:text-purple-100 break-words">{fundData.monthly_amount.toLocaleString('he-IL')} ₪</p><p className="text-xs text-purple-600 dark:text-purple-400 mt-1 break-words">מתווסף אוטומטית כל חודש</p>
                                 </div>
                             </div>
                         ) : (
@@ -2148,6 +2172,15 @@ const formatDate = (value: string | null) => {
                     className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
                   />
                   רק חריגות
+                </label>
+                <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                  <input
+                    type="checkbox"
+                    checked={filterDated === 'only'}
+                    onChange={e => setFilterDated(e.target.checked ? 'only' : 'all')}
+                    className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+                  />
+                  רק תאריכיות
                 </label>
               </div>
               <div>
@@ -2487,8 +2520,8 @@ const formatDate = (value: string | null) => {
                           </span>
                         )}
                         {t.period_start_date && t.period_end_date && (
-                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-300" title="עסקה תקופתית (לפי תאריכים)">
-                            📅 תקופתי
+                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-300" title="עסקה תאריכית (לפי תאריכים)">
+                            📅 תאריכית
                           </span>
                         )}
                       </div>
@@ -2496,8 +2529,8 @@ const formatDate = (value: string | null) => {
                     <td className="p-3 text-gray-700 dark:text-gray-300">
                       <div>{t.tx_date}</div>
                       {t.period_start_date && t.period_end_date && (
-                        <div className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-                          תקופה: {t.period_start_date} - {t.period_end_date}
+                        <div className="text-sm text-blue-700 dark:text-blue-400 font-semibold mt-1 bg-blue-50 dark:bg-blue-900/20 px-2 py-1 rounded" key={`dated-dates-${t.id}`}>
+                          תאריכית: {new Date(t.period_start_date).toLocaleDateString('he-IL')} - {new Date(t.period_end_date).toLocaleDateString('he-IL')}
                         </div>
                       )}
                     </td>

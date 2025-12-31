@@ -59,6 +59,16 @@
   body {
     @apply bg-background text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1;
+    word-break: break-word;
+    overflow-wrap: break-word;
+  }
+  
+  /* Ensure Hebrew text wraps properly */
+  [dir="rtl"], 
+  body[dir="rtl"] * {
+    word-break: break-word;
+    overflow-wrap: break-word;
+    hyphens: auto;
   }
 }
 
