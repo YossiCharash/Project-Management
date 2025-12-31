@@ -21,8 +21,7 @@ WORKDIR /app
 COPY backend/requirements.txt .
 
 # Install Python dependencies
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --root-user-action=ignore -r requirements.txt
 
 # Copy backend source code (assuming build context is project root)
 COPY backend/ ./backend/
