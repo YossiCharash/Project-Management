@@ -1,64 +1,76 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { FormEvent, useEffect, useState } from 'react'
 import { useAppDispatch, useAppSelector } from '../utils/hooks'
-import { archiveProject, createProject, fetchProjects, fetchProjectsWithArchived, hardDeleteProject, restoreProject, updateProject } from '../store/slices/projectsSlice'
-import { Link } from 'react-router-dom'
-import ExpenseChart, { ExpensePoint } from '../components/charts/ExpenseChart'
+import { archiveProject, createProject, fetchProjects, fetchProjectsWithArchived, restoreProject, updateProject } from '../store/slices/projectsSlice'
+import { Link, useNavigate } from 'react-router-dom'
+import CategoryBarChart, { CategoryPoint } from '../components/charts/CategoryBarChart'
 import { fetchMe } from '../store/slices/authSlice'
 import Modal from '../components/Modal'
 import api from '../lib/api'
+import EnhancedDashboard from '../components/EnhancedDashboard'
+import ModernDashboard from '../components/ModernDashboard'
+import CreateProjectModal from '../components/CreateProjectModal'
+import ProjectTreeView from '../components/ProjectTreeView'
+import TestComponent from '../components/TestComponent'
+import { ProjectWithFinance } from '../types/api'
 
 export default function Dashboard() {
   const dispatch = useAppDispatch()
   const { items, loading, error } = useAppSelector(s => s.projects)
   const me = useAppSelector(s => s.auth.me)
+  const navigate = useNavigate()
 
+  // Enhanced dashboard state
+  const [selectedProject, setSelectedProject] = useState<ProjectWithFinance | null>(null)
+  const [editingProject, setEditingProject] = useState<ProjectWithFinance | null>(null)
+  const [showCreateModal, setShowCreateModal] = useState(false)
+
+  // Legacy dashboard state (kept for backward compatibility)
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [monthly, setMonthly] = useState<number>(0)
   const [annual, setAnnual] = useState<number>(0)
+  const [address, setAddress] = useState('')
+  const [city, setCity] = useState('')
   const [creating, setCreating] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
-
   const [editingId, setEditingId] = useState<number | null>(null)
   const [openCreate, setOpenCreate] = useState(false)
-  const [viewMode, setViewMode] = useState<'active' | 'archive' | 'all'>('active')
-
-  const [chartData, setChartData] = useState<ExpensePoint[]>([])
+  const [projectCharts, setProjectCharts] = useState<Record<number, CategoryPoint[]>>({})
 
   useEffect(() => { if (!me) dispatch(fetchMe()) }, [dispatch, me])
+  
+  // Load projects for dashboard
   useEffect(() => {
-    if (viewMode === 'active') dispatch(fetchProjects())
-    else if (viewMode === 'archive') dispatch(fetchProjectsWithArchived({ include_archived: true, only_archived: true }))
-    else dispatch(fetchProjectsWithArchived(true))
-  }, [dispatch, viewMode])
+    dispatch(fetchProjects())
+  }, [dispatch])
 
+  // Load project charts for dashboard
   useEffect(() => {
-    const loadExpenses = async () => {
-      try {
-        // בחר פרויקט להצגת הוצאות: אם יש בחירה עתידית – נחליף. לעת עתה נשתמש בראשון.
-        const firstActive = items.find((p: any) => p.is_active !== false)
-        if (!firstActive) { setChartData([]); return }
-        const { data } = await api.get(`/transactions/project/${firstActive.id}`)
-        // המפה לפי חודש (שם עברי בסיסי)
-        const months = ['ינו', 'פבר', 'מרץ', 'אפר', 'מאי', 'יונ', 'יול', 'אוג', 'ספט', 'אוק', 'נוב', 'דצמ']
-        const map: Record<string, number> = {}
-        for (const t of data as any[]) {
-          if (t.type !== 'Expense') continue
-          const d = new Date(t.tx_date)
-          const key = months[d.getMonth()]
-          map[key] = (map[key] ?? 0) + Number(t.amount)
-        }
-        const points: ExpensePoint[] = months.map(m => ({ name: m, expense: map[m] ?? 0 }))
-        setChartData(points)
-      } catch { setChartData([]) }
+    const loadProjectCharts = async () => {
+      const charts: Record<number, CategoryPoint[]> = {}
+      const visible = items.filter((p: any) => p.is_active !== false)
+      for (const p of visible) {
+        try {
+          const { data } = await api.get(`/transactions/project/${p.id}`)
+          const map: Record<string, { income: number; expense: number }> = {}
+          for (const t of data as any[]) {
+            const cat = (t.category || 'ללא קטגוריה') as string
+            if (!map[cat]) map[cat] = { income: 0, expense: 0 }
+            if (t.type === 'Income') map[cat].income += Number(t.amount)
+            else map[cat].expense += Number(t.amount)
+          }
+          charts[p.id] = Object.entries(map).map(([category, v]) => ({ category, income: v.income, expense: v.expense }))
+        } catch { charts[p.id] = [] }
+      }
+      setProjectCharts(charts)
     }
-    loadExpenses()
+    if (items.length) loadProjectCharts()
   }, [items])
 
   const resetForm = () => {
-    setName(''); setDescription(''); setStartDate(''); setEndDate(''); setMonthly(0); setAnnual(0); setLocalError(null); setEditingId(null)
+    setName(''); setDescription(''); setStartDate(''); setEndDate(''); setMonthly(0); setAnnual(0); setAddress(''); setCity(''); setLocalError(null); setEditingId(null)
   }
 
   const onCreateOrUpdate = async (e: FormEvent) => {
@@ -66,10 +78,16 @@ export default function Dashboard() {
     setLocalError(null)
     setCreating(true)
     try {
-      const payload: any = { name, budget_monthly: monthly, budget_annual: annual }
-      if (description) payload.description = description
-      if (startDate) payload.start_date = startDate
-      if (endDate) payload.end_date = endDate
+      const payload: any = {
+        name,
+        budget_monthly: monthly,
+        budget_annual: annual,
+        description: description || undefined,
+        start_date: startDate || undefined,
+        end_date: endDate || undefined,
+        address: address || undefined,
+        city: city || undefined,
+      }
 
       if (editingId) {
         const res = await dispatch(updateProject({ id: editingId, changes: payload }))
@@ -87,17 +105,19 @@ export default function Dashboard() {
     const p = items.find(x => x.id === id)
     if (!p) return
     // @ts-expect-error
-    if (p.is_active === false) return // prevent editing archived
+    if (p.is_active === false) return
     setEditingId(id)
     setName(p.name || '')
-    // @ts-expect-error optional fields not in Project interface listed here
-    setDescription((p as any).description || '')
-    // @ts-expect-error optional fields not in Project interface listed here
-    setStartDate((p as any).start_date || '')
-    // @ts-expect-error optional fields not in Project interface listed here
-    setEndDate((p as any).end_date || '')
+    // @ts-expect-error
+    setDescription(p.description || '')
+    // @ts-expect-error
+    setStartDate(p.start_date || '')
+    // @ts-expect-error
+    setEndDate(p.end_date || '')
     setMonthly(p.budget_monthly ?? 0)
     setAnnual(p.budget_annual ?? 0)
+    setAddress((p as any).address ?? '')
+    setCity((p as any).city ?? '')
     setOpenCreate(true)
   }
 
@@ -113,69 +133,34 @@ export default function Dashboard() {
     await dispatch(restoreProject(id))
   }
 
-  const hardDelete = async (id: number) => {
-    if (confirm('מחיקה לצמיתות! פעולה זו בלתי הפיכה. להמשיך?')) {
-      await dispatch(hardDeleteProject(id))
-    }
+  const isAdmin = me?.role === 'Admin' || me?.role === 'ProjectManager'
+
+  // Enhanced dashboard handlers
+  const handleProjectClick = (project: ProjectWithFinance) => {
+    setSelectedProject(project)
+    // Navigate to project detail page
+    navigate(`/projects/${project.id}`)
   }
 
-  const isAdmin = me?.role === 'Admin' || me?.role === 'ProjectManager'
+  const handleProjectEdit = (project: ProjectWithFinance) => {
+    setEditingProject(project)
+    setShowCreateModal(true)
+  }
+
+  const handleProjectSuccess = (project: any) => {
+    // Refresh the dashboard
+    dispatch(fetchProjects())
+  }
+
+  const visibleItems = items?.filter?.((p: any) => p?.is_active !== false) ?? []
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">לוח בקרה</h1>
-      <div className="flex items-center gap-3">
-        {isAdmin && (
-          <button className="bg-gray-900 text-white px-4 py-2 rounded" onClick={()=>setOpenCreate(true)}>צור פרויקט</button>
-        )}
-        <label className="text-sm">תצוגה:</label>
-        <select className="border rounded p-1 text-sm" value={viewMode} onChange={e=>setViewMode(e.target.value as any)}>
-          <option value="active">פעילים</option>
-          <option value="archive">בארכיון</option>
-          <option value="all">הכל</option>
-        </select>
-      </div>
-
-      <div className="bg-white p-4 rounded shadow">
-        <h2 className="font-semibold mb-2">פרויקטים</h2>
-        {loading ? 'טוען...' : (
-          <ul className="divide-y">
-            {items.map(p => (
-              <li key={p.id} className="py-2 flex items-center gap-3">
-                <Link className="text-blue-600" to={`/projects/${p.id}`}>{p.name}</Link>
-                {/* @ts-expect-error */}
-                {p.is_active === false && <span className="text-xs bg-gray-200 px-2 py-0.5 rounded">בארכיון</span>}
-                {isAdmin && (
-                  <>
-                    {/* @ts-expect-error */}
-                    {p.is_active !== false && (
-                      <button className="ml-auto px-2 py-1 bg-yellow-500 text-white rounded" onClick={()=>openEditModal(p.id)}>ערוך</button>
-                    )}
-                    {/* @ts-expect-error */}
-                    {p.is_active === false ? (
-                      <>
-                        <button className="ml-auto px-2 py-1 bg-green-600 text-white rounded" onClick={()=>restore(p.id)}>שחזר</button>
-                        <button className="px-2 py-1 bg-red-700 text-white rounded" onClick={()=>hardDelete(p.id)}>מחק לצמיתות</button>
-                      </>
-                    ) : (
-                      <>
-                        <button className="px-2 py-1 bg-red-600 text-white rounded" onClick={()=>archive(p.id)}>ארכב</button>
-                        <button className="px-2 py-1 bg-red-700 text-white rounded" onClick={()=>hardDelete(p.id)}>מחק לצמיתות</button>
-                      </>
-                    )}
-                  </>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-        {error && <div className="text-red-600 text-sm mt-2">{error}</div>}
-      </div>
-
-      <div className="bg-white p-4 rounded shadow">
-        <h2 className="font-semibold mb-2">סקירת הוצאות</h2>
-        <ExpenseChart data={chartData} />
-      </div>
+      {/* Modern Dashboard - Clean view without create project option or welcome section */}
+      <ModernDashboard
+        onProjectClick={handleProjectClick}
+        onProjectEdit={handleProjectEdit}
+      />
 
       <Modal open={openCreate} onClose={onCloseModal} title={editingId ? 'עריכת פרויקט' : 'יצירת פרויקט'}>
         <form onSubmit={onCreateOrUpdate} className="space-y-2">
@@ -197,6 +182,16 @@ export default function Dashboard() {
               <input className="border rounded p-2 w-full" type="date" value={endDate} onChange={e=>setEndDate(e.target.value)} />
             </div>
           </div>
+          <div className="grid md:grid-cols-2 gap-2">
+            <div>
+              <label className="block text-xs text-gray-600 mb-1">כתובת</label>
+              <input className="border rounded p-2 w-full" value={address} onChange={e=>setAddress(e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-600 mb-1">עיר</label>
+              <input className="border rounded p-2 w-full" value={city} onChange={e=>setCity(e.target.value)} />
+            </div>
+          </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="block text-xs text-gray-600 mb-1">תקציב חודשי</label>
@@ -214,6 +209,14 @@ export default function Dashboard() {
           </div>
         </form>
       </Modal>
+
+      {/* Enhanced Create Project Modal */}
+      <CreateProjectModal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onSuccess={handleProjectSuccess}
+        editingProject={editingProject}
+      />
     </div>
   )
 }

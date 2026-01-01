@@ -7,8 +7,17 @@ export interface Project {
   description?: string | null
   budget_monthly: number
   budget_annual: number
+  num_residents?: number | null
+  monthly_price_per_apartment?: number | null
+  address?: string | null
+  city?: string | null
   // @ts-ignore optional backend fields
   is_active?: boolean
+  // optional dates
+  // @ts-ignore
+  start_date?: string | null
+  // @ts-ignore
+  end_date?: string | null
 }
 
 interface ProjectsState {
@@ -33,9 +42,9 @@ export const fetchProjectsWithArchived = createAsyncThunk('projects/fetchAllWith
 
 export const createProject = createAsyncThunk(
   'projects/create',
-  async (payload: { name: string; budget_monthly?: number; budget_annual?: number; description?: string; start_date?: string; end_date?: string }, { rejectWithValue }) => {
+  async (payload: Partial<Project>, { rejectWithValue }) => {
     try {
-      const { data } = await api.post<Project>('/projects', payload)
+      const { data } = await api.post<Project>('/projects/', payload)
       return data
     } catch (e: any) {
       return rejectWithValue(e.response?.data?.detail ?? 'Create failed')

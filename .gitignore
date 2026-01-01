@@ -1,55 +1,65 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+frontend/dist/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment
+frontend/.env
+.env.local
+.env.*.local
+
+# Logs
+logs/
+*.log
+
+# Database
+*.db
+*.sqlite
+data/
+
 # OS
 .DS_Store
 Thumbs.db
 
-# Editors/IDE
-.vscode/
-.idea/
-*.swp
-
-# Python
-__pycache__/
-*.py[cod]
-*.pyo
-*.pyd
-*.so
-*.egg-info/
-.eggs/
-.python-version
-.mypy_cache/
+# Testing
 .pytest_cache/
-.venv/
-venv/
-.env
-.env.*
 .coverage
-.coverage.*
 htmlcov/
-coverage.xml
-.ruff_cache/
 
-# Backend specific
-backend/uploads/
-backend/.env
+# Docker
+docker-compose.override.yml
 
-# Node / Frontend
-node_modules/
-frontend/node_modules/
-frontend/dist/
-dist/
-build/
-.vite/
-.next/
-.parcel-cache/
-.eslintcache
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-
-# Env files
-frontend/.env
-frontend/.env.*
-
-# Docker data (if created as local dir)
-pgdata/
+# Uploads
+uploads/*
+!uploads/.gitkeep
+.jpg
+.txt
+.png
+.sql
+.pdf
+.xml
+.iml
+.gitignore
+.dockerignore
+.idea

@@ -5,7 +5,9 @@ interface CurrentUser {
   id: number
   email: string
   full_name: string
-  role: 'Admin' | 'ProjectManager' | 'Viewer'
+  role: 'Admin' | 'Member'
+  group_id?: number
+  is_active: boolean
 }
 
 interface AuthState {
@@ -14,19 +16,30 @@ interface AuthState {
   error: string | null
   registered: boolean
   me: CurrentUser | null
+  requiresPasswordChange: boolean
 }
 
-const initialState: AuthState = { token: localStorage.getItem('token'), loading: false, error: null, registered: false, me: null }
+const initialState: AuthState = { 
+  token: localStorage.getItem('token'), 
+  loading: false, 
+  error: null, 
+  registered: false, 
+  me: null,
+  requiresPasswordChange: false
+}
 
 export const login = createAsyncThunk(
   'auth/login',
   async (payload: { email: string; password: string }, { rejectWithValue }) => {
     try {
-      const form = new URLSearchParams()
-      form.append('username', payload.email)
-      form.append('password', payload.password)
-      const { data } = await api.post('/auth/token', form)
-      return data.access_token as string
+      const { data } = await api.post('/auth/login', {
+        email: payload.email,
+        password: payload.password
+      })
+      return {
+        token: data.access_token as string,
+        requires_password_change: data.requires_password_change || false
+      }
     } catch (e: any) {
       return rejectWithValue(e.response?.data?.detail ?? 'Login failed')
     }
@@ -48,11 +61,71 @@ export const register = createAsyncThunk(
   }
 )
 
-export const fetchMe = createAsyncThunk('auth/fetchMe', async (_, { rejectWithValue }) => {
+export const registerAdmin = createAsyncThunk(
+  'auth/registerAdmin',
+  async (payload: { email: string; full_name: string; password: string }, { rejectWithValue, dispatch }) => {
+    try {
+      // First try to register as super admin (if no admin exists)
+      // If that fails with 403, try regular admin registration (requires existing admin)
+      let data
+      try {
+        data = (await api.post('/auth/register-super-admin', payload)).data
+      } catch (superAdminError: any) {
+        // If super admin registration fails because admin exists, try regular admin registration
+        if (superAdminError.response?.status === 403) {
+          // axios interceptor will automatically add the token from localStorage
+          data = (await api.post('/auth/register-admin', payload)).data
+        } else {
+          throw superAdminError
+        }
+      }
+      
+      // Auto login after successful registration
+      const loginResult = await dispatch(login({ 
+        email: payload.email, 
+        password: payload.password 
+      }))
+      
+      if (loginResult.type === 'auth/login/fulfilled') {
+        return data
+      } else {
+        throw new Error('Registration successful but auto-login failed')
+      }
+    } catch (e: any) {
+      return rejectWithValue(e.response?.data?.detail ?? 'Admin registration failed')
+    }
+  }
+)
+
+export const registerMember = createAsyncThunk(
+  'auth/registerMember',
+  async (payload: { email: string; full_name: string; password: string; group_id: number }, { rejectWithValue }) => {
+    try {
+      // axios interceptor will automatically add the token from localStorage
+      const { data } = await api.post('/auth/register-member', payload)
+      return data
+    } catch (e: any) {
+      return rejectWithValue(e.response?.data?.detail ?? 'Member registration failed')
+    }
+  }
+)
+
+export const fetchMe = createAsyncThunk('auth/fetchMe', async (_, { rejectWithValue, dispatch }) => {
   try {
-    const { data } = await api.get<CurrentUser>('/users/me')
+    // axios interceptor will automatically add the token from localStorage
+    const { data } = await api.get<CurrentUser>('/auth/profile')
     return data
   } catch (e: any) {
+    // If 401, clear token and redirect
+    if (e.response?.status === 401) {
+      dispatch(logout())
+      // Save current location to redirect back after login
+      const currentPath = window.location.pathname + window.location.search
+      if (currentPath !== '/login' && currentPath !== '/register') {
+        localStorage.setItem('redirectAfterLogin', currentPath)
+      }
+      window.location.href = '/login'
+    }
     return rejectWithValue(e.response?.data?.detail ?? 'Failed to load user')
   }
 })
@@ -64,7 +137,11 @@ const slice = createSlice({
     logout(state) {
       state.token = null
       state.me = null
+      state.requiresPasswordChange = false
       localStorage.removeItem('token')
+    },
+    clearPasswordChangeRequirement(state) {
+      state.requiresPasswordChange = false
     },
     clearAuthState(state){
       state.error = null
@@ -79,8 +156,15 @@ const slice = createSlice({
       })
       .addCase(login.fulfilled, (state, action) => {
         state.loading = false
-        state.token = action.payload
-        localStorage.setItem('token', action.payload)
+        if (typeof action.payload === 'string') {
+          // Backward compatibility
+          state.token = action.payload
+          localStorage.setItem('token', action.payload)
+        } else {
+          state.token = action.payload.token
+          state.requiresPasswordChange = action.payload.requires_password_change || false
+          localStorage.setItem('token', action.payload.token)
+        }
       })
       .addCase(login.rejected, (state, action) => {
         state.loading = false
@@ -100,11 +184,49 @@ const slice = createSlice({
         state.error = (action.payload as string) ?? 'Register failed'
         state.registered = false
       })
+      .addCase(fetchMe.pending, (state) => {
+        state.loading = true
+        state.error = null
+      })
       .addCase(fetchMe.fulfilled, (state, action) => {
+        state.loading = false
         state.me = action.payload
+      })
+      .addCase(fetchMe.rejected, (state, action) => {
+        state.loading = false
+        // Do not clear token on transient errors; allow app to stay authenticated
+        state.error = (action.payload as string) ?? 'Failed to load user'
+      })
+      .addCase(registerAdmin.pending, (state) => {
+        state.loading = true
+        state.error = null
+        state.registered = false
+      })
+      .addCase(registerAdmin.fulfilled, (state) => {
+        state.loading = false
+        state.registered = true
+      })
+      .addCase(registerAdmin.rejected, (state, action) => {
+        state.loading = false
+        state.error = (action.payload as string) ?? 'Admin registration failed'
+        state.registered = false
+      })
+      .addCase(registerMember.pending, (state) => {
+        state.loading = true
+        state.error = null
+        state.registered = false
+      })
+      .addCase(registerMember.fulfilled, (state) => {
+        state.loading = false
+        state.registered = true
+      })
+      .addCase(registerMember.rejected, (state, action) => {
+        state.loading = false
+        state.error = (action.payload as string) ?? 'Member registration failed'
+        state.registered = false
       })
   },
 })
 
-export const { logout, clearAuthState } = slice.actions
+export const { logout, clearAuthState, clearPasswordChangeRequirement } = slice.actions
 export default slice.reducer

@@ -1,7 +1,12 @@
 import axios from 'axios'
 
+
+
 const api = axios.create({
-  baseURL: 'http://127.0.0.1:8080/api/v1',
+  baseURL:   'https://project-menager-1-1-0.onrender.com/api/v1/',
+
+  timeout: 30000, // avoid ECONNABORTED on heavy endpoints during dev
+  withCredentials: false,
 })
 
 api.interceptors.request.use((config) => {
@@ -10,20 +15,32 @@ api.interceptors.request.use((config) => {
     config.headers = config.headers ?? {}
     config.headers.Authorization = `Bearer ${token}`
   }
+
   return config
 })
-
 api.interceptors.response.use(
-  (res) => res,
+  (res) => {
+    return res      
+  },
   (error) => {
     const status = error?.response?.status
-    if (status === 403) {
-      try { window.alert('אין לך הרשאה לבצע את הפעולה הזו') } catch {}
-    }
+
     if (status === 401) {
-      // optional: keep user informed
-      try { window.alert('ההתחברות פגה או לא תקפה. יש להתחבר מחדש.') } catch {}
+      // Clear token and redirect to login
+      localStorage.removeItem('token')
+
+      // Save current location to redirect back after login
+      const currentPath = window.location.pathname + window.location.search
+      if (currentPath !== '/login' && currentPath !== '/register') {
+        localStorage.setItem('redirectAfterLogin', currentPath)
+      }
+
+      // Redirect to login page
+      window.location.href = '/login'
+    } else {
+        console.error("API Error:", error.response?.data || error.message);
     }
+
     return Promise.reject(error)
   }
 )
