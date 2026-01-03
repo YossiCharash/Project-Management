@@ -94,8 +94,12 @@ const splitPeriodTransactionByMonth = (tx: Transaction): SplitTransaction[] => {
     }]
   }
 
+  // Normalize dates to work with date-only (no time component)
   const startDate = new Date(tx.period_start_date)
+  startDate.setHours(0, 0, 0, 0)
   const endDate = new Date(tx.period_end_date)
+  endDate.setHours(23, 59, 59, 999) // Set to end of day to include the full last day
+  
   const totalDays = Math.floor((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
   
   if (totalDays <= 0) {
@@ -119,14 +123,22 @@ const splitPeriodTransactionByMonth = (tx: Transaction): SplitTransaction[] => {
   const current = new Date(startDate)
   current.setDate(1) // Start of month
   
-  while (current <= endDate) {
+  // Create a date for the end of the period month to compare
+  const periodEndMonth = new Date(endDate)
+  periodEndMonth.setDate(1)
+  periodEndMonth.setMonth(periodEndMonth.getMonth() + 1)
+  periodEndMonth.setDate(0) // Last day of end date's month
+  
+  while (current <= periodEndMonth) {
     const year = current.getFullYear()
     const month = current.getMonth()
     const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`
     
     // Calculate the first and last day of this month that are within the period
     const monthStart = new Date(year, month, 1)
+    monthStart.setHours(0, 0, 0, 0)
     const monthEnd = new Date(year, month + 1, 0) // Last day of month
+    monthEnd.setHours(23, 59, 59, 999) // Set to end of day
     
     const overlapStart = new Date(Math.max(startDate.getTime(), monthStart.getTime()))
     const overlapEnd = new Date(Math.min(endDate.getTime(), monthEnd.getTime()))
@@ -147,6 +159,17 @@ const splitPeriodTransactionByMonth = (tx: Transaction): SplitTransaction[] => {
     
     // Move to next month
     current.setMonth(month + 1)
+  }
+  
+  // Normalize to ensure sum equals original amount (fix rounding errors)
+  if (splits.length > 0) {
+    const totalProportional = splits.reduce((sum, split) => sum + split.proportionalAmount, 0)
+    const difference = tx.amount - totalProportional
+    
+    // Adjust the last split to account for any rounding differences
+    if (Math.abs(difference) > 0.0001) {
+      splits[splits.length - 1].proportionalAmount += difference
+    }
   }
   
   return splits
@@ -494,21 +517,26 @@ export default function ProjectDetail() {
       
       setExpenseCategories(categoriesData || [])
       
-      // If we already have consolidated transactions (from loadProjectInfo -> reloadConsolidatedData), 
-      // don't overwrite with just parent transactions if we are a parent project.
-      // But we don't know if we are parent project yet inside this closure if called from initial useEffect?
-      // Actually, setTxs updates the state. If we overwrite it here with parent-only, we lose subproject txs.
-      // However, reloadConsolidatedData is called from loadProjectInfo which runs in parallel.
-      // We'll rely on reloadConsolidatedData running last or handling it.
-      
-      // Better: check if we are currently displaying consolidated view?
-      // Since this function is mostly for charts, and charts use txs state...
-      // We will just set it here. If reloadConsolidatedData comes later, it will overwrite it again with consolidated.
-      setTxs(transactionsData || [])
+      // Update transactions with all transactions (not just contract period) for charts
+      // This is needed because Charts need all transactions, not just the filtered ones from load()
+      // load() filters by contract period, but Charts need everything
+      // Only update if we got valid data (not empty array) to avoid clearing transactions
+      if (transactionsData && Array.isArray(transactionsData) && transactionsData.length > 0) {
+        setTxs(transactionsData)
+      } else if (transactionsData && Array.isArray(transactionsData)) {
+        // If we got empty array but txs already has data, don't overwrite
+        // This prevents clearing transactions if reports API returns empty array
+        // Only update if txs is currently empty
+        if (txs.length === 0) {
+          setTxs([])
+        }
+      }
       
       setProjectBudgets(budgetsData || [])
     } catch (err: any) {
-      // Error loading charts data
+      // Error loading charts data - don't clear existing transactions if error occurs
+      console.error('Error loading charts data:', err)
+      // Keep existing txs - don't clear them on error
     } finally {
       setChartsLoading(false)
     }
