@@ -1485,7 +1485,19 @@ const formatDate = (value: string | null) => {
 
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 relative">
+      {/* Loading Overlay */}
+      {loading && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/30 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-8 flex flex-col items-center gap-4">
+            <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+            <p className="text-lg font-semibold text-gray-900 dark:text-white">
+              טוען עסקאות...
+            </p>
+          </div>
+        </div>
+      )}
+      
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: -20 }}
@@ -2470,7 +2482,7 @@ const formatDate = (value: string | null) => {
                           מסמכים
                         </button>
                         <button
-                          onClick={() => handleEditAnyTransaction(tx as Transaction)}
+                          onClick={() => handleEditAnyTransaction({ ...tx, from_fund: true } as Transaction)}
                           className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
                         >
                           ערוך

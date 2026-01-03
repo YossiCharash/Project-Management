@@ -70,6 +70,10 @@ class FundService:
         
         return await self.funds.update(fund)
 
+    async def refund_to_fund(self, project_id: int, amount: float) -> Fund | None:
+        """Refund amount back to fund (e.g., when deleting a transaction)"""
+        return await self.add_to_fund(project_id, amount)
+
     async def ensure_monthly_addition(self, project_id: int) -> Fund | None:
         """Ensure monthly amount is added (called when needed)"""
         return await self.add_monthly_amount(project_id)
