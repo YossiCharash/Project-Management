@@ -2146,7 +2146,13 @@ const formatDate = (value: string | null) => {
                 e.preventDefault()
                 setUpdatingFund(true)
                 try {
-                  await api.put(`/projects/${id}/fund?monthly_amount=${monthlyFundAmount}&current_balance=${currentBalance}`)
+                  // Build query params - always include monthly_amount (even if 0) and current_balance
+                  const params = new URLSearchParams()
+                  params.append('monthly_amount', (monthlyFundAmount || 0).toString())
+                  if (currentBalance !== undefined && currentBalance !== null) {
+                    params.append('current_balance', currentBalance.toString())
+                  }
+                  await api.put(`/projects/${id}/fund?${params.toString()}`)
                   // Reload fund data
                   await loadFundData()
                   setShowEditFundModal(false)
@@ -2601,7 +2607,7 @@ const formatDate = (value: string | null) => {
                                         <h3 className="text-sm font-medium text-purple-700 dark:text-purple-300 whitespace-nowrap min-w-0 flex-1">סכום חודשי</h3>
                                         <svg className="w-6 h-6 text-purple-600 dark:text-purple-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                                     </div>
-                                    <p className="text-3xl font-bold text-purple-900 dark:text-purple-100 whitespace-nowrap">{fundData.monthly_amount.toLocaleString('he-IL')} ₪</p>
+                                    <p className="text-3xl font-bold text-purple-900 dark:text-purple-100 whitespace-nowrap">{(fundData.monthly_amount || 0).toLocaleString('he-IL')} ₪</p>
                                     <p className="text-xs text-purple-600 dark:text-purple-400 mt-1 whitespace-nowrap">מתווסף אוטומטית כל חודש</p>
                                 </div>
                             </div>
