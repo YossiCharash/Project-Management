@@ -49,53 +49,24 @@ def get_uploads_dir() -> str:
 @router.get("/project/{project_id}", response_model=list[TransactionOut])
 async def list_transactions(project_id: int, db: DBSessionDep, user = Depends(get_current_user)):
     """List transactions for a project - accessible to all authenticated users"""
-    # Get project name for audit log
-    project = await ProjectRepository(db).get_by_id(project_id)
-    project_name = project.name if project else f"Project {project_id}"
-
-    # Log view action
-    await AuditService(db).log_transaction_action(
-        user_id=user.id,
-        action='view_list',
-        transaction_id=project_id,
-        details={'project_id': project_id, 'project_name': project_name}
-    )
-
-    # Get transactions with user info loaded via JOIN (no N+1 queries)
-    # Filter by project's current contract period dates in SQL if they exist
+    # UI Layer: Only handle HTTP request/response, delegate business logic to service
     import time
     endpoint_start = time.time()
-    
-    project_start_date = project.start_date if project else None
-    project_end_date = project.end_date if project else None
-    
-    # Convert datetime to date if needed
-    if project_start_date and hasattr(project_start_date, 'date'):
-        project_start_date = project_start_date.date()
-    if project_end_date and hasattr(project_end_date, 'date'):
-        project_end_date = project_end_date.date()
-    
     print(f"🚀 [PERF] list_transactions endpoint: Starting for project_id={project_id}")
     
-    transactions_data = await TransactionRepository(db).list_by_project_with_users(
-        project_id=project_id,
-        project_start_date=project_start_date,
-        project_end_date=project_end_date
-    )
+    transactions_data = await TransactionService(db).list_by_project(project_id, user_id=user.id)
     
     endpoint_time = time.time() - endpoint_start
     print(f"✅ [PERF] list_transactions endpoint: Completed in {endpoint_time:.3f}s, returning {len(transactions_data)} transactions")
 
-    # Convert to TransactionOut format
+    # Convert to TransactionOut format (simple data transformation - acceptable in UI layer)
     from backend.schemas.transaction import TransactionOut
     result = []
     for tx_dict in transactions_data:
         try:
-            # Ensure all required fields are present
             tx_dict.setdefault('category', None)
             result.append(TransactionOut.model_validate(tx_dict))
         except Exception:
-            # Skip malformed transactions
             continue
 
     return result

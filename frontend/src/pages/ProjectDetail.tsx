@@ -460,6 +460,24 @@ export default function ProjectDetail() {
     }
   }
 
+  // Helper function to reload only categories and budgets (without transactions)
+  const reloadChartsDataOnly = async () => {
+    if (!id || isNaN(Number(id))) return
+    try {
+      const [categoriesData, budgetsData] = await Promise.all([
+        ReportAPI.getProjectExpenseCategories(parseInt(id)),
+        BudgetAPI.getProjectBudgets(parseInt(id)).catch((err) => {
+          console.error('Failed to load project budgets:', err)
+          return []
+        })
+      ])
+      setExpenseCategories(categoriesData || [])
+      setProjectBudgets(budgetsData || [])
+    } catch (err: any) {
+      console.error('Failed to reload charts data:', err)
+    }
+  }
+
   const loadChartsData = async () => {
     if (!id || isNaN(Number(id))) return
 
@@ -721,15 +739,16 @@ const formatDate = (value: string | null) => {
       const customEvent = event as CustomEvent
       if (customEvent.detail?.projectId && id && customEvent.detail.projectId === parseInt(id)) {
         // Reload all data: project info, transactions, charts, and fund data
-        loadProjectInfo().then(() => {
-          load().then(() => {
-            loadChartsData()
-            // Reload fund data if project has fund
-            if (hasFund) {
-              loadFundData()
-            }
-          })
-        })
+        // Load project info and transactions in parallel for better performance
+        await Promise.all([
+          loadProjectInfo(),
+          load()
+        ])
+        // Then load charts data and fund data (which depend on project info)
+        await Promise.all([
+          loadChartsData(),
+          hasFund ? loadFundData() : Promise.resolve()
+        ])
       }
     }
 
@@ -744,7 +763,7 @@ const formatDate = (value: string | null) => {
     try {
       setBudgetDeleteLoading(budgetId)
       await BudgetAPI.deleteBudget(budgetId)
-      await loadChartsData()
+      await reloadChartsDataOnly() // Only reload budgets and categories, not transactions
     } catch (err: any) {
       alert(err?.response?.data?.detail || 'שגיאה במחיקת התקציב')
     } finally {
@@ -784,7 +803,7 @@ const formatDate = (value: string | null) => {
         start_date: newBudgetForm.start_date,
         end_date: newBudgetForm.period_type === 'Annual' ? (newBudgetForm.end_date || null) : null
       })
-      await loadChartsData()
+      await reloadChartsDataOnly() // Only reload budgets and categories, not transactions
       setShowAddBudgetForm(false)
       setNewBudgetForm({
         category: '',
@@ -843,7 +862,7 @@ const formatDate = (value: string | null) => {
         end_date: editBudgetForm.period_type === 'Annual' ? (editBudgetForm.end_date || null) : null,
         is_active: editBudgetForm.is_active
       })
-      await loadChartsData()
+      await reloadChartsDataOnly() // Only reload budgets and categories, not transactions
       setShowEditBudgetForm(false)
       setBudgetToEdit(null)
     } catch (err: any) {
@@ -1191,7 +1210,10 @@ const formatDate = (value: string | null) => {
         await api.delete(`/transactions/${transactionId}`)
         await load() // For regular transactions, use full load
       }
-      await loadChartsData()
+      // Only reload charts data (categories and budgets), not transactions (already loaded by load())
+      // This avoids duplicate transaction loading
+      await reloadChartsDataOnly()
+      
       if (hasFund) {
         await loadFundData() // Reload fund data
       }
@@ -3054,7 +3076,8 @@ const formatDate = (value: string | null) => {
         onSuccess={async () => {
           setShowCreateTransactionModal(false)
           await load() // Reload transactions list to get updated data with created_by_user
-          await loadChartsData()
+          // Reload only categories and budgets (not transactions - already loaded by load())
+          await reloadChartsDataOnly()
           if (hasFund) {
             await loadFundData() // Reload fund data
           }
@@ -3075,10 +3098,11 @@ const formatDate = (value: string | null) => {
           setEditTransactionModalOpen(false)
           setSelectedTransactionForEdit(null)
           await load() // Reload transactions list to get updated data
+          // Reload only categories and budgets (not transactions - already loaded by load())
+          await reloadChartsDataOnly()
           if (hasFund) {
             await loadFundData() // Reload fund data
           }
-          await loadChartsData()
         }}
         transaction={selectedTransactionForEdit}
         projectStartDate={projectStartDate}
@@ -3105,7 +3129,7 @@ const formatDate = (value: string | null) => {
           setEditTemplateModalOpen(false)
           setSelectedTemplateForEdit(null)
           await load()
-          await loadChartsData()
+          await reloadChartsDataOnly() // Only reload budgets and categories, not transactions (already loaded by load())
           if (transactionTypeFilter === 'recurring') {
             await loadRecurringTemplates()
           }
@@ -3885,8 +3909,8 @@ const formatDate = (value: string | null) => {
                     setShowDescriptionModal(false)
                     setUploadedDocuments([])
                     
-                    // Reload data
-                    await loadChartsData()
+                    // Reload only budgets and categories (not transactions - documents don't affect transaction list)
+                    await reloadChartsDataOnly()
                     if (showDocumentsModal && selectedTransactionForDocuments?.id === selectedTransactionForDocuments.id) {
                       const { data } = await api.get(`/transactions/${selectedTransactionForDocuments.id}/documents`)
                       setTransactionDocuments(data || [])
