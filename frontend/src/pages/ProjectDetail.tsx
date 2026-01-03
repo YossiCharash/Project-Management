@@ -739,16 +739,15 @@ const formatDate = (value: string | null) => {
       const customEvent = event as CustomEvent
       if (customEvent.detail?.projectId && id && customEvent.detail.projectId === parseInt(id)) {
         // Reload all data: project info, transactions, charts, and fund data
-        // Load project info and transactions in parallel for better performance
-        await Promise.all([
-          loadProjectInfo(),
-          load()
-        ])
-        // Then load charts data and fund data (which depend on project info)
-        await Promise.all([
-          loadChartsData(),
-          hasFund ? loadFundData() : Promise.resolve()
-        ])
+        loadProjectInfo().then(() => {
+          load().then(() => {
+            loadChartsData()
+            // Reload fund data if project has fund
+            if (hasFund) {
+              loadFundData()
+            }
+          })
+        })
       }
     }
 
@@ -4514,7 +4513,7 @@ const formatDate = (value: string | null) => {
                   title="תצוגת חוזה"
                   className="w-full h-[70vh] border-0"
                   allowFullScreen
-                />
+                 />
               ) : (
                 <div className="p-6 text-center text-sm text-gray-600 dark:text-gray-300 space-y-3">
                   <p>לא ניתן להציג תצוגה מקדימה לסוג קובץ זה.</p>
