@@ -47,19 +47,8 @@ def get_uploads_dir() -> str:
 
 
 @router.get("/project/{project_id}", response_model=list[TransactionOut])
-async def list_transactions(project_id: int, db: DBSessionDep, user = Depends(get_current_user)):
-    """List transactions for a project - accessible to all authenticated users"""
-    # UI Layer: Only handle HTTP request/response, delegate business logic to service
-    import time
-    endpoint_start = time.time()
-    print(f"🚀 [PERF] list_transactions endpoint: Starting for project_id={project_id}")
-    
+async def list_transactions(project_id: int, db: DBSessionDep, user=Depends(get_current_user)):
     transactions_data = await TransactionService(db).list_by_project(project_id, user_id=user.id)
-    
-    endpoint_time = time.time() - endpoint_start
-    print(f"✅ [PERF] list_transactions endpoint: Completed in {endpoint_time:.3f}s, returning {len(transactions_data)} transactions")
-
-    # Convert to TransactionOut format (simple data transformation - acceptable in UI layer)
     from backend.schemas.transaction import TransactionOut
     result = []
     for tx_dict in transactions_data:
@@ -73,7 +62,7 @@ async def list_transactions(project_id: int, db: DBSessionDep, user = Depends(ge
 
 
 @router.post("/", response_model=TransactionOut)
-async def create_transaction(db: DBSessionDep, data: TransactionCreate, user = Depends(get_current_user)):
+async def create_transaction(db: DBSessionDep, data: TransactionCreate, user=Depends(get_current_user)):
     """Create transaction - accessible to all authenticated users"""
     project = await ProjectRepository(db).get_by_id(data.project_id)
     if not project:
@@ -106,7 +95,7 @@ async def create_transaction(db: DBSessionDep, data: TransactionCreate, user = D
         project_start_date = project.start_date
         if hasattr(project_start_date, 'date'):
             project_start_date = project_start_date.date()
-        
+
         if data.tx_date < project_start_date:
             raise HTTPException(
                 status_code=400,
@@ -146,7 +135,7 @@ async def create_transaction(db: DBSessionDep, data: TransactionCreate, user = D
         # Convert ValueError from duplicate check to HTTPException
         error_msg = str(e)
         if "זוהתה עסקה כפולה" in error_msg:
-             raise HTTPException(status_code=409, detail=error_msg)
+            raise HTTPException(status_code=409, detail=error_msg)
         raise HTTPException(status_code=400, detail=error_msg)
 
     # Debug: Verify transaction was created with user_id
@@ -219,7 +208,7 @@ async def create_transaction(db: DBSessionDep, data: TransactionCreate, user = D
 
 
 @router.post("/{tx_id}/upload", response_model=TransactionOut)
-async def upload_receipt(tx_id: int, db: DBSessionDep, file: UploadFile = File(...), user = Depends(get_current_user)):
+async def upload_receipt(tx_id: int, db: DBSessionDep, file: UploadFile = File(...), user=Depends(get_current_user)):
     """Upload receipt for transaction - accessible to all authenticated users"""
     tx = await TransactionRepository(db).get_by_id(tx_id)
     if not tx:
@@ -276,7 +265,7 @@ async def upload_receipt(tx_id: int, db: DBSessionDep, file: UploadFile = File(.
 
 
 @router.get("/{tx_id}/documents", response_model=list[dict])
-async def get_transaction_documents(tx_id: int, db: DBSessionDep, user = Depends(get_current_user)):
+async def get_transaction_documents(tx_id: int, db: DBSessionDep, user=Depends(get_current_user)):
     """Get all documents for a transaction - accessible to all authenticated users"""
     from sqlalchemy import select, and_
 
@@ -307,11 +296,11 @@ async def get_transaction_documents(tx_id: int, db: DBSessionDep, user = Depends
 
 @router.put("/{tx_id}/documents/{doc_id}", response_model=dict)
 async def update_transaction_document(
-    tx_id: int,
-    doc_id: int,
-    db: DBSessionDep,
-    description: str | None = Form(None),
-    user = Depends(get_current_user)
+        tx_id: int,
+        doc_id: int,
+        db: DBSessionDep,
+        description: str | None = Form(None),
+        user=Depends(get_current_user)
 ):
     """Update document description for a transaction - accessible to all authenticated users"""
     from sqlalchemy import select, and_
@@ -347,7 +336,8 @@ async def update_transaction_document(
 
 
 @router.post("/{tx_id}/supplier-document", response_model=dict)
-async def upload_supplier_document(tx_id: int, db: DBSessionDep, file: UploadFile = File(...), user = Depends(get_current_user)):
+async def upload_supplier_document(tx_id: int, db: DBSessionDep, file: UploadFile = File(...),
+                                   user=Depends(get_current_user)):
     """Upload document for transaction - accessible to all authenticated users"""
     tx = await TransactionRepository(db).get_by_id(tx_id)
     if not tx:
@@ -398,10 +388,10 @@ async def upload_supplier_document(tx_id: int, db: DBSessionDep, file: UploadFil
 
 @router.delete("/{tx_id}/documents/{doc_id}")
 async def delete_transaction_document(
-    tx_id: int,
-    doc_id: int,
-    db: DBSessionDep,
-    user = Depends(get_current_user)
+        tx_id: int,
+        doc_id: int,
+        db: DBSessionDep,
+        user=Depends(get_current_user)
 ):
     """Delete document from transaction - accessible to all authenticated users"""
     from sqlalchemy import select, and_
@@ -429,7 +419,9 @@ async def delete_transaction_document(
     await doc_repo.delete(doc)
 
     # Try to delete from S3 if file_path is an S3 URL
-    if file_path and ("s3" in file_path.lower() or "amazonaws.com" in file_path or settings.AWS_S3_BASE_URL and file_path.startswith(settings.AWS_S3_BASE_URL)):
+    if file_path and (
+            "s3" in file_path.lower() or "amazonaws.com" in file_path or settings.AWS_S3_BASE_URL and file_path.startswith(
+        settings.AWS_S3_BASE_URL)):
         try:
             s3 = S3Service()
             # Run in thread to avoid blocking
@@ -442,7 +434,7 @@ async def delete_transaction_document(
 
 
 @router.put("/{tx_id}", response_model=TransactionOut)
-async def update_transaction(tx_id: int, db: DBSessionDep, data: TransactionUpdate, user = Depends(get_current_user)):
+async def update_transaction(tx_id: int, db: DBSessionDep, data: TransactionUpdate, user=Depends(get_current_user)):
     """Update transaction - accessible to all authenticated users"""
     repo = TransactionRepository(db)
     tx = await repo.get_by_id(tx_id)
@@ -459,7 +451,7 @@ async def update_transaction(tx_id: int, db: DBSessionDep, data: TransactionUpda
         project_start_date = project.start_date
         if hasattr(project_start_date, 'date'):
             project_start_date = project_start_date.date()
-        
+
         if data.tx_date < project_start_date:
             raise HTTPException(
                 status_code=400,
@@ -514,7 +506,7 @@ async def update_transaction(tx_id: int, db: DBSessionDep, data: TransactionUpda
         duplicates = [d for d in duplicates if d.id != tx_id]
 
         if duplicates:
-             raise HTTPException(status_code=409, detail="זוהתה עסקה כפולה")
+            raise HTTPException(status_code=409, detail="זוהתה עסקה כפולה")
 
     update_data = data.model_dump(exclude_unset=True)
     if 'allow_duplicate' in update_data:
@@ -533,7 +525,8 @@ async def update_transaction(tx_id: int, db: DBSessionDep, data: TransactionUpda
             allow_missing=from_fund
         )
         update_data['category_id'] = resolved_category.id if resolved_category else None
-    elif ('category' in data.model_dump(exclude_unset=False) and category_name is None) or ('category_id' in update_data and update_data['category_id'] is None):
+    elif ('category' in data.model_dump(exclude_unset=False) and category_name is None) or (
+            'category_id' in update_data and update_data['category_id'] is None):
         if not from_fund:
             raise HTTPException(
                 status_code=400,
@@ -600,7 +593,7 @@ async def update_transaction(tx_id: int, db: DBSessionDep, data: TransactionUpda
 
 
 @router.delete("/{tx_id}")
-async def delete_transaction(tx_id: int, db: DBSessionDep, user = Depends(require_admin())):
+async def delete_transaction(tx_id: int, db: DBSessionDep, user=Depends(require_admin())):
     """Delete transaction - Admin only"""
     repo = TransactionRepository(db)
     tx = await repo.get_by_id(tx_id)
