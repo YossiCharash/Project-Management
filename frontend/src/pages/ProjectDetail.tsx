@@ -4581,6 +4581,305 @@ const formatDate = (value: string | null) => {
           </div>
         </div>
       )}
+
+      {/* Monthly Expense Table */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+        className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-6"
+      >
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6 text-right">
+          דוח הוצאות חודשי
+        </h2>
+        
+        {(() => {
+          // Get current date
+          const now = new Date()
+          const currentYear = now.getFullYear()
+          const currentMonth = now.getMonth() // 0-11 (Jan = 0, Dec = 11)
+          
+          // Determine Hebrew year start (July of current year, or previous year if we're before July)
+          const hebrewYearStart = currentMonth >= 6 ? currentYear : currentYear - 1 // July = month 6 (0-indexed)
+          const hebrewYearStartDate = new Date(hebrewYearStart, 6, 1) // July 1st
+          
+          // Get project start date if available
+          let projectStartMonthDate: Date | null = null
+          if (projectStartDate) {
+            try {
+              const projectDate = new Date(projectStartDate)
+              projectStartMonthDate = new Date(projectDate.getFullYear(), projectDate.getMonth(), 1) // Start of month
+            } catch (e) {
+              // Invalid date, ignore
+            }
+          }
+          
+          // Choose the later date between Hebrew year start and project start
+          let tableStartDate: Date
+          if (projectStartMonthDate && projectStartMonthDate > hebrewYearStartDate) {
+            tableStartDate = projectStartMonthDate
+          } else {
+            tableStartDate = hebrewYearStartDate
+          }
+          
+          const startYear = tableStartDate.getFullYear()
+          const startMonth = tableStartDate.getMonth() // 0-11
+          
+          // Create 12 month periods starting from the chosen start date
+          const months: Array<{ year: number; month: number; monthIndex: number; monthKey: string; label: string }> = []
+          
+          // Hebrew month names by calendar month (0=Jan, 11=Dec)
+          const monthNamesByCalendarMonth = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר']
+          
+          for (let i = 0; i < 12; i++) {
+            const monthIndex = (startMonth + i) % 12
+            const year = startYear + Math.floor((startMonth + i) / 12)
+            const monthKey = `${year}-${String(monthIndex + 1).padStart(2, '0')}`
+            months.push({
+              year,
+              month: monthIndex,
+              monthIndex: i,
+              monthKey,
+              label: monthNamesByCalendarMonth[monthIndex]
+            })
+          }
+          
+          // Split all transactions by month (including period transactions)
+          const allSplits: SplitTransaction[] = []
+          txs.forEach(tx => {
+            const splits = splitPeriodTransactionByMonth(tx)
+            allSplits.push(...splits)
+          })
+          
+          // Filter out fund transactions
+          const regularSplits = allSplits.filter(s => !s.from_fund)
+          
+          // Group by month and category
+          const monthlyData: Record<string, {
+            income: number
+            expenses: Record<string, number>
+            totalExpenses: number
+          }> = {}
+          
+          // Initialize all months
+          months.forEach(m => {
+            monthlyData[m.monthKey] = {
+              income: 0,
+              expenses: {},
+              totalExpenses: 0
+            }
+          })
+          
+          // Process transactions
+          regularSplits.forEach(split => {
+            const monthKey = split.monthKey
+            if (monthlyData[monthKey]) {
+              if (split.type === 'Income') {
+                monthlyData[monthKey].income += split.proportionalAmount
+              } else if (split.type === 'Expense') {
+                const category = split.category || 'אחר'
+                monthlyData[monthKey].expenses[category] = (monthlyData[monthKey].expenses[category] || 0) + split.proportionalAmount
+                monthlyData[monthKey].totalExpenses += split.proportionalAmount
+              }
+            }
+          })
+          
+          // Get all unique categories
+          const allCategories = new Set<string>()
+          Object.values(monthlyData).forEach(month => {
+            Object.keys(month.expenses).forEach(cat => allCategories.add(cat))
+          })
+          const categories = Array.from(allCategories).sort()
+          
+          // Helper function to check if we've reached a month (month has started or passed)
+          const hasReachedMonth = (year: number, month: number): boolean => {
+            const now = new Date()
+            const currentYear = now.getFullYear()
+            const currentMonth = now.getMonth() // 0-11
+            const monthDate = new Date(year, month, 1)
+            const currentDate = new Date(currentYear, currentMonth, 1)
+            return monthDate <= currentDate
+          }
+          
+          // Helper function to check if a month has any transactions (past, present, or future)
+          const hasMonthTransactions = (monthKey: string): boolean => {
+            const monthData = monthlyData[monthKey]
+            if (!monthData) return false
+            // Check if there are any transactions (income or expenses) for this month
+            return monthData.income > 0 || monthData.totalExpenses > 0
+          }
+          
+          // Get monthly budget amount (the fixed amount collected from tenants each month)
+          const monthlyBudgetAmount = Number(projectBudget?.budget_monthly || 0)
+          
+          // Calculate monthly income - combine actual transactions with monthly budget
+          // For months that have been reached, add the monthly budget amount
+          const monthlyIncome = months.map(m => {
+            const transactionIncome = monthlyData[m.monthKey].income
+            // Add monthly budget if we've reached this month and there's a budget
+            if (hasReachedMonth(m.year, m.month) && monthlyBudgetAmount > 0) {
+              return transactionIncome + monthlyBudgetAmount
+            }
+            return transactionIncome
+          })
+          
+          // Calculate total expenses per month
+          const monthlyTotals = months.map(m => monthlyData[m.monthKey].totalExpenses)
+          
+          // Calculate running totals (cumulative) - accumulates month by month
+          // Include future months if they have transactions
+          let runningTotal = 0
+          const runningTotals: number[] = []
+          months.forEach(m => {
+            const monthData = monthlyData[m.monthKey]
+            const monthIndex = months.indexOf(m)
+            const hasReached = hasReachedMonth(m.year, m.month)
+            const hasTransactions = hasMonthTransactions(m.monthKey)
+            // Accumulate if we've reached this month OR if there are transactions for this month
+            if (hasReached || hasTransactions) {
+              const monthBalance = monthlyIncome[monthIndex] - monthData.totalExpenses
+              runningTotal += monthBalance
+            }
+            runningTotals.push(runningTotal)
+          })
+          
+          return (
+            <div className="overflow-x-auto" dir="rtl">
+              <table className="w-full border-collapse text-sm">
+                <thead>
+                  <tr>
+                    <th className="border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 px-3 py-2 text-right font-semibold text-gray-900 dark:text-white sticky left-0 z-10 min-w-[150px]">
+                      קטגוריה
+                    </th>
+                    {months.map((m, idx) => (
+                      <th key={idx} className="border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 px-2 py-2 text-center font-semibold text-gray-900 dark:text-white min-w-[80px]">
+                        {m.label}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {/* Expense category rows */}
+                  {categories.map((category, catIdx) => (
+                    <tr key={catIdx}>
+                      <td className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-right text-gray-900 dark:text-white sticky left-0 z-10">
+                        {category}
+                      </td>
+                      {months.map((m, monthIdx) => {
+                        const hasReached = hasReachedMonth(m.year, m.month)
+                        const hasTransactions = hasMonthTransactions(m.monthKey)
+                        // Show if month has been reached OR if there are transactions for this month
+                        const shouldShow = hasReached || hasTransactions
+                        return (
+                          <td key={monthIdx} className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-2 text-center text-gray-900 dark:text-white">
+                            {shouldShow && monthlyData[m.monthKey].expenses[category] 
+                              ? formatCurrency(monthlyData[m.monthKey].expenses[category])
+                              : shouldShow ? '0' : ''}
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  ))}
+                  
+                  {/* Empty rows for spacing (if needed) */}
+                  {categories.length === 0 && (
+                    <tr>
+                      <td colSpan={13} className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-center text-gray-500 dark:text-gray-400">
+                        אין הוצאות להצגה
+                      </td>
+                    </tr>
+                  )}
+                  
+                  {/* סה"כ בקופה החודשית (Total in monthly fund) - Pink */}
+                  <tr>
+                    <td className="border border-gray-300 dark:border-gray-600 bg-pink-200 dark:bg-pink-900 px-3 py-2 text-right font-semibold text-gray-900 dark:text-white sticky left-0 z-10">
+                      סה"כ בקופה החודשית
+                    </td>
+                    {months.map((m, monthIdx) => {
+                      const hasReached = hasReachedMonth(m.year, m.month)
+                      const hasTransactions = hasMonthTransactions(m.monthKey)
+                      // Show if month has been reached OR if there are transactions for this month
+                      const shouldShow = hasReached || hasTransactions
+                      return (
+                        <td key={monthIdx} className="border border-gray-300 dark:border-gray-600 bg-pink-200 dark:bg-pink-900 px-2 py-2 text-center font-semibold text-gray-900 dark:text-white">
+                          {shouldShow ? formatCurrency(monthlyIncome[monthIdx]) : ''}
+                        </td>
+                      )
+                    })}
+                  </tr>
+                  
+                  {/* הוצאות (Expenses) - Yellow */}
+                  <tr>
+                    <td className="border border-gray-300 dark:border-gray-600 bg-yellow-200 dark:bg-yellow-900 px-3 py-2 text-right font-semibold text-gray-900 dark:text-white sticky left-0 z-10">
+                      הוצאות
+                    </td>
+                    {months.map((m, monthIdx) => {
+                      const hasReached = hasReachedMonth(m.year, m.month)
+                      const hasTransactions = hasMonthTransactions(m.monthKey)
+                      // Show if month has been reached OR if there are transactions for this month
+                      const shouldShow = hasReached || hasTransactions
+                      return (
+                        <td key={monthIdx} className="border border-gray-300 dark:border-gray-600 bg-yellow-200 dark:bg-yellow-900 px-2 py-2 text-center font-semibold text-gray-900 dark:text-white">
+                          {shouldShow ? formatCurrency(monthlyTotals[monthIdx]) : ''}
+                        </td>
+                      )
+                    })}
+                  </tr>
+                  
+                  {/* עודף (Surplus/Balance) - Light Blue */}
+                  <tr>
+                    <td className="border border-gray-300 dark:border-gray-600 bg-blue-200 dark:bg-blue-900 px-3 py-2 text-right font-semibold text-gray-900 dark:text-white sticky left-0 z-10">
+                      עודף
+                    </td>
+                    {months.map((m, monthIdx) => {
+                      const hasReached = hasReachedMonth(m.year, m.month)
+                      const hasTransactions = hasMonthTransactions(m.monthKey)
+                      // Show if month has been reached OR if there are transactions for this month
+                      const shouldShow = hasReached || hasTransactions
+                      const balance = monthlyIncome[monthIdx] - monthlyTotals[monthIdx]
+                      return (
+                        <td key={monthIdx} className="border border-gray-300 dark:border-gray-600 bg-blue-200 dark:bg-blue-900 px-2 py-2 text-center font-semibold text-gray-900 dark:text-white">
+                          {shouldShow ? formatCurrency(balance) : ''}
+                        </td>
+                      )
+                    })}
+                  </tr>
+                  
+                  {/* סה"כ בקופה השנתית (Total in annual fund) - Light Green */}
+                  <tr>
+                    <td className="border border-gray-300 dark:border-gray-600 bg-green-200 dark:bg-green-900 px-3 py-2 text-right font-semibold text-gray-900 dark:text-white sticky left-0 z-10">
+                      סה"כ בקופה השנתית
+                    </td>
+                    {months.map((m, monthIdx) => {
+                      const hasReached = hasReachedMonth(m.year, m.month)
+                      const hasTransactions = hasMonthTransactions(m.monthKey)
+                      // Show if month has been reached OR if there are transactions for this month
+                      const shouldShow = hasReached || hasTransactions
+                      return (
+                        <td key={monthIdx} className="border border-gray-300 dark:border-gray-600 bg-green-200 dark:bg-green-900 px-2 py-2 text-center font-semibold text-gray-900 dark:text-white">
+                          {shouldShow ? formatCurrency(runningTotals[monthIdx]) : ''}
+                        </td>
+                      )
+                    })}
+                  </tr>
+                  
+                  {/* תשלומים חודשים הבאים בקופה (Upcoming monthly payments in fund) - Light Green */}
+                  <tr>
+                    <td className="border border-gray-300 dark:border-gray-600 bg-green-200 dark:bg-green-900 px-3 py-2 text-right font-semibold text-gray-900 dark:text-white sticky left-0 z-10">
+                      תשלומים חודשים הבאים בקופה
+                    </td>
+                    {months.map((_, monthIdx) => (
+                      <td key={monthIdx} className="border border-gray-300 dark:border-gray-600 bg-green-200 dark:bg-green-900 px-2 py-2 text-center font-semibold text-gray-900 dark:text-white">
+                        {/* Empty for now - can be filled with future payment data */}
+                      </td>
+                    ))}
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          )
+        })()}
+      </motion.div>
     </div>
   )
 }

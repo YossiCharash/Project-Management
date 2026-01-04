@@ -100,7 +100,7 @@ class Settings(BaseModel):
     SMTP_PASSWORD: str = Field(default=os.getenv("SMTP_PASSWORD", ""))
     # FROM_EMAIL defaults to SMTP_USERNAME if not set (handled in EmailService)
     FROM_EMAIL: str = Field(default=os.getenv("FROM_EMAIL", ""))
-    FRONTEND_URL: str = Field(default=os.getenv("FRONTEND_URL", "http://localhost:5173"))
+    FRONTEND_URL: str = Field(default=os.getenv("FRONTEND_URL", "https://ziposystem.co.il"))
     
     # Google OAuth Configuration
     GOOGLE_CLIENT_ID: str = Field(default=os.getenv("GOOGLE_CLIENT_ID", ""))

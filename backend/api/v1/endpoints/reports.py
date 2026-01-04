@@ -194,19 +194,13 @@ async def get_project_transactions(project_id: int, db: DBSessionDep, user=Depen
         # Use the optimized repository method that uses JOIN (no N+1 queries)
         from backend.repositories.transaction_repository import TransactionRepository
         from backend.schemas.transaction import TransactionOut
-        
-        print(f"🚀 [PERF] get_project_transactions (reports): Starting for project_id={project_id}")
-        
         # Get transactions without date filtering (reports need all transactions)
         transactions_data = await TransactionRepository(db).list_by_project_with_users(
             project_id=project_id,
             project_start_date=None,  # No date filtering for reports endpoint
             project_end_date=None
         )
-        
-        endpoint_time = time.time() - endpoint_start
-        print(f"✅ [PERF] get_project_transactions (reports): Completed in {endpoint_time:.3f}s, returning {len(transactions_data)} transactions")
-        
+
         # Convert to TransactionOut format
         result = []
         for tx_dict in transactions_data:

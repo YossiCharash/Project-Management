@@ -41,7 +41,7 @@ export default function ProjectTrendsChart({
   compact = false,
   projectIncome = 0
 }: ProjectTrendsChartProps) {
-  const [viewMode, setViewMode] = useState<'profitability' | 'categories'>('profitability')
+  const [viewMode, setViewMode] = useState<'profitability' | 'categories'>('categories')
   const [filterType, setFilterType] = useState<FilterType>('month')
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7))
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString())

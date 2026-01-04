@@ -9,7 +9,7 @@ import html
 
 def get_frontend_url() -> str:
     """Get frontend URL from settings"""
-    return getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
+    return settings.FRONTEND_URL
 
 
 class EmailService:
@@ -305,9 +305,7 @@ class EmailService:
             if html_body is None:
                 html_body = self._create_html_email(body)
 
-            # Add both plain text and HTML versions
-            # Plain text version for email clients that don't support HTML
-            message.attach(MIMEText(body, "plain", "utf-8"))
+            # Send only HTML version to avoid duplicate content
             # HTML version with RTL support
             message.attach(MIMEText(html_body, "html", "utf-8"))
 

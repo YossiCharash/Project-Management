@@ -62,8 +62,7 @@ class TransactionRepository:
         
         # Log start time for performance monitoring
         start_time = time.time()
-        print(f"🔍 [PERF] list_by_project_with_users: Starting query for project_id={project_id}")
-        
+
         # Build WHERE clause with optional date filtering
         where_conditions = ["t.project_id = :project_id"]
         params = {"project_id": project_id}
@@ -118,11 +117,7 @@ class TransactionRepository:
         
         result = await self.db.execute(query, params)
         rows = result.fetchall()
-        
-        # Log query execution time and result count
-        query_time = time.time() - start_time
-        print(f"✅ [PERF] list_by_project_with_users: Query executed in {query_time:.3f}s, found {len(rows)} transactions")
-        print(f"📊 [PERF] Total database queries: 1 (with JOIN - no N+1 problem)")
+
         
         # Convert rows to dicts
         transactions = []
@@ -178,10 +173,7 @@ class TransactionRepository:
                 # Skip malformed rows
                 continue
         
-        # Log final processing time
-        total_time = time.time() - start_time
-        print(f"✅ [PERF] list_by_project_with_users: Completed in {total_time:.3f}s, returning {len(transactions)} transactions")
-        
+
         return transactions
 
     async def delete_by_project(self, project_id: int) -> None:

@@ -1,5 +1,6 @@
-import React from 'react'
-import { Pie, PieChart, ResponsiveContainer, Tooltip, Cell, Legend } from 'recharts'
+import React, { useState } from 'react'
+import { Pie, PieChart, ResponsiveContainer, Tooltip, Cell, Legend, LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts'
+import { PieChart as PieChartIcon, BarChart as BarChartIcon, Activity } from 'lucide-react'
 
 interface SystemFinancialPieChartProps {
   totalIncome: number
@@ -10,6 +11,8 @@ interface SystemFinancialPieChartProps {
     color: string
   }>
 }
+
+type ChartType = 'pie' | 'bar' | 'line'
 
 const COLORS = {
   income: '#10B981', // green-500
@@ -25,17 +28,21 @@ export default function SystemFinancialPieChart({
   totalExpense, 
   expenseCategories 
 }: SystemFinancialPieChartProps) {
-  // Create data for the pie chart
+  const [chartType, setChartType] = useState<ChartType>('pie')
+  
+  // Create data for the charts
   const chartData = [
     {
       name: 'הכנסות',
       value: totalIncome,
+      amount: totalIncome,
       color: COLORS.income,
       fill: COLORS.income
     },
     ...expenseCategories.map(cat => ({
       name: cat.category,
       value: cat.amount,
+      amount: cat.amount,
       color: cat.color,
       fill: cat.color
     }))
@@ -62,15 +69,17 @@ export default function SystemFinancialPieChart({
   }
 
   const CustomLegend = ({ payload }: any) => {
+    if (!payload || payload.length === 0) return null
+    
     return (
-      <div className="flex flex-wrap justify-center gap-4 mt-4">
-        {payload?.map((entry: any, index: number) => (
-          <div key={index} className="flex items-center gap-2">
+      <div className="flex flex-wrap justify-center gap-3 mt-4">
+        {payload.map((entry: any, index: number) => (
+          <div key={index} className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
             <div 
-              className="w-3 h-3 rounded-full" 
+              className="w-3 h-3 rounded-full flex-shrink-0" 
               style={{ backgroundColor: entry.color }}
             />
-            <span className="text-sm text-gray-700 dark:text-gray-300">
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
               {entry.value}
             </span>
           </div>
@@ -79,39 +88,114 @@ export default function SystemFinancialPieChart({
     )
   }
 
+  const renderChart = () => {
+    if (chartType === 'pie') {
+      return (
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie
+              data={chartData}
+              cx="50%"
+              cy="50%"
+              labelLine={false}
+              outerRadius={120}
+              fill="#8884d8"
+              dataKey="value"
+            >
+              {chartData.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={entry.color} />
+              ))}
+            </Pie>
+            <Tooltip content={<CustomTooltip />} />
+            <Legend content={<CustomLegend />} />
+          </PieChart>
+        </ResponsiveContainer>
+      )
+    }
+
+    if (chartType === 'bar') {
+      return (
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={chartData}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="name" />
+            <YAxis />
+            <Tooltip content={<CustomTooltip />} />
+            <Legend />
+            <Bar dataKey="amount" fill="#8884d8">
+              {chartData.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={entry.color} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      )
+    }
+
+    if (chartType === 'line') {
+      return (
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={chartData}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="name" />
+            <YAxis />
+            <Tooltip content={<CustomTooltip />} />
+            <Legend />
+            <Line type="monotone" dataKey="amount" stroke="#8884d8" strokeWidth={2} />
+          </LineChart>
+        </ResponsiveContainer>
+      )
+    }
+
+    return null
+  }
+
   return (
-    <div className="w-full h-96 bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-      <div className="mb-4">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-white text-center">
+    <div className="w-full bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+      <div className="mb-6">
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white text-center mb-1">
           סקירה פיננסית כללית
         </h3>
         <p className="text-sm text-gray-600 dark:text-gray-400 text-center">
           הכנסות והוצאות לפי קטגוריות
         </p>
       </div>
-      
-      <ResponsiveContainer width="100%" height="100%">
-        <PieChart>
-          <Pie
-            data={chartData}
-            cx="50%"
-            cy="50%"
-            labelLine={false}
-            label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-            outerRadius={120}
-            fill="#8884d8"
-            dataKey="value"
+
+      {/* Chart Type Selection */}
+      <div className="mb-6 flex justify-center">
+        <div className="bg-gray-100 dark:bg-gray-700 p-1 rounded-lg flex items-center gap-1">
+          <button
+            onClick={() => setChartType('pie')}
+            className={`p-2 rounded-md transition-all flex items-center gap-2 ${chartType === 'pie' ? 'bg-white dark:bg-gray-600 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'}`}
+            title="גרף עוגה"
           >
-            {chartData.map((entry, index) => (
-              <Cell key={`cell-${index}`} fill={entry.color} />
-            ))}
-          </Pie>
-          <Tooltip content={<CustomTooltip />} />
-          <Legend content={<CustomLegend />} />
-        </PieChart>
-      </ResponsiveContainer>
+            <PieChartIcon className="w-5 h-5" />
+            <span className="text-sm font-medium hidden sm:inline">עוגה</span>
+          </button>
+          <button
+            onClick={() => setChartType('bar')}
+            className={`p-2 rounded-md transition-all flex items-center gap-2 ${chartType === 'bar' ? 'bg-white dark:bg-gray-600 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'}`}
+            title="גרף עמודות"
+          >
+            <BarChartIcon className="w-5 h-5" />
+            <span className="text-sm font-medium hidden sm:inline">עמודות</span>
+          </button>
+          <button
+            onClick={() => setChartType('line')}
+            className={`p-2 rounded-md transition-all flex items-center gap-2 ${chartType === 'line' ? 'bg-white dark:bg-gray-600 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'}`}
+            title="גרף קו"
+          >
+            <Activity className="w-5 h-5" />
+            <span className="text-sm font-medium hidden sm:inline">קו</span>
+          </button>
+        </div>
+      </div>
       
-      <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
+      <div className="h-96 mb-6">
+        {renderChart()}
+      </div>
+      
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
         <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded-lg">
           <div className="text-green-600 dark:text-green-400 font-semibold text-sm mb-1">
             סה״כ הכנסות
