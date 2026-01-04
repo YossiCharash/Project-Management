@@ -4587,9 +4587,9 @@ const formatDate = (value: string | null) => {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
-        className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-6"
+        className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-4"
       >
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6 text-right">
+        <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4 text-right">
           דוח הוצאות חודשי
         </h2>
         
@@ -4745,14 +4745,14 @@ const formatDate = (value: string | null) => {
           
           return (
             <div className="overflow-x-auto" dir="rtl">
-              <table className="w-full border-collapse text-sm">
+              <table className="w-full border-collapse text-xs">
                 <thead>
                   <tr>
-                    <th className="border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 px-3 py-2 text-right font-semibold text-gray-900 dark:text-white sticky left-0 z-10 min-w-[150px]">
+                    <th className="border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 px-2 py-1 text-right font-semibold text-gray-900 dark:text-white sticky left-0 z-10 min-w-[120px]">
                       קטגוריה
                     </th>
                     {months.map((m, idx) => (
-                      <th key={idx} className="border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 px-2 py-2 text-center font-semibold text-gray-900 dark:text-white min-w-[80px]">
+                      <th key={idx} className="border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 px-1 py-1 text-center font-semibold text-gray-900 dark:text-white min-w-[60px]">
                         {m.label}
                       </th>
                     ))}
@@ -4784,7 +4784,7 @@ const formatDate = (value: string | null) => {
                   {/* Empty rows for spacing (if needed) */}
                   {categories.length === 0 && (
                     <tr>
-                      <td colSpan={13} className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-center text-gray-500 dark:text-gray-400">
+                      <td colSpan={13} className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1 text-center text-gray-500 dark:text-gray-400">
                         אין הוצאות להצגה
                       </td>
                     </tr>
@@ -4792,7 +4792,7 @@ const formatDate = (value: string | null) => {
                   
                   {/* סה"כ בקופה החודשית (Total in monthly fund) - Pink */}
                   <tr>
-                    <td className="border border-gray-300 dark:border-gray-600 bg-pink-200 dark:bg-pink-900 px-3 py-2 text-right font-semibold text-gray-900 dark:text-white sticky left-0 z-10">
+                    <td className="border border-gray-300 dark:border-gray-600 bg-pink-200 dark:bg-pink-900 px-2 py-1 text-right font-semibold text-gray-900 dark:text-white sticky left-0 z-10">
                       סה"כ בקופה החודשית
                     </td>
                     {months.map((m, monthIdx) => {
@@ -4801,7 +4801,7 @@ const formatDate = (value: string | null) => {
                       // Show if month has been reached OR if there are transactions for this month
                       const shouldShow = hasReached || hasTransactions
                       return (
-                        <td key={monthIdx} className="border border-gray-300 dark:border-gray-600 bg-pink-200 dark:bg-pink-900 px-2 py-2 text-center font-semibold text-gray-900 dark:text-white">
+                        <td key={monthIdx} className="border border-gray-300 dark:border-gray-600 bg-pink-200 dark:bg-pink-900 px-1 py-1 text-center font-semibold text-gray-900 dark:text-white">
                           {shouldShow ? formatCurrency(monthlyIncome[monthIdx]) : ''}
                         </td>
                       )
@@ -4810,7 +4810,7 @@ const formatDate = (value: string | null) => {
                   
                   {/* הוצאות (Expenses) - Yellow */}
                   <tr>
-                    <td className="border border-gray-300 dark:border-gray-600 bg-yellow-200 dark:bg-yellow-900 px-3 py-2 text-right font-semibold text-gray-900 dark:text-white sticky left-0 z-10">
+                    <td className="border border-gray-300 dark:border-gray-600 bg-yellow-200 dark:bg-yellow-900 px-2 py-1 text-right font-semibold text-gray-900 dark:text-white sticky left-0 z-10">
                       הוצאות
                     </td>
                     {months.map((m, monthIdx) => {
@@ -4819,7 +4819,7 @@ const formatDate = (value: string | null) => {
                       // Show if month has been reached OR if there are transactions for this month
                       const shouldShow = hasReached || hasTransactions
                       return (
-                        <td key={monthIdx} className="border border-gray-300 dark:border-gray-600 bg-yellow-200 dark:bg-yellow-900 px-2 py-2 text-center font-semibold text-gray-900 dark:text-white">
+                        <td key={monthIdx} className="border border-gray-300 dark:border-gray-600 bg-yellow-200 dark:bg-yellow-900 px-1 py-1 text-center font-semibold text-gray-900 dark:text-white">
                           {shouldShow ? formatCurrency(monthlyTotals[monthIdx]) : ''}
                         </td>
                       )
@@ -4828,7 +4828,7 @@ const formatDate = (value: string | null) => {
                   
                   {/* עודף (Surplus/Balance) - Light Blue */}
                   <tr>
-                    <td className="border border-gray-300 dark:border-gray-600 bg-blue-200 dark:bg-blue-900 px-3 py-2 text-right font-semibold text-gray-900 dark:text-white sticky left-0 z-10">
+                    <td className="border border-gray-300 dark:border-gray-600 bg-blue-200 dark:bg-blue-900 px-2 py-1 text-right font-semibold text-gray-900 dark:text-white sticky left-0 z-10">
                       עודף
                     </td>
                     {months.map((m, monthIdx) => {
@@ -4838,7 +4838,7 @@ const formatDate = (value: string | null) => {
                       const shouldShow = hasReached || hasTransactions
                       const balance = monthlyIncome[monthIdx] - monthlyTotals[monthIdx]
                       return (
-                        <td key={monthIdx} className="border border-gray-300 dark:border-gray-600 bg-blue-200 dark:bg-blue-900 px-2 py-2 text-center font-semibold text-gray-900 dark:text-white">
+                        <td key={monthIdx} className="border border-gray-300 dark:border-gray-600 bg-blue-200 dark:bg-blue-900 px-1 py-1 text-center font-semibold text-gray-900 dark:text-white">
                           {shouldShow ? formatCurrency(balance) : ''}
                         </td>
                       )
@@ -4847,7 +4847,7 @@ const formatDate = (value: string | null) => {
                   
                   {/* סה"כ בקופה השנתית (Total in annual fund) - Light Green */}
                   <tr>
-                    <td className="border border-gray-300 dark:border-gray-600 bg-green-200 dark:bg-green-900 px-3 py-2 text-right font-semibold text-gray-900 dark:text-white sticky left-0 z-10">
+                    <td className="border border-gray-300 dark:border-gray-600 bg-green-200 dark:bg-green-900 px-2 py-1 text-right font-semibold text-gray-900 dark:text-white sticky left-0 z-10">
                       סה"כ בקופה השנתית
                     </td>
                     {months.map((m, monthIdx) => {
@@ -4856,23 +4856,11 @@ const formatDate = (value: string | null) => {
                       // Show if month has been reached OR if there are transactions for this month
                       const shouldShow = hasReached || hasTransactions
                       return (
-                        <td key={monthIdx} className="border border-gray-300 dark:border-gray-600 bg-green-200 dark:bg-green-900 px-2 py-2 text-center font-semibold text-gray-900 dark:text-white">
+                        <td key={monthIdx} className="border border-gray-300 dark:border-gray-600 bg-green-200 dark:bg-green-900 px-1 py-1 text-center font-semibold text-gray-900 dark:text-white">
                           {shouldShow ? formatCurrency(runningTotals[monthIdx]) : ''}
                         </td>
                       )
                     })}
-                  </tr>
-                  
-                  {/* תשלומים חודשים הבאים בקופה (Upcoming monthly payments in fund) - Light Green */}
-                  <tr>
-                    <td className="border border-gray-300 dark:border-gray-600 bg-green-200 dark:bg-green-900 px-3 py-2 text-right font-semibold text-gray-900 dark:text-white sticky left-0 z-10">
-                      תשלומים חודשים הבאים בקופה
-                    </td>
-                    {months.map((_, monthIdx) => (
-                      <td key={monthIdx} className="border border-gray-300 dark:border-gray-600 bg-green-200 dark:bg-green-900 px-2 py-2 text-center font-semibold text-gray-900 dark:text-white">
-                        {/* Empty for now - can be filled with future payment data */}
-                      </td>
-                    ))}
                   </tr>
                 </tbody>
               </table>
