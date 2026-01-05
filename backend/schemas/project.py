@@ -1,5 +1,5 @@
-from datetime import datetime, date
-from pydantic import BaseModel, Field
+from datetime import datetime, date, timedelta
+from pydantic import BaseModel, Field, field_serializer
 from typing import Optional
 from typing import TYPE_CHECKING
 
@@ -65,7 +65,11 @@ class ProjectOut(ProjectBase):
     created_at: datetime
     total_value: float = 0.0
 
-
+    @field_serializer('end_date')
+    def serialize_end_date(self, end_date: date | None, _info):
+        if end_date:
+            return end_date + timedelta(days=1)
+        return end_date
 
     class Config:
         from_attributes = True

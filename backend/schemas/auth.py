@@ -52,7 +52,7 @@ class ChangePassword(BaseModel):
 
 class ResetPasswordWithToken(BaseModel):
     token: str
-    temp_password: str
+    temp_password: Optional[str] = None
     new_password: str = Field(min_length=8, max_length=128)
 
     @field_validator('new_password')

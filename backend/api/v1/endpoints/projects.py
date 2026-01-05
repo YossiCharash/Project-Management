@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Response, Form
-from datetime import date
+from datetime import date, timedelta
 from typing import Optional
 import os
 from uuid import uuid4
@@ -262,6 +262,10 @@ async def create_project(db: DBSessionDep, data: ProjectCreate, user = Depends(g
         if 'is_parent_project' not in project_data:
             project_data['is_parent_project'] = False
     
+    # Subtract one day from end_date ONLY if provided and it's the 1st of the month (as per user requirement)
+    if project_data.get('end_date') and project_data['end_date'].day == 1:
+        project_data['end_date'] = project_data['end_date'] - timedelta(days=1)
+
     # Create the project
     project = await ProjectService(db).create(**project_data)
     
@@ -422,6 +426,10 @@ async def update_project(project_id: int, db: DBSessionDep, data: ProjectUpdate,
         if len(subprojects) > 0 and not update_payload['is_parent_project']:
             raise HTTPException(status_code=400, detail="לא ניתן לשנות פרויקט על לפרויקט רגיל כאשר יש לו תת-פרויקטים")
     
+    # Subtract one day from end_date ONLY if provided and it's the 1st of the month (as per user requirement)
+    if update_payload.get('end_date') and update_payload['end_date'].day == 1:
+        update_payload['end_date'] = update_payload['end_date'] - timedelta(days=1)
+
     updated_project = await ProjectService(db).update(project, **update_payload)
     
     # Handle fund creation/update
@@ -1678,6 +1686,10 @@ async def close_contract_year(
         # Parse date string to date object
         from datetime import datetime as dt
         end_date_obj = dt.strptime(end_date, "%Y-%m-%d").date()
+        
+        # Subtract one day from end_date ONLY if it's the 1st of the month (as per user requirement)
+        if end_date_obj.day == 1:
+            end_date_obj = end_date_obj - timedelta(days=1)
         
         service = ContractPeriodService(db)
         contract_period = await service.close_year_manually(

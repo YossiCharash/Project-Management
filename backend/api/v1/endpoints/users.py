@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import update, delete
 
 from backend.core.deps import DBSessionDep, get_current_user, require_roles, require_admin
 from backend.repositories.user_repository import UserRepository
@@ -6,6 +7,13 @@ from backend.schemas.user import UserOut, UserUpdate
 from backend.models.user import UserRole
 from backend.core.security import hash_password
 from backend.services.audit_service import AuditService
+from backend.models.project import Project
+from backend.models.transaction import Transaction
+from backend.models.recurring_transaction import RecurringTransactionTemplate
+from backend.models.archived_contract import ArchivedContract
+from backend.models.audit_log import AuditLog
+from backend.models.member_invite import MemberInvite
+from backend.models.admin_invite import AdminInvite
 
 router = APIRouter()
 
@@ -101,6 +109,54 @@ async def delete_user(user_id: int, db: DBSessionDep, current_admin = Depends(re
     # Store user details for audit log
     user_details = {'email': user.email, 'full_name': user.full_name}
     
+    # Cleanup dependencies
+    # 1. Nullify Project manager
+    await db.execute(
+        update(Project)
+        .where(Project.manager_id == user_id)
+        .values(manager_id=None)
+    )
+
+    # 2. Nullify Transaction creator
+    await db.execute(
+        update(Transaction)
+        .where(Transaction.created_by_user_id == user_id)
+        .values(created_by_user_id=None)
+    )
+
+    # 3. Nullify RecurringTransactionTemplate creator
+    await db.execute(
+        update(RecurringTransactionTemplate)
+        .where(RecurringTransactionTemplate.created_by_user_id == user_id)
+        .values(created_by_user_id=None)
+    )
+
+    # 4. Nullify ArchivedContract archiver
+    await db.execute(
+        update(ArchivedContract)
+        .where(ArchivedContract.archived_by_user_id == user_id)
+        .values(archived_by_user_id=None)
+    )
+
+    # 5. Nullify AuditLog user
+    await db.execute(
+        update(AuditLog)
+        .where(AuditLog.user_id == user_id)
+        .values(user_id=None)
+    )
+
+    # 6. Delete MemberInvite
+    await db.execute(
+        delete(MemberInvite)
+        .where(MemberInvite.created_by == user_id)
+    )
+
+    # 7. Delete AdminInvite
+    await db.execute(
+        delete(AdminInvite)
+        .where(AdminInvite.created_by == user_id)
+    )
+
     await user_repo.delete(user)
     
     # Log delete action

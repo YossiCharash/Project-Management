@@ -108,6 +108,15 @@ class ContractPeriodService:
             # Contract hasn't ended yet
             return None
 
+        # Special handling: if end_date is the 1st of the month, the user likely meant 
+        # the contract ends on the last day of the previous month.
+        # This aligns with the "subtract 1 day" logic added to the inputs.
+        if project.end_date.day == 1:
+            print(f"⚠️ Project {project_id} end date is 1st of month ({project.end_date}). Adjusting to previous day.")
+            project.end_date = project.end_date - timedelta(days=1)
+            # Update project in DB so future renewals are correct
+            await self.projects.update(project)
+
         # Contract has ended (end_date <= today) - archive it and create new period
         print(f"🔄 Contract for project {project_id} has ended (end_date: {project.end_date}, today: {today}). Renewing...")
         # Calculate the duration of the contract
@@ -145,7 +154,15 @@ class ContractPeriodService:
 
         # Create new contract period starting the day after end_date
         new_start_date = project.end_date + timedelta(days=1)
-        new_end_date = new_start_date + timedelta(days=contract_duration)
+        
+        # If the new start date is the 1st of a month, set end_date to last day of that year
+        # This ensures contracts run from 1/1/YYYY to 31/12/YYYY
+        if new_start_date.day == 1:
+            # Contract starts on 1st of month, ends on last day of that year
+            new_end_date = date(new_start_date.year, 12, 31)
+        else:
+            # For other dates, calculate duration and set end_date accordingly
+            new_end_date = new_start_date + timedelta(days=contract_duration)
 
         print(f"🆕 Creating new contract period for project {project_id}: {new_start_date} to {new_end_date}")
 
@@ -267,9 +284,16 @@ class ContractPeriodService:
         
         # Update project dates for new period
         new_start_date = end_date + timedelta(days=1)
-        # Calculate duration and set new end_date
-        duration = (end_date - start_date).days
-        new_end_date = new_start_date + timedelta(days=duration)
+        
+        # If the new start date is the 1st of a month, set end_date to last day of that year
+        # This ensures contracts run from 1/1/YYYY to 31/12/YYYY
+        if new_start_date.day == 1:
+            # Contract starts on 1st of month, ends on last day of that year
+            new_end_date = date(new_start_date.year, 12, 31)
+        else:
+            # For other dates, calculate duration and set end_date accordingly
+            duration = (end_date - start_date).days
+            new_end_date = new_start_date + timedelta(days=duration)
         
         project.start_date = new_start_date
         project.end_date = new_end_date

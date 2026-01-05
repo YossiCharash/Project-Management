@@ -4614,12 +4614,26 @@ const formatDate = (value: string | null) => {
             }
           }
           
-          // Choose the later date between Hebrew year start and project start
-          let tableStartDate: Date
-          if (projectStartMonthDate && projectStartMonthDate > hebrewYearStartDate) {
-            tableStartDate = projectStartMonthDate
-          } else {
-            tableStartDate = hebrewYearStartDate
+          // Choose the start date
+          let tableStartDate: Date = hebrewYearStartDate
+          
+          if (projectStartMonthDate) {
+            // Check if project start is later than hebrew year start (e.g. started in August)
+            if (projectStartMonthDate > hebrewYearStartDate) {
+              tableStartDate = projectStartMonthDate
+            } else {
+              // If project started before hebrew year start (e.g. May),
+              // check if we are still within the first year of the project relative to now.
+              // If the project started recently (within the last ~year) and using its start date
+              // covers the current date, we prefer the project start date.
+              const oneYearAfterProjectStart = new Date(projectStartMonthDate)
+              oneYearAfterProjectStart.setMonth(oneYearAfterProjectStart.getMonth() + 12)
+              
+              // If current date is within the first year of the project
+              if (now < oneYearAfterProjectStart) {
+                tableStartDate = projectStartMonthDate
+              }
+            }
           }
           
           const startYear = tableStartDate.getFullYear()

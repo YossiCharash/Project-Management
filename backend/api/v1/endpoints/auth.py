@@ -274,12 +274,13 @@ async def reset_password_with_token(
             detail="User not found"
         )
     
-    # Verify temporary password
-    if not verify_password(reset_data.temp_password, user.password_hash):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Temporary password is incorrect"
-        )
+    # Verify temporary password only if provided
+    if reset_data.temp_password:
+        if not verify_password(reset_data.temp_password, user.password_hash):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Temporary password is incorrect"
+            )
     
     # Update password
     await auth_service.update_password(user.id, reset_data.new_password)
