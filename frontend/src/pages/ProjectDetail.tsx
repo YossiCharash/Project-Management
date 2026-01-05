@@ -94,8 +94,12 @@ const splitPeriodTransactionByMonth = (tx: Transaction): SplitTransaction[] => {
     }]
   }
 
+  // Normalize dates to work with date-only (no time component)
   const startDate = new Date(tx.period_start_date)
+  startDate.setHours(0, 0, 0, 0)
   const endDate = new Date(tx.period_end_date)
+  endDate.setHours(23, 59, 59, 999) // Set to end of day to include the full last day
+  
   const totalDays = Math.floor((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
   
   if (totalDays <= 0) {
@@ -119,14 +123,22 @@ const splitPeriodTransactionByMonth = (tx: Transaction): SplitTransaction[] => {
   const current = new Date(startDate)
   current.setDate(1) // Start of month
   
-  while (current <= endDate) {
+  // Create a date for the end of the period month to compare
+  const periodEndMonth = new Date(endDate)
+  periodEndMonth.setDate(1)
+  periodEndMonth.setMonth(periodEndMonth.getMonth() + 1)
+  periodEndMonth.setDate(0) // Last day of end date's month
+  
+  while (current <= periodEndMonth) {
     const year = current.getFullYear()
     const month = current.getMonth()
     const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`
     
     // Calculate the first and last day of this month that are within the period
     const monthStart = new Date(year, month, 1)
+    monthStart.setHours(0, 0, 0, 0)
     const monthEnd = new Date(year, month + 1, 0) // Last day of month
+    monthEnd.setHours(23, 59, 59, 999) // Set to end of day
     
     const overlapStart = new Date(Math.max(startDate.getTime(), monthStart.getTime()))
     const overlapEnd = new Date(Math.min(endDate.getTime(), monthEnd.getTime()))
@@ -147,6 +159,17 @@ const splitPeriodTransactionByMonth = (tx: Transaction): SplitTransaction[] => {
     
     // Move to next month
     current.setMonth(month + 1)
+  }
+  
+  // Normalize to ensure sum equals original amount (fix rounding errors)
+  if (splits.length > 0) {
+    const totalProportional = splits.reduce((sum, split) => sum + split.proportionalAmount, 0)
+    const difference = tx.amount - totalProportional
+    
+    // Adjust the last split to account for any rounding differences
+    if (Math.abs(difference) > 0.0001) {
+      splits[splits.length - 1].proportionalAmount += difference
+    }
   }
   
   return splits
@@ -460,6 +483,24 @@ export default function ProjectDetail() {
     }
   }
 
+  // Helper function to reload only categories and budgets (without transactions)
+  const reloadChartsDataOnly = async () => {
+    if (!id || isNaN(Number(id))) return
+    try {
+      const [categoriesData, budgetsData] = await Promise.all([
+        ReportAPI.getProjectExpenseCategories(parseInt(id)),
+        BudgetAPI.getProjectBudgets(parseInt(id)).catch((err) => {
+          console.error('Failed to load project budgets:', err)
+          return []
+        })
+      ])
+      setExpenseCategories(categoriesData || [])
+      setProjectBudgets(budgetsData || [])
+    } catch (err: any) {
+      console.error('Failed to reload charts data:', err)
+    }
+  }
+
   const loadChartsData = async () => {
     if (!id || isNaN(Number(id))) return
 
@@ -476,21 +517,26 @@ export default function ProjectDetail() {
       
       setExpenseCategories(categoriesData || [])
       
-      // If we already have consolidated transactions (from loadProjectInfo -> reloadConsolidatedData), 
-      // don't overwrite with just parent transactions if we are a parent project.
-      // But we don't know if we are parent project yet inside this closure if called from initial useEffect?
-      // Actually, setTxs updates the state. If we overwrite it here with parent-only, we lose subproject txs.
-      // However, reloadConsolidatedData is called from loadProjectInfo which runs in parallel.
-      // We'll rely on reloadConsolidatedData running last or handling it.
-      
-      // Better: check if we are currently displaying consolidated view?
-      // Since this function is mostly for charts, and charts use txs state...
-      // We will just set it here. If reloadConsolidatedData comes later, it will overwrite it again with consolidated.
-      setTxs(transactionsData || [])
+      // Update transactions with all transactions (not just contract period) for charts
+      // This is needed because Charts need all transactions, not just the filtered ones from load()
+      // load() filters by contract period, but Charts need everything
+      // Only update if we got valid data (not empty array) to avoid clearing transactions
+      if (transactionsData && Array.isArray(transactionsData) && transactionsData.length > 0) {
+        setTxs(transactionsData)
+      } else if (transactionsData && Array.isArray(transactionsData)) {
+        // If we got empty array but txs already has data, don't overwrite
+        // This prevents clearing transactions if reports API returns empty array
+        // Only update if txs is currently empty
+        if (txs.length === 0) {
+          setTxs([])
+        }
+      }
       
       setProjectBudgets(budgetsData || [])
     } catch (err: any) {
-      // Error loading charts data
+      // Error loading charts data - don't clear existing transactions if error occurs
+      console.error('Error loading charts data:', err)
+      // Keep existing txs - don't clear them on error
     } finally {
       setChartsLoading(false)
     }
@@ -744,7 +790,7 @@ const formatDate = (value: string | null) => {
     try {
       setBudgetDeleteLoading(budgetId)
       await BudgetAPI.deleteBudget(budgetId)
-      await loadChartsData()
+      await reloadChartsDataOnly() // Only reload budgets and categories, not transactions
     } catch (err: any) {
       alert(err?.response?.data?.detail || 'שגיאה במחיקת התקציב')
     } finally {
@@ -784,7 +830,7 @@ const formatDate = (value: string | null) => {
         start_date: newBudgetForm.start_date,
         end_date: newBudgetForm.period_type === 'Annual' ? (newBudgetForm.end_date || null) : null
       })
-      await loadChartsData()
+      await reloadChartsDataOnly() // Only reload budgets and categories, not transactions
       setShowAddBudgetForm(false)
       setNewBudgetForm({
         category: '',
@@ -843,7 +889,7 @@ const formatDate = (value: string | null) => {
         end_date: editBudgetForm.period_type === 'Annual' ? (editBudgetForm.end_date || null) : null,
         is_active: editBudgetForm.is_active
       })
-      await loadChartsData()
+      await reloadChartsDataOnly() // Only reload budgets and categories, not transactions
       setShowEditBudgetForm(false)
       setBudgetToEdit(null)
     } catch (err: any) {
@@ -1191,7 +1237,10 @@ const formatDate = (value: string | null) => {
         await api.delete(`/transactions/${transactionId}`)
         await load() // For regular transactions, use full load
       }
-      await loadChartsData()
+      // Only reload charts data (categories and budgets), not transactions (already loaded by load())
+      // This avoids duplicate transaction loading
+      await reloadChartsDataOnly()
+      
       if (hasFund) {
         await loadFundData() // Reload fund data
       }
@@ -1436,7 +1485,19 @@ const formatDate = (value: string | null) => {
 
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 relative">
+      {/* Loading Overlay */}
+      {loading && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/30 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-8 flex flex-col items-center gap-4">
+            <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+            <p className="text-lg font-semibold text-gray-900 dark:text-white">
+              טוען עסקאות...
+            </p>
+          </div>
+        </div>
+      )}
+      
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: -20 }}
@@ -2097,7 +2158,13 @@ const formatDate = (value: string | null) => {
                 e.preventDefault()
                 setUpdatingFund(true)
                 try {
-                  await api.put(`/projects/${id}/fund?monthly_amount=${monthlyFundAmount}&current_balance=${currentBalance}`)
+                  // Build query params - always include monthly_amount (even if 0) and current_balance
+                  const params = new URLSearchParams()
+                  params.append('monthly_amount', (monthlyFundAmount || 0).toString())
+                  if (currentBalance !== undefined && currentBalance !== null) {
+                    params.append('current_balance', currentBalance.toString())
+                  }
+                  await api.put(`/projects/${id}/fund?${params.toString()}`)
                   // Reload fund data
                   await loadFundData()
                   setShowEditFundModal(false)
@@ -2415,7 +2482,7 @@ const formatDate = (value: string | null) => {
                           מסמכים
                         </button>
                         <button
-                          onClick={() => handleEditAnyTransaction(tx as Transaction)}
+                          onClick={() => handleEditAnyTransaction({ ...tx, from_fund: true } as Transaction)}
                           className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
                         >
                           ערוך
@@ -2552,7 +2619,7 @@ const formatDate = (value: string | null) => {
                                         <h3 className="text-sm font-medium text-purple-700 dark:text-purple-300 whitespace-nowrap min-w-0 flex-1">סכום חודשי</h3>
                                         <svg className="w-6 h-6 text-purple-600 dark:text-purple-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                                     </div>
-                                    <p className="text-3xl font-bold text-purple-900 dark:text-purple-100 whitespace-nowrap">{fundData.monthly_amount.toLocaleString('he-IL')} ₪</p>
+                                    <p className="text-3xl font-bold text-purple-900 dark:text-purple-100 whitespace-nowrap">{(fundData.monthly_amount || 0).toLocaleString('he-IL')} ₪</p>
                                     <p className="text-xs text-purple-600 dark:text-purple-400 mt-1 whitespace-nowrap">מתווסף אוטומטית כל חודש</p>
                                 </div>
                             </div>
@@ -3054,7 +3121,8 @@ const formatDate = (value: string | null) => {
         onSuccess={async () => {
           setShowCreateTransactionModal(false)
           await load() // Reload transactions list to get updated data with created_by_user
-          await loadChartsData()
+          // Reload only categories and budgets (not transactions - already loaded by load())
+          await reloadChartsDataOnly()
           if (hasFund) {
             await loadFundData() // Reload fund data
           }
@@ -3075,10 +3143,11 @@ const formatDate = (value: string | null) => {
           setEditTransactionModalOpen(false)
           setSelectedTransactionForEdit(null)
           await load() // Reload transactions list to get updated data
+          // Reload only categories and budgets (not transactions - already loaded by load())
+          await reloadChartsDataOnly()
           if (hasFund) {
             await loadFundData() // Reload fund data
           }
-          await loadChartsData()
         }}
         transaction={selectedTransactionForEdit}
         projectStartDate={projectStartDate}
@@ -3105,7 +3174,7 @@ const formatDate = (value: string | null) => {
           setEditTemplateModalOpen(false)
           setSelectedTemplateForEdit(null)
           await load()
-          await loadChartsData()
+          await reloadChartsDataOnly() // Only reload budgets and categories, not transactions (already loaded by load())
           if (transactionTypeFilter === 'recurring') {
             await loadRecurringTemplates()
           }
@@ -3885,8 +3954,8 @@ const formatDate = (value: string | null) => {
                     setShowDescriptionModal(false)
                     setUploadedDocuments([])
                     
-                    // Reload data
-                    await loadChartsData()
+                    // Reload only budgets and categories (not transactions - documents don't affect transaction list)
+                    await reloadChartsDataOnly()
                     if (showDocumentsModal && selectedTransactionForDocuments?.id === selectedTransactionForDocuments.id) {
                       const { data } = await api.get(`/transactions/${selectedTransactionForDocuments.id}/documents`)
                       setTransactionDocuments(data || [])
@@ -4490,7 +4559,7 @@ const formatDate = (value: string | null) => {
                   title="תצוגת חוזה"
                   className="w-full h-[70vh] border-0"
                   allowFullScreen
-                />
+                 />
               ) : (
                 <div className="p-6 text-center text-sm text-gray-600 dark:text-gray-300 space-y-3">
                   <p>לא ניתן להציג תצוגה מקדימה לסוג קובץ זה.</p>
@@ -4512,6 +4581,293 @@ const formatDate = (value: string | null) => {
           </div>
         </div>
       )}
+
+      {/* Monthly Expense Table */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+        className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-4"
+      >
+        <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4 text-right">
+          דוח הוצאות חודשי
+        </h2>
+        
+        {(() => {
+          // Get current date
+          const now = new Date()
+          const currentYear = now.getFullYear()
+          const currentMonth = now.getMonth() // 0-11 (Jan = 0, Dec = 11)
+          
+          // Determine Hebrew year start (July of current year, or previous year if we're before July)
+          const hebrewYearStart = currentMonth >= 6 ? currentYear : currentYear - 1 // July = month 6 (0-indexed)
+          const hebrewYearStartDate = new Date(hebrewYearStart, 6, 1) // July 1st
+          
+          // Get project start date if available
+          let projectStartMonthDate: Date | null = null
+          if (projectStartDate) {
+            try {
+              const projectDate = new Date(projectStartDate)
+              projectStartMonthDate = new Date(projectDate.getFullYear(), projectDate.getMonth(), 1) // Start of month
+            } catch (e) {
+              // Invalid date, ignore
+            }
+          }
+          
+          // Choose the later date between Hebrew year start and project start
+          let tableStartDate: Date
+          if (projectStartMonthDate && projectStartMonthDate > hebrewYearStartDate) {
+            tableStartDate = projectStartMonthDate
+          } else {
+            tableStartDate = hebrewYearStartDate
+          }
+          
+          const startYear = tableStartDate.getFullYear()
+          const startMonth = tableStartDate.getMonth() // 0-11
+          
+          // Create 12 month periods starting from the chosen start date
+          const months: Array<{ year: number; month: number; monthIndex: number; monthKey: string; label: string }> = []
+          
+          // Hebrew month names by calendar month (0=Jan, 11=Dec)
+          const monthNamesByCalendarMonth = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר']
+          
+          for (let i = 0; i < 12; i++) {
+            const monthIndex = (startMonth + i) % 12
+            const year = startYear + Math.floor((startMonth + i) / 12)
+            const monthKey = `${year}-${String(monthIndex + 1).padStart(2, '0')}`
+            months.push({
+              year,
+              month: monthIndex,
+              monthIndex: i,
+              monthKey,
+              label: monthNamesByCalendarMonth[monthIndex]
+            })
+          }
+          
+          // Split all transactions by month (including period transactions)
+          const allSplits: SplitTransaction[] = []
+          txs.forEach(tx => {
+            const splits = splitPeriodTransactionByMonth(tx)
+            allSplits.push(...splits)
+          })
+          
+          // Filter out fund transactions
+          const regularSplits = allSplits.filter(s => !s.from_fund)
+          
+          // Group by month and category
+          const monthlyData: Record<string, {
+            income: number
+            expenses: Record<string, number>
+            totalExpenses: number
+          }> = {}
+          
+          // Initialize all months
+          months.forEach(m => {
+            monthlyData[m.monthKey] = {
+              income: 0,
+              expenses: {},
+              totalExpenses: 0
+            }
+          })
+          
+          // Process transactions
+          regularSplits.forEach(split => {
+            const monthKey = split.monthKey
+            if (monthlyData[monthKey]) {
+              if (split.type === 'Income') {
+                monthlyData[monthKey].income += split.proportionalAmount
+              } else if (split.type === 'Expense') {
+                const category = split.category || 'אחר'
+                monthlyData[monthKey].expenses[category] = (monthlyData[monthKey].expenses[category] || 0) + split.proportionalAmount
+                monthlyData[monthKey].totalExpenses += split.proportionalAmount
+              }
+            }
+          })
+          
+          // Get all unique categories
+          const allCategories = new Set<string>()
+          Object.values(monthlyData).forEach(month => {
+            Object.keys(month.expenses).forEach(cat => allCategories.add(cat))
+          })
+          const categories = Array.from(allCategories).sort()
+          
+          // Helper function to check if we've reached a month (month has started or passed)
+          const hasReachedMonth = (year: number, month: number): boolean => {
+            const now = new Date()
+            const currentYear = now.getFullYear()
+            const currentMonth = now.getMonth() // 0-11
+            const monthDate = new Date(year, month, 1)
+            const currentDate = new Date(currentYear, currentMonth, 1)
+            return monthDate <= currentDate
+          }
+          
+          // Helper function to check if a month has any transactions (past, present, or future)
+          const hasMonthTransactions = (monthKey: string): boolean => {
+            const monthData = monthlyData[monthKey]
+            if (!monthData) return false
+            // Check if there are any transactions (income or expenses) for this month
+            return monthData.income > 0 || monthData.totalExpenses > 0
+          }
+          
+          // Get monthly budget amount (the fixed amount collected from tenants each month)
+          const monthlyBudgetAmount = Number(projectBudget?.budget_monthly || 0)
+          
+          // Calculate monthly income - combine actual transactions with monthly budget
+          // For months that have been reached, add the monthly budget amount
+          const monthlyIncome = months.map(m => {
+            const transactionIncome = monthlyData[m.monthKey].income
+            // Add monthly budget if we've reached this month and there's a budget
+            if (hasReachedMonth(m.year, m.month) && monthlyBudgetAmount > 0) {
+              return transactionIncome + monthlyBudgetAmount
+            }
+            return transactionIncome
+          })
+          
+          // Calculate total expenses per month
+          const monthlyTotals = months.map(m => monthlyData[m.monthKey].totalExpenses)
+          
+          // Calculate running totals (cumulative) - accumulates month by month
+          // Include future months if they have transactions
+          let runningTotal = 0
+          const runningTotals: number[] = []
+          months.forEach(m => {
+            const monthData = monthlyData[m.monthKey]
+            const monthIndex = months.indexOf(m)
+            const hasReached = hasReachedMonth(m.year, m.month)
+            const hasTransactions = hasMonthTransactions(m.monthKey)
+            // Accumulate if we've reached this month OR if there are transactions for this month
+            if (hasReached || hasTransactions) {
+              const monthBalance = monthlyIncome[monthIndex] - monthData.totalExpenses
+              runningTotal += monthBalance
+            }
+            runningTotals.push(runningTotal)
+          })
+          
+          return (
+            <div className="overflow-x-auto" dir="rtl">
+              <table className="w-full border-collapse text-xs">
+                <thead>
+                  <tr>
+                    <th className="border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 px-2 py-1 text-right font-semibold text-gray-900 dark:text-white sticky left-0 z-10 min-w-[120px]">
+                      קטגוריה
+                    </th>
+                    {months.map((m, idx) => (
+                      <th key={idx} className="border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 px-1 py-1 text-center font-semibold text-gray-900 dark:text-white min-w-[60px]">
+                        {m.label}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {/* Expense category rows */}
+                  {categories.map((category, catIdx) => (
+                    <tr key={catIdx}>
+                      <td className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-right text-gray-900 dark:text-white sticky left-0 z-10">
+                        {category}
+                      </td>
+                      {months.map((m, monthIdx) => {
+                        const hasReached = hasReachedMonth(m.year, m.month)
+                        const hasTransactions = hasMonthTransactions(m.monthKey)
+                        // Show if month has been reached OR if there are transactions for this month
+                        const shouldShow = hasReached || hasTransactions
+                        return (
+                          <td key={monthIdx} className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-2 text-center text-gray-900 dark:text-white">
+                            {shouldShow && monthlyData[m.monthKey].expenses[category] 
+                              ? formatCurrency(monthlyData[m.monthKey].expenses[category])
+                              : shouldShow ? '0' : ''}
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  ))}
+                  
+                  {/* Empty rows for spacing (if needed) */}
+                  {categories.length === 0 && (
+                    <tr>
+                      <td colSpan={13} className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1 text-center text-gray-500 dark:text-gray-400">
+                        אין הוצאות להצגה
+                      </td>
+                    </tr>
+                  )}
+                  
+                  {/* סה"כ בקופה החודשית (Total in monthly fund) - Pink */}
+                  <tr>
+                    <td className="border border-gray-300 dark:border-gray-600 bg-pink-200 dark:bg-pink-900 px-2 py-1 text-right font-semibold text-gray-900 dark:text-white sticky left-0 z-10">
+                      סה"כ בקופה החודשית
+                    </td>
+                    {months.map((m, monthIdx) => {
+                      const hasReached = hasReachedMonth(m.year, m.month)
+                      const hasTransactions = hasMonthTransactions(m.monthKey)
+                      // Show if month has been reached OR if there are transactions for this month
+                      const shouldShow = hasReached || hasTransactions
+                      return (
+                        <td key={monthIdx} className="border border-gray-300 dark:border-gray-600 bg-pink-200 dark:bg-pink-900 px-1 py-1 text-center font-semibold text-gray-900 dark:text-white">
+                          {shouldShow ? formatCurrency(monthlyIncome[monthIdx]) : ''}
+                        </td>
+                      )
+                    })}
+                  </tr>
+                  
+                  {/* הוצאות (Expenses) - Yellow */}
+                  <tr>
+                    <td className="border border-gray-300 dark:border-gray-600 bg-yellow-200 dark:bg-yellow-900 px-2 py-1 text-right font-semibold text-gray-900 dark:text-white sticky left-0 z-10">
+                      הוצאות
+                    </td>
+                    {months.map((m, monthIdx) => {
+                      const hasReached = hasReachedMonth(m.year, m.month)
+                      const hasTransactions = hasMonthTransactions(m.monthKey)
+                      // Show if month has been reached OR if there are transactions for this month
+                      const shouldShow = hasReached || hasTransactions
+                      return (
+                        <td key={monthIdx} className="border border-gray-300 dark:border-gray-600 bg-yellow-200 dark:bg-yellow-900 px-1 py-1 text-center font-semibold text-gray-900 dark:text-white">
+                          {shouldShow ? formatCurrency(monthlyTotals[monthIdx]) : ''}
+                        </td>
+                      )
+                    })}
+                  </tr>
+                  
+                  {/* עודף (Surplus/Balance) - Light Blue */}
+                  <tr>
+                    <td className="border border-gray-300 dark:border-gray-600 bg-blue-200 dark:bg-blue-900 px-2 py-1 text-right font-semibold text-gray-900 dark:text-white sticky left-0 z-10">
+                      עודף
+                    </td>
+                    {months.map((m, monthIdx) => {
+                      const hasReached = hasReachedMonth(m.year, m.month)
+                      const hasTransactions = hasMonthTransactions(m.monthKey)
+                      // Show if month has been reached OR if there are transactions for this month
+                      const shouldShow = hasReached || hasTransactions
+                      const balance = monthlyIncome[monthIdx] - monthlyTotals[monthIdx]
+                      return (
+                        <td key={monthIdx} className="border border-gray-300 dark:border-gray-600 bg-blue-200 dark:bg-blue-900 px-1 py-1 text-center font-semibold text-gray-900 dark:text-white">
+                          {shouldShow ? formatCurrency(balance) : ''}
+                        </td>
+                      )
+                    })}
+                  </tr>
+                  
+                  {/* סה"כ בקופה השנתית (Total in annual fund) - Light Green */}
+                  <tr>
+                    <td className="border border-gray-300 dark:border-gray-600 bg-green-200 dark:bg-green-900 px-2 py-1 text-right font-semibold text-gray-900 dark:text-white sticky left-0 z-10">
+                      סה"כ בקופה השנתית
+                    </td>
+                    {months.map((m, monthIdx) => {
+                      const hasReached = hasReachedMonth(m.year, m.month)
+                      const hasTransactions = hasMonthTransactions(m.monthKey)
+                      // Show if month has been reached OR if there are transactions for this month
+                      const shouldShow = hasReached || hasTransactions
+                      return (
+                        <td key={monthIdx} className="border border-gray-300 dark:border-gray-600 bg-green-200 dark:bg-green-900 px-1 py-1 text-center font-semibold text-gray-900 dark:text-white">
+                          {shouldShow ? formatCurrency(runningTotals[monthIdx]) : ''}
+                        </td>
+                      )
+                    })}
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          )
+        })()}
+      </motion.div>
     </div>
   )
 }

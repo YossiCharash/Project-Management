@@ -469,6 +469,15 @@ export default function ModernDashboard({ onProjectClick, onProjectEdit }: Moder
   const [dashboardData, setDashboardData] = useState<DashboardSnapshot | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  
+  // Date filter state
+  const [dateFilterMode, setDateFilterMode] = useState<'current_month' | 'selected_month' | 'date_range' | 'all_time'>('current_month')
+  const [selectedMonth, setSelectedMonth] = useState<string>(() => {
+    const now = new Date()
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  })
+  const [startDate, setStartDate] = useState<string>('')
+  const [endDate, setEndDate] = useState<string>('')
   const [profitabilityAlerts, setProfitabilityAlerts] = useState<Array<{
     id: number
     name: string
@@ -653,6 +662,107 @@ export default function ModernDashboard({ onProjectClick, onProjectEdit }: Moder
         <AlertsStrip alerts={dashboardData.alerts} projects={allProjectsFlat} />
       )}
 
+      {/* Date Filter Options for Dashboard */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.2 }}
+        className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 space-y-4"
+      >
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            סינון לפי תאריך
+          </label>
+          <div className="flex flex-wrap gap-3 sm:gap-4">
+            <label className="flex items-center gap-2 whitespace-nowrap">
+              <input
+                type="radio"
+                name="dashboardDateFilter"
+                value="current_month"
+                checked={dateFilterMode === 'current_month'}
+                onChange={() => setDateFilterMode('current_month')}
+                className="w-4 h-4 text-blue-600 flex-shrink-0"
+              />
+              <span className="text-sm text-gray-700 dark:text-gray-300">חודש נוכחי</span>
+            </label>
+            <label className="flex items-center gap-2 whitespace-nowrap">
+              <input
+                type="radio"
+                name="dashboardDateFilter"
+                value="selected_month"
+                checked={dateFilterMode === 'selected_month'}
+                onChange={() => setDateFilterMode('selected_month')}
+                className="w-4 h-4 text-blue-600 flex-shrink-0"
+              />
+              <span className="text-sm text-gray-700 dark:text-gray-300">חודש מסוים</span>
+            </label>
+            <label className="flex items-center gap-2 whitespace-nowrap">
+              <input
+                type="radio"
+                name="dashboardDateFilter"
+                value="all_time"
+                checked={dateFilterMode === 'all_time'}
+                onChange={() => setDateFilterMode('all_time')}
+                className="w-4 h-4 text-blue-600 flex-shrink-0"
+              />
+              <span className="text-sm text-gray-700 dark:text-gray-300">כל הזמן</span>
+            </label>
+            <label className="flex items-center gap-2 whitespace-nowrap">
+              <input
+                type="radio"
+                name="dashboardDateFilter"
+                value="date_range"
+                checked={dateFilterMode === 'date_range'}
+                onChange={() => setDateFilterMode('date_range')}
+                className="w-4 h-4 text-blue-600 flex-shrink-0"
+              />
+              <span className="text-sm text-gray-700 dark:text-gray-300">טווח תאריכים</span>
+            </label>
+          </div>
+        </div>
+
+        {dateFilterMode === 'selected_month' && (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              בחר חודש
+            </label>
+            <input
+              type="month"
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+        )}
+
+        {dateFilterMode === 'date_range' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                מתאריך
+              </label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                עד תאריך
+              </label>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                min={startDate}
+                className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+        )}
+      </motion.div>
 
       {/* Central Financial Overview Pie Chart */}
       <motion.div

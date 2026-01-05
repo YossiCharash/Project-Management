@@ -47,6 +47,7 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   const [uploadingDocument, setUploadingDocument] = useState(false)
   const [showDuplicateWarning, setShowDuplicateWarning] = useState(false)
   const [pendingUpdateData, setPendingUpdateData] = useState<Partial<TransactionCreate> | null>(null)
+  const [isAddDocumentButtonPressed, setIsAddDocumentButtonPressed] = useState(false)
 
   useEffect(() => {
     if (isOpen && transaction) {
@@ -101,7 +102,10 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   }
 
   const handleUploadDocument = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!transaction || !e.target.files || e.target.files.length === 0) return
+    if (!transaction || !e.target.files || e.target.files.length === 0) {
+      setIsAddDocumentButtonPressed(false)
+      return
+    }
 
     const file = e.target.files[0]
     setUploadingDocument(true)
@@ -119,6 +123,7 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
       setError(errorMessage)
     } finally {
       setUploadingDocument(false)
+      setIsAddDocumentButtonPressed(false)
       // Reset file input
       if (e.target) {
         e.target.value = ''
@@ -145,6 +150,9 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
 
   useEffect(() => {
     if (transaction && isOpen) {
+      // Note: from_fund should be set when transaction is passed to the modal
+      // This is handled in ProjectDetail.tsx when editing cash register transactions
+      
       setFormData({
         tx_date: transaction.tx_date,
         type: transaction.type,
@@ -243,6 +251,7 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     setDocuments([])
     setShowDuplicateWarning(false)
     setPendingUpdateData(null)
+    setIsAddDocumentButtonPressed(false)
   }
 
   const handleConfirmDuplicate = async () => {
@@ -273,12 +282,14 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
       return
     }
 
-    if (formData.type === 'Expense' && !formData.category && !transaction.from_fund) {
+    const isCashRegisterTransaction = transaction.from_fund === true
+
+    if (formData.type === 'Expense' && !formData.category && !isCashRegisterTransaction) {
       setError('יש לבחור קטגוריה')
       return
     }
 
-    if (!formData.supplier_id || formData.supplier_id === 0) {
+    if (!isCashRegisterTransaction && (!formData.supplier_id || formData.supplier_id === 0)) {
       setError('יש לבחור ספק (חובה)')
       return
     }
@@ -313,11 +324,11 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
       type: formData.type!,
       amount: formData.amount!,
       description: formData.description || undefined,
-      category: formData.category || undefined,
+      ...(isCashRegisterTransaction ? {} : { category: formData.category || undefined }),
       payment_method: formData.payment_method || undefined,
       notes: formData.notes || undefined,
       is_exceptional: formData.is_exceptional,
-      supplier_id: formData.supplier_id!,
+      ...(isCashRegisterTransaction ? {} : { supplier_id: formData.supplier_id! }),
       period_start_date: formData.period_start_date || null,
       period_end_date: formData.period_end_date || null
     }
@@ -357,11 +368,23 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   }
 
   const handleClose = () => {
+    setIsAddDocumentButtonPressed(false)
     onClose()
     resetForm()
   }
 
+  // Reset button pressed state when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      setIsAddDocumentButtonPressed(false)
+    }
+  }, [isOpen])
+
   if (!isOpen || !transaction) return null
+
+  // Check if this is a cash register transaction
+  // Use explicit check for true, and also check if from_fund might be set on the object
+  const isCashRegisterTransaction = transaction.from_fund === true || (transaction as any).from_fund === true
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -491,35 +514,37 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                קטגוריה
-              </label>
-              <select
-                value={formData.category || ''}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    category: e.target.value || '',
-                    // reset or auto-select supplier when category changes
-                    supplier_id: (() => {
-                      const newCategory = e.target.value || ''
-                      if (!newCategory) return undefined
-                      const candidates = suppliers.filter(
-                        s => s.is_active && s.category === newCategory
-                      )
-                      return candidates.length === 1 ? candidates[0].id : undefined
-                    })(),
-                  })
-                }
-                className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              >
-                <option value="">בחר קטגוריה</option>
-                {availableCategories.map((cat) => (
-                  <option key={cat} value={cat}>{cat}</option>
-                ))}
-              </select>
-            </div>
+            {!isCashRegisterTransaction && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  קטגוריה
+                </label>
+                <select
+                  value={formData.category || ''}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      category: e.target.value || '',
+                      // reset or auto-select supplier when category changes
+                      supplier_id: (() => {
+                        const newCategory = e.target.value || ''
+                        if (!newCategory) return undefined
+                        const candidates = suppliers.filter(
+                          s => s.is_active && s.category === newCategory
+                        )
+                        return candidates.length === 1 ? candidates[0].id : undefined
+                      })(),
+                    })
+                  }
+                  className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                >
+                  <option value="">בחר קטגוריה</option>
+                  {availableCategories.map((cat) => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -540,31 +565,33 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
               </select>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                ספק * <span className="text-red-500">(חובה)</span>
-              </label>
-              <select
-                required
-                value={formData.supplier_id || ''}
-                onChange={(e) => setFormData({ ...formData, supplier_id: e.target.value === '' ? undefined : Number(e.target.value) })}
-                className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              >
-                <option value="">
-                  {formData.category ? 'בחר ספק' : 'בחר קודם קטגוריה'}
-                </option>
-                {suppliers
-                  .filter(
-                    s =>
-                      s.is_active &&
-                      !!formData.category &&
-                      s.category === formData.category
-                  )
-                  .map(s => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
-                ))}
-              </select>
-            </div>
+            {!isCashRegisterTransaction && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  ספק * <span className="text-red-500">(חובה)</span>
+                </label>
+                <select
+                  required
+                  value={formData.supplier_id || ''}
+                  onChange={(e) => setFormData({ ...formData, supplier_id: e.target.value === '' ? undefined : Number(e.target.value) })}
+                  className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                >
+                  <option value="">
+                    {formData.category ? 'בחר ספק' : 'בחר קודם קטגוריה'}
+                  </option>
+                  {suppliers
+                    .filter(
+                      s =>
+                        s.is_active &&
+                        !!formData.category &&
+                        s.category === formData.category
+                    )
+                    .map(s => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
           <div>
@@ -618,7 +645,14 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                 מסמכים
               </label>
-              <label className="px-3 py-1.5 text-sm bg-green-600 text-white rounded-md hover:bg-green-700 cursor-pointer">
+              <label 
+                className={`px-3 py-1.5 text-sm text-white rounded-md cursor-pointer transition-colors ${
+                  isAddDocumentButtonPressed 
+                    ? 'bg-green-800' 
+                    : 'bg-green-600 hover:bg-green-700'
+                }`}
+                onClick={() => setIsAddDocumentButtonPressed(true)}
+              >
                 {uploadingDocument ? 'מעלה...' : 'הוסף מסמך'}
                 <input
                   type="file"

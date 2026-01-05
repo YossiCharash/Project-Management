@@ -221,3 +221,48 @@ class TransactionService:
         # Store full URL
         tx.file_path = file_url
         return await self.transactions.update(tx)
+
+    async def list_by_project(
+        self,
+        project_id: int,
+        user_id: int | None = None
+    ) -> List[dict]:
+        """
+        List transactions for a project with user info and category loaded via JOIN.
+        Filters by project's current contract period dates in SQL if they exist.
+        Returns list of dicts ready for TransactionOut schema.
+        Business logic: Gets project dates and logs audit action.
+        """
+        from backend.repositories.project_repository import ProjectRepository
+        from backend.services.audit_service import AuditService
+
+        # Get project for dates and audit log
+        project_repo = ProjectRepository(self.db)
+        project = await project_repo.get_by_id(project_id)
+        project_name = project.name if project else f"Project {project_id}"
+
+        # Log view action (business logic: audit logging)
+        if user_id:
+            audit_service = AuditService(self.db)
+            await audit_service.log_transaction_action(
+                user_id=user_id,
+                action='view_list',
+                transaction_id=project_id,
+                details={'project_id': project_id, 'project_name': project_name}
+            )
+
+        # Extract project dates and convert datetime to date if needed
+        project_start_date = project.start_date if project else None
+        project_end_date = project.end_date if project else None
+
+        if project_start_date and hasattr(project_start_date, 'date'):
+            project_start_date = project_start_date.date()
+        if project_end_date and hasattr(project_end_date, 'date'):
+            project_end_date = project_end_date.date()
+
+        # Get transactions via repository (data layer)
+        return await self.transactions.list_by_project_with_users(
+            project_id=project_id,
+            project_start_date=project_start_date,
+            project_end_date=project_end_date
+        )
