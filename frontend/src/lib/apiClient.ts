@@ -160,6 +160,14 @@ export class ProjectAPI {
     return response.data
   }
 
+  // Close contract year manually
+  static async closeContractYear(projectId: number, endDate: string): Promise<any> {
+    const formData = new FormData()
+    formData.append('end_date', endDate)
+    const { data } = await api.post(`/projects/${projectId}/close-year`, formData)
+    return data
+  }
+
   // Check and renew contract
   static async checkAndRenewContract(projectId: number): Promise<{
     renewed: boolean

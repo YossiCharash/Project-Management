@@ -10,10 +10,8 @@ export default function ResetPassword() {
   const navigate = useNavigate()
   const token = searchParams.get('token')
   
-  const [tempPassword, setTempPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
-  const [showTempPassword, setShowTempPassword] = useState(false)
   const [showNewPassword, setShowNewPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -49,7 +47,6 @@ export default function ResetPassword() {
     try {
       await api.post('/auth/reset-password-with-token', {
         token,
-        temp_password: tempPassword,
         new_password: newPassword
       })
       
@@ -111,10 +108,10 @@ export default function ResetPassword() {
             <Building2 className="w-8 h-8 text-white" />
           </div>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-            הגדרת סיסמה חדשה
+            הגדרת סיסמה
           </h1>
           <p className="text-gray-600 dark:text-gray-400">
-            הזינו את הסיסמה הזמנית והגדירו סיסמה חדשה
+            אנא בחרו סיסמה חדשה לחשבונכם
           </p>
         </motion.div>
 
@@ -126,34 +123,7 @@ export default function ResetPassword() {
           className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 p-8"
         >
           <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Temporary Password Field */}
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                סיסמה זמנית
-              </label>
-              <div className="relative">
-                <Lock className="absolute right-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-                <input
-                  type={showTempPassword ? 'text' : 'password'}
-                  required
-                  value={tempPassword}
-                  onChange={(e) => setTempPassword(e.target.value)}
-                  className="w-full pr-10 pl-10 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                  placeholder="הזינו את הסיסמה הזמנית שקיבלתם במייל"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowTempPassword(!showTempPassword)}
-                  className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-                >
-                  {showTempPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                </button>
-              </div>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                הסיסמה הזמנית נשלחה לכם במייל
-              </p>
-            </div>
-
+            
             {/* New Password Field */}
             <div className="space-y-2">
               <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -252,4 +222,3 @@ export default function ResetPassword() {
     </div>
   )
 }
-
