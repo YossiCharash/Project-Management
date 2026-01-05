@@ -4709,6 +4709,15 @@ const formatDate = (value: string | null) => {
             return monthData.income > 0 || monthData.totalExpenses > 0
           }
           
+          // Helper function to get text size class based on number length
+          const getTextSizeClass = (value: number): string => {
+            const formatted = formatCurrency(value)
+            const length = formatted.length
+            if (length > 10) return 'text-[9px]'
+            if (length > 8) return 'text-[10px]'
+            return 'text-xs'
+          }
+          
           // Get monthly budget amount (the fixed amount collected from tenants each month)
           const monthlyBudgetAmount = Number(projectBudget?.budget_monthly || 0)
           
@@ -4770,11 +4779,13 @@ const formatDate = (value: string | null) => {
                         const hasTransactions = hasMonthTransactions(m.monthKey)
                         // Show if month has been reached OR if there are transactions for this month
                         const shouldShow = hasReached || hasTransactions
+                        const value = shouldShow && monthlyData[m.monthKey].expenses[category] 
+                          ? monthlyData[m.monthKey].expenses[category]
+                          : shouldShow ? 0 : null
+                        const textSizeClass = value !== null ? getTextSizeClass(value) : ''
                         return (
-                          <td key={monthIdx} className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-2 text-center text-gray-900 dark:text-white">
-                            {shouldShow && monthlyData[m.monthKey].expenses[category] 
-                              ? formatCurrency(monthlyData[m.monthKey].expenses[category])
-                              : shouldShow ? '0' : ''}
+                          <td key={monthIdx} className={`border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-1 py-1 text-center text-gray-900 dark:text-white ${textSizeClass}`}>
+                            {value !== null ? formatCurrency(value) : ''}
                           </td>
                         )
                       })}
@@ -4800,9 +4811,11 @@ const formatDate = (value: string | null) => {
                       const hasTransactions = hasMonthTransactions(m.monthKey)
                       // Show if month has been reached OR if there are transactions for this month
                       const shouldShow = hasReached || hasTransactions
+                      const value = shouldShow ? monthlyIncome[monthIdx] : null
+                      const textSizeClass = value !== null ? getTextSizeClass(value) : ''
                       return (
-                        <td key={monthIdx} className="border border-gray-300 dark:border-gray-600 bg-pink-200 dark:bg-pink-900 px-1 py-1 text-center font-semibold text-gray-900 dark:text-white">
-                          {shouldShow ? formatCurrency(monthlyIncome[monthIdx]) : ''}
+                        <td key={monthIdx} className={`border border-gray-300 dark:border-gray-600 bg-pink-200 dark:bg-pink-900 px-1 py-1 text-center font-semibold text-gray-900 dark:text-white ${textSizeClass}`}>
+                          {value !== null ? formatCurrency(value) : ''}
                         </td>
                       )
                     })}
@@ -4818,9 +4831,11 @@ const formatDate = (value: string | null) => {
                       const hasTransactions = hasMonthTransactions(m.monthKey)
                       // Show if month has been reached OR if there are transactions for this month
                       const shouldShow = hasReached || hasTransactions
+                      const value = shouldShow ? monthlyTotals[monthIdx] : null
+                      const textSizeClass = value !== null ? getTextSizeClass(value) : ''
                       return (
-                        <td key={monthIdx} className="border border-gray-300 dark:border-gray-600 bg-yellow-200 dark:bg-yellow-900 px-1 py-1 text-center font-semibold text-gray-900 dark:text-white">
-                          {shouldShow ? formatCurrency(monthlyTotals[monthIdx]) : ''}
+                        <td key={monthIdx} className={`border border-gray-300 dark:border-gray-600 bg-yellow-200 dark:bg-yellow-900 px-1 py-1 text-center font-semibold text-gray-900 dark:text-white ${textSizeClass}`}>
+                          {value !== null ? formatCurrency(value) : ''}
                         </td>
                       )
                     })}
@@ -4836,10 +4851,11 @@ const formatDate = (value: string | null) => {
                       const hasTransactions = hasMonthTransactions(m.monthKey)
                       // Show if month has been reached OR if there are transactions for this month
                       const shouldShow = hasReached || hasTransactions
-                      const balance = monthlyIncome[monthIdx] - monthlyTotals[monthIdx]
+                      const balance = shouldShow ? monthlyIncome[monthIdx] - monthlyTotals[monthIdx] : null
+                      const textSizeClass = balance !== null ? getTextSizeClass(Math.abs(balance)) : ''
                       return (
-                        <td key={monthIdx} className="border border-gray-300 dark:border-gray-600 bg-blue-200 dark:bg-blue-900 px-1 py-1 text-center font-semibold text-gray-900 dark:text-white">
-                          {shouldShow ? formatCurrency(balance) : ''}
+                        <td key={monthIdx} className={`border border-gray-300 dark:border-gray-600 bg-blue-200 dark:bg-blue-900 px-1 py-1 text-center font-semibold text-gray-900 dark:text-white ${textSizeClass}`}>
+                          {balance !== null ? formatCurrency(balance) : ''}
                         </td>
                       )
                     })}
@@ -4855,9 +4871,11 @@ const formatDate = (value: string | null) => {
                       const hasTransactions = hasMonthTransactions(m.monthKey)
                       // Show if month has been reached OR if there are transactions for this month
                       const shouldShow = hasReached || hasTransactions
+                      const value = shouldShow ? runningTotals[monthIdx] : null
+                      const textSizeClass = value !== null ? getTextSizeClass(Math.abs(value)) : ''
                       return (
-                        <td key={monthIdx} className="border border-gray-300 dark:border-gray-600 bg-green-200 dark:bg-green-900 px-1 py-1 text-center font-semibold text-gray-900 dark:text-white">
-                          {shouldShow ? formatCurrency(runningTotals[monthIdx]) : ''}
+                        <td key={monthIdx} className={`border border-gray-300 dark:border-gray-600 bg-green-200 dark:bg-green-900 px-1 py-1 text-center font-semibold text-gray-900 dark:text-white ${textSizeClass}`}>
+                          {value !== null ? formatCurrency(value) : ''}
                         </td>
                       )
                     })}

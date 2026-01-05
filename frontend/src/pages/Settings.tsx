@@ -5,6 +5,8 @@ import { CategoryAPI, Category, CategoryCreate, SupplierAPI, Supplier, SupplierC
 import { Plus, Trash2, Edit2, X, Check, Moon, Sun, Eye } from 'lucide-react'
 import { useTheme } from '../contexts/ThemeContext'
 import { useNavigate } from 'react-router-dom'
+import DeleteSupplierModal from '../components/DeleteSupplierModal'
+import DeleteCategoryModal from '../components/DeleteCategoryModal'
 
 export default function Settings() {
   const dispatch = useAppDispatch()
@@ -33,6 +35,14 @@ export default function Settings() {
     annual_budget: undefined
   })
   const [availableCategories, setAvailableCategories] = useState<string[]>([])
+  
+  // Delete modals state
+  const [showDeleteSupplierModal, setShowDeleteSupplierModal] = useState(false)
+  const [supplierToDelete, setSupplierToDelete] = useState<Supplier | null>(null)
+  const [supplierTransactionCount, setSupplierTransactionCount] = useState(0)
+  const [showDeleteCategoryModal, setShowDeleteCategoryModal] = useState(false)
+  const [categoryToDelete, setCategoryToDelete] = useState<Category | null>(null)
+  const [categorySuppliers, setCategorySuppliers] = useState<Array<{ id: number; name: string; category: string | null; transaction_count: number }>>([])
   
   const navigate = useNavigate()
 
@@ -211,16 +221,33 @@ export default function Settings() {
     }
   }
   
-  // Handle delete supplier
+  // Handle delete supplier - opens modal
   const handleDeleteSupplier = async (supplierId: number, supplierName: string) => {
-    if (!confirm(`האם אתה בטוח שברצונך למחוק את הספק "${supplierName}"?`)) {
-      return
+    const supplier = suppliers.find(s => s.id === supplierId)
+    if (!supplier) return
+
+    try {
+      // Get transaction count
+      const countData = await SupplierAPI.getSupplierTransactionCount(supplierId)
+      setSupplierTransactionCount(countData.transaction_count)
+      setSupplierToDelete(supplier)
+      setShowDeleteSupplierModal(true)
+    } catch (err: any) {
+      setSuppliersError(err.response?.data?.detail || err.message || 'שגיאה בבדיקת עסקאות')
     }
-    
+  }
+
+  // Confirm delete supplier after modal
+  const confirmDeleteSupplier = async (transferToSupplierId?: number) => {
+    if (!supplierToDelete) return
+
     setSuppliersError(null)
     setSuppliersLoading(true)
     try {
-      await SupplierAPI.deleteSupplier(supplierId)
+      await SupplierAPI.deleteSupplier(supplierToDelete.id, transferToSupplierId)
+      setShowDeleteSupplierModal(false)
+      setSupplierToDelete(null)
+      setSupplierTransactionCount(0)
       await fetchSuppliers()
     } catch (err: any) {
       setSuppliersError(err.response?.data?.detail || err.message || 'שגיאה במחיקת הספק')
@@ -337,14 +364,31 @@ export default function Settings() {
 
 
   const handleDeleteCategory = async (categoryId: number, categoryName: string) => {
-    if (!confirm(`האם אתה בטוח שברצונך למחוק את הקטגוריה "${categoryName}"?`)) {
-      return
+    const category = categories.find(c => c.id === categoryId)
+    if (!category) return
+
+    try {
+      // Get suppliers for this category
+      const suppliers = await CategoryAPI.getCategorySuppliers(categoryId)
+      setCategorySuppliers(suppliers)
+      setCategoryToDelete(category)
+      setShowDeleteCategoryModal(true)
+    } catch (err: any) {
+      setError(err.response?.data?.detail || err.message || 'שגיאה בטעינת הספקים')
     }
+  }
+
+  // Confirm delete category after modal
+  const confirmDeleteCategory = async () => {
+    if (!categoryToDelete) return
 
     setError(null)
     setLoading(true)
     try {
-      await CategoryAPI.deleteCategory(categoryId)
+      await CategoryAPI.deleteCategory(categoryToDelete.id)
+      setShowDeleteCategoryModal(false)
+      setCategoryToDelete(null)
+      setCategorySuppliers([])
       await fetchCategories()
     } catch (err: any) {
       setError(err.response?.data?.detail || err.message || 'שגיאה במחיקת הקטגוריה')
@@ -885,6 +929,34 @@ export default function Settings() {
           )}
         </div>
       </div>
+
+      {/* Delete Supplier Modal */}
+      <DeleteSupplierModal
+        isOpen={showDeleteSupplierModal}
+        onClose={() => {
+          setShowDeleteSupplierModal(false)
+          setSupplierToDelete(null)
+          setSupplierTransactionCount(0)
+        }}
+        onConfirm={confirmDeleteSupplier}
+        supplier={supplierToDelete}
+        allSuppliers={suppliers}
+        transactionCount={supplierTransactionCount}
+      />
+
+      {/* Delete Category Modal */}
+      <DeleteCategoryModal
+        isOpen={showDeleteCategoryModal}
+        onClose={() => {
+          setShowDeleteCategoryModal(false)
+          setCategoryToDelete(null)
+          setCategorySuppliers([])
+        }}
+        onConfirm={confirmDeleteCategory}
+        categoryName={categoryToDelete?.name || ''}
+        suppliers={categorySuppliers}
+        loading={loading}
+      />
     </div>
   )
 }

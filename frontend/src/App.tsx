@@ -65,8 +65,17 @@ function AppContent() {
   const dispatch = useDispatch()
   const token = useSelector((s: RootState) => s.auth.token)
   const me = useSelector((s: RootState) => s.auth.me)
+  const loading = useSelector((s: RootState) => s.auth.loading)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
+
+  // Auto-validate token and fetch user data on app startup if token exists
+  useEffect(() => {
+    if (token && !me && !loading) {
+      // Token exists but user data is not loaded - fetch it
+      dispatch(fetchMe() as any)
+    }
+  }, [token, me, loading, dispatch])
 
   const onLogout = () => {
     dispatch(logout())

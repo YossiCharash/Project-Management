@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
 from backend.core.deps import DBSessionDep, require_roles, get_current_user, require_admin
 from backend.models.user import UserRole
 from backend.models.supplier import Supplier
@@ -9,6 +9,9 @@ from backend.schemas.supplier import SupplierCreate, SupplierOut, SupplierUpdate
 from backend.services.audit_service import AuditService
 from backend.services.supplier_service import SupplierService
 from backend.core.config import settings
+from sqlalchemy import select, func
+from backend.models.transaction import Transaction
+from backend.models.recurring_transaction import RecurringTransactionTemplate
 import os
 import re
 import shutil
@@ -124,16 +127,64 @@ async def update_supplier(supplier_id: int, db: DBSessionDep, data: SupplierUpda
     return updated_supplier
 
 
+@router.get("/{supplier_id}/transaction-count")
+async def get_supplier_transaction_count(supplier_id: int, db: DBSessionDep, user = Depends(get_current_user)):
+    """Get transaction count for a supplier"""
+    supplier = await SupplierRepository(db).get(supplier_id)
+    if not supplier:
+        raise HTTPException(status_code=404, detail="Supplier not found")
+    
+    count_query = select(func.count(Transaction.id)).where(Transaction.supplier_id == supplier_id)
+    result = await db.execute(count_query)
+    count = result.scalar_one() or 0
+    
+    return {"supplier_id": supplier_id, "transaction_count": count}
+
+
 @router.delete("/{supplier_id}")
-async def delete_supplier(supplier_id: int, db: DBSessionDep, user = Depends(require_admin())):
-    """Delete supplier - Admin only"""
+async def delete_supplier(
+    supplier_id: int, 
+    db: DBSessionDep, 
+    transfer_to_supplier_id: int | None = Query(None, description="Supplier ID to transfer transactions to"),
+    user = Depends(require_admin())
+):
+    """Delete supplier - Admin only. If transfer_to_supplier_id is provided, transfers all transactions to that supplier before deletion."""
     repo = SupplierRepository(db)
     supplier = await repo.get(supplier_id)
     if not supplier:
         raise HTTPException(status_code=404, detail="Supplier not found")
     
+    # If transfer_to_supplier_id is provided, transfer transactions
+    if transfer_to_supplier_id is not None:
+        if transfer_to_supplier_id == supplier_id:
+            raise HTTPException(status_code=400, detail="Cannot transfer transactions to the same supplier")
+        
+        transfer_to_supplier = await repo.get(transfer_to_supplier_id)
+        if not transfer_to_supplier:
+            raise HTTPException(status_code=404, detail="Transfer target supplier not found")
+        
+        # Transfer all transactions
+        transactions_query = select(Transaction).where(Transaction.supplier_id == supplier_id)
+        result = await db.execute(transactions_query)
+        transactions = result.scalars().all()
+        
+        for tx in transactions:
+            tx.supplier_id = transfer_to_supplier_id
+        
+        # Transfer all recurring transaction templates
+        templates_query = select(RecurringTransactionTemplate).where(RecurringTransactionTemplate.supplier_id == supplier_id)
+        templates_result = await db.execute(templates_query)
+        templates = templates_result.scalars().all()
+        
+        for template in templates:
+            template.supplier_id = transfer_to_supplier_id
+        
+        await db.commit()
+    
     # Store supplier details for audit log
     supplier_details = {'name': supplier.name}
+    if transfer_to_supplier_id is not None:
+        supplier_details['transferred_to_supplier_id'] = transfer_to_supplier_id
     
     await repo.delete(supplier)
     

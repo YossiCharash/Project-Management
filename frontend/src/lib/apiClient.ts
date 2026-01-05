@@ -479,6 +479,12 @@ export class CategoryAPI {
   static async deleteCategory(categoryId: number): Promise<void> {
     await api.delete(`/categories/${categoryId}`)
   }
+
+  // Get suppliers for a category
+  static async getCategorySuppliers(categoryId: number): Promise<Array<{ id: number; name: string; category: string | null; transaction_count: number }>> {
+    const { data } = await api.get<Array<{ id: number; name: string; category: string | null; transaction_count: number }>>(`/categories/${categoryId}/suppliers`)
+    return data
+  }
 }
 
 export interface Supplier {
@@ -535,7 +541,14 @@ export class SupplierAPI {
   }
 
   // Delete a supplier
-  static async deleteSupplier(supplierId: number): Promise<void> {
-    await api.delete(`/suppliers/${supplierId}`)
+  static async deleteSupplier(supplierId: number, transferToSupplierId?: number): Promise<void> {
+    const params = transferToSupplierId ? { transfer_to_supplier_id: transferToSupplierId } : {}
+    await api.delete(`/suppliers/${supplierId}`, { params })
+  }
+
+  // Get transaction count for a supplier
+  static async getSupplierTransactionCount(supplierId: number): Promise<{ supplier_id: number; transaction_count: number }> {
+    const { data } = await api.get<{ supplier_id: number; transaction_count: number }>(`/suppliers/${supplierId}/transaction-count`)
+    return data
   }
 }

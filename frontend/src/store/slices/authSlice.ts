@@ -19,13 +19,54 @@ interface AuthState {
   requiresPasswordChange: boolean
 }
 
+// Helper functions for caching user data
+const CACHE_KEY_USER = 'cached_user'
+const CACHE_KEY_REQUIRES_PASSWORD_CHANGE = 'requires_password_change'
+
+const getCachedUser = (): CurrentUser | null => {
+  try {
+    const cached = localStorage.getItem(CACHE_KEY_USER)
+    if (cached) {
+      return JSON.parse(cached) as CurrentUser
+    }
+  } catch (e) {
+    console.error('Failed to parse cached user data:', e)
+  }
+  return null
+}
+
+const saveCachedUser = (user: CurrentUser | null) => {
+  if (user) {
+    localStorage.setItem(CACHE_KEY_USER, JSON.stringify(user))
+  } else {
+    localStorage.removeItem(CACHE_KEY_USER)
+  }
+}
+
+const getCachedRequiresPasswordChange = (): boolean => {
+  try {
+    const cached = localStorage.getItem(CACHE_KEY_REQUIRES_PASSWORD_CHANGE)
+    return cached === 'true'
+  } catch (e) {
+    return false
+  }
+}
+
+const saveCachedRequiresPasswordChange = (requires: boolean) => {
+  if (requires) {
+    localStorage.setItem(CACHE_KEY_REQUIRES_PASSWORD_CHANGE, 'true')
+  } else {
+    localStorage.removeItem(CACHE_KEY_REQUIRES_PASSWORD_CHANGE)
+  }
+}
+
 const initialState: AuthState = { 
   token: localStorage.getItem('token'), 
   loading: false, 
   error: null, 
   registered: false, 
-  me: null,
-  requiresPasswordChange: false
+  me: getCachedUser(), // Restore user data from cache
+  requiresPasswordChange: getCachedRequiresPasswordChange()
 }
 
 export const login = createAsyncThunk(
@@ -139,9 +180,12 @@ const slice = createSlice({
       state.me = null
       state.requiresPasswordChange = false
       localStorage.removeItem('token')
+      saveCachedUser(null) // Clear cached user data
+      saveCachedRequiresPasswordChange(false)
     },
     clearPasswordChangeRequirement(state) {
       state.requiresPasswordChange = false
+      saveCachedRequiresPasswordChange(false)
     },
     clearAuthState(state){
       state.error = null
@@ -164,6 +208,7 @@ const slice = createSlice({
           state.token = action.payload.token
           state.requiresPasswordChange = action.payload.requires_password_change || false
           localStorage.setItem('token', action.payload.token)
+          saveCachedRequiresPasswordChange(state.requiresPasswordChange)
         }
       })
       .addCase(login.rejected, (state, action) => {
@@ -191,6 +236,7 @@ const slice = createSlice({
       .addCase(fetchMe.fulfilled, (state, action) => {
         state.loading = false
         state.me = action.payload
+        saveCachedUser(action.payload) // Cache user data
       })
       .addCase(fetchMe.rejected, (state, action) => {
         state.loading = false
