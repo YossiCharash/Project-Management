@@ -58,12 +58,10 @@ jobs:
           context: ./frontend
           file: ./frontend/Dockerfile
           push: ${{ github.event_name != 'pull_request' }}
+          no-cache: true  # <--- הוסף את השורה הזו כאן
           tags: |
-            ${{ secrets.DOCKER_USERNAME }}/project-management-frontend:latest
-            ${{ secrets.DOCKER_USERNAME }}/project-management-frontend:${{ github.sha }}
-          cache-from: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/project-management-frontend:buildcache
-          cache-to: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/project-management-frontend:buildcache,mode=max
-
+              ${{ secrets.DOCKER_USERNAME }}/project-management-frontend:latest
+              ${{ secrets.DOCKER_USERNAME }}/project-management-frontend:${{ github.sha }}
   deploy:
     needs: [build-and-push-backend, build-and-push-frontend]
     runs-on: ubuntu-latest
