@@ -188,6 +188,8 @@ async def delete_category(
     all_suppliers = await supplier_repo.list()
     category_suppliers = [s for s in all_suppliers if s.category_id == category_id]
     
+    # Only prevent deletion if suppliers have transactions
+    # If suppliers exist but have no transactions, we'll set their category_id to NULL before deletion
     if category_suppliers:
         supplier_ids = [s.id for s in category_suppliers]
         # Count transactions for these suppliers
@@ -201,6 +203,13 @@ async def delete_category(
                 status_code=400,
                 detail=f"לא ניתן למחוק קטגוריה זו כי יש {transaction_count} עסקאות הקשורות לספקים בקטגוריה זו. הספקים: {', '.join(supplier_names)}"
             )
+        
+        # If suppliers exist but have no transactions, set their category_id to NULL
+        # This allows the category to be deleted
+        from sqlalchemy import update
+        update_query = update(Supplier).where(Supplier.id.in_(supplier_ids)).values(category_id=None)
+        await db.execute(update_query)
+        await db.commit()
     
     # Check for direct category references in transactions (not through suppliers)
     from backend.models.recurring_transaction import RecurringTransactionTemplate

@@ -555,6 +555,17 @@ const formatDate = (value: string | null) => {
     }
   }
 
+  const formatExclusiveEndDate = (value: string | null) => {
+    try {
+      if (!value) return 'לא הוגדר'
+      const date = new Date(value)
+      date.setDate(date.getDate() - 1)
+      return date.toLocaleDateString('he-IL')
+    } catch {
+      return 'לא הוגדר'
+    }
+  }
+
   const resolveFileUrl = (fileUrl: string | null | undefined): string | null => {
     if (!fileUrl) return null
     if (fileUrl.startsWith('http')) {
@@ -4051,9 +4062,9 @@ const formatDate = (value: string | null) => {
                                 <div className="font-semibold text-gray-900 dark:text-white mb-1">
                                   {period.year_label}
                                 </div>
-                                <div className="text-sm text-gray-600 dark:text-gray-400">
-                                  {formatDate(period.start_date)} - {formatDate(period.end_date)}
-                                </div>
+                              <div className="text-sm text-gray-600 dark:text-gray-400">
+                                {formatDate(period.start_date)} - {formatExclusiveEndDate(period.end_date)}
+                              </div>
                               </div>
                               <div className="text-left ml-4">
                                 <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">סיכום כלכלי:</div>
@@ -4164,7 +4175,7 @@ const formatDate = (value: string | null) => {
                   סיכום תקופת חוזה - {selectedPeriodSummary.year_label}
                 </h2>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                  {formatDate(selectedPeriodSummary.start_date)} - {formatDate(selectedPeriodSummary.end_date)}
+                  {formatDate(selectedPeriodSummary.start_date)} - {formatExclusiveEndDate(selectedPeriodSummary.end_date)}
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -4276,7 +4287,7 @@ const formatDate = (value: string | null) => {
                               {budget.start_date ? formatDate(budget.start_date) : '-'}
                             </td>
                             <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">
-                              {budget.end_date ? formatDate(budget.end_date) : '-'}
+                              {budget.end_date ? formatExclusiveEndDate(budget.end_date) : '-'}
                             </td>
                             <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">
                               {budget.is_active ? 'כן' : 'לא'}
