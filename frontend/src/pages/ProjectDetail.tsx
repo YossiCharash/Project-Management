@@ -559,7 +559,7 @@ const formatDate = (value: string | null) => {
     try {
       if (!value) return 'לא הוגדר'
       const date = new Date(value)
-      date.setDate(date.getDate() + 1)
+      // date.setDate(date.getDate() + 1)
       return date.toLocaleDateString('he-IL')
     } catch {
       return 'לא הוגדר'
