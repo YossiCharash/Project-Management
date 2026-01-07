@@ -11,10 +11,12 @@ import CreateTransactionModal from '../components/CreateTransactionModal'
 import CreateProjectModal from '../components/CreateProjectModal'
 import EditRecurringTemplateModal from '../components/EditRecurringTemplateModal'
 import EditRecurringSelectionModal from '../components/EditRecurringSelectionModal'
-import DeleteSupplierModal from '../components/DeleteSupplierModal'
 import { useAppDispatch, useAppSelector } from '../utils/hooks'
 import { fetchSuppliers } from '../store/slices/suppliersSlice'
-import { ChevronDown, History, Download, Edit, ChevronLeft } from 'lucide-react'
+import { archiveProject, hardDeleteProject } from '../store/slices/projectsSlice'
+import { fetchMe } from '../store/slices/authSlice'
+import { ChevronDown, History, Download, Edit, ChevronLeft, Archive } from 'lucide-react'
+import Modal from '../components/Modal'
 import {
   CATEGORY_LABELS,
   normalizeCategoryForFilter,
@@ -181,6 +183,8 @@ export default function ProjectDetail() {
   const navigate = useNavigate()
   const dispatch = useAppDispatch()
   const { items: suppliers } = useAppSelector(s => s.suppliers)
+  const me = useAppSelector(s => s.auth.me)
+  const isAdmin = me?.role === 'Admin'
   const [txs, setTxs] = useState<Transaction[]>([])
   const [expenseCategories, setExpenseCategories] = useState<ExpenseCategory[]>([])
   const [projectBudgets, setProjectBudgets] = useState<BudgetWithSpending[]>([])
@@ -200,10 +204,11 @@ export default function ProjectDetail() {
   const [subprojectsLoading, setSubprojectsLoading] = useState<boolean>(false)
   const [showEditProjectModal, setShowEditProjectModal] = useState(false)
   const [editingProject, setEditingProject] = useState<any | null>(null)
-  
-  // Contract Period Edit State
-  const [isEditingPeriod, setIsEditingPeriod] = useState(false)
-  const [editPeriodDates, setEditPeriodDates] = useState<{start: string, end: string}>({start: '', end: ''})
+  const [showArchiveDeleteModal, setShowArchiveDeleteModal] = useState(false)
+  const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false)
+  const [deletePassword, setDeletePassword] = useState('')
+  const [deletePasswordError, setDeletePasswordError] = useState('')
+  const [isDeleting, setIsDeleting] = useState(false)
 
   const [filterType, setFilterType] = useState<'all' | 'Income' | 'Expense'>('all')
   const [filterExceptional, setFilterExceptional] = useState<'all' | 'only'>('all')
@@ -245,6 +250,10 @@ export default function ProjectDetail() {
       console.error('Failed to load recurring templates', err)
     }
   }
+
+  useEffect(() => {
+    if (!me) dispatch(fetchMe())
+  }, [dispatch, me])
 
   useEffect(() => {
     if (transactionTypeFilter === 'recurring') {
@@ -559,17 +568,6 @@ const formatDate = (value: string | null) => {
     }
   }
 
-  const formatExclusiveEndDate = (value: string | null) => {
-    try {
-      if (!value) return 'לא הוגדר'
-      const date = new Date(value)
-      // date.setDate(date.getDate() + 1)
-      return date.toLocaleDateString('he-IL')
-    } catch {
-      return 'לא הוגדר'
-    }
-  }
-
   const resolveFileUrl = (fileUrl: string | null | undefined): string | null => {
     if (!fileUrl) return null
     if (fileUrl.startsWith('http')) {
@@ -624,6 +622,48 @@ const formatDate = (value: string | null) => {
     await loadProjectInfo()
     setShowEditProjectModal(false)
     setEditingProject(null)
+  }
+
+  const handleArchiveDeleteClick = () => {
+    setShowArchiveDeleteModal(true)
+  }
+
+  const handleArchive = async () => {
+    if (!id || isNaN(Number(id))) return
+    try {
+      await dispatch(archiveProject(Number(id))).unwrap()
+      setShowArchiveDeleteModal(false)
+      navigate('/dashboard')
+    } catch (err: any) {
+      alert('שגיאה בארכוב הפרויקט: ' + (err || 'Unknown error'))
+    }
+  }
+
+  const handleDeleteChoice = () => {
+    setShowArchiveDeleteModal(false)
+    setShowDeleteConfirmModal(true)
+  }
+
+  const handleDeleteConfirm = async () => {
+    if (!id || isNaN(Number(id))) return
+    if (!deletePassword) {
+      setDeletePasswordError('נא להזין סיסמה')
+      return
+    }
+    
+    setIsDeleting(true)
+    setDeletePasswordError('')
+    
+    try {
+      await dispatch(hardDeleteProject({ id: Number(id), password: deletePassword })).unwrap()
+      setShowDeleteConfirmModal(false)
+      setDeletePassword('')
+      navigate('/dashboard')
+    } catch (err: any) {
+      setDeletePasswordError(err || 'סיסמה שגויה או שגיאה במחיקה')
+    } finally {
+      setIsDeleting(false)
+    }
   }
 
   const loadProjectInfo = async () => {
@@ -1617,6 +1657,15 @@ const formatDate = (value: string | null) => {
             <Edit className="w-4 h-4" />
             ערוך פרויקט
           </button>
+          {isAdmin && (
+            <button
+              onClick={handleArchiveDeleteClick}
+              className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors flex items-center gap-2 text-sm"
+            >
+              <Archive className="w-4 h-4" />
+              ארכב / מחק
+            </button>
+          )}
           <button
             onClick={() => navigate('/dashboard')}
             className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors text-sm"
@@ -4066,9 +4115,9 @@ const formatDate = (value: string | null) => {
                                 <div className="font-semibold text-gray-900 dark:text-white mb-1">
                                   {period.year_label}
                                 </div>
-                              <div className="text-sm text-gray-600 dark:text-gray-400">
-                                {formatDate(period.start_date)} - {formatExclusiveEndDate(period.end_date)}
-                              </div>
+                                <div className="text-sm text-gray-600 dark:text-gray-400">
+                                  {formatDate(period.start_date)} - {formatDate(period.end_date)}
+                                </div>
                               </div>
                               <div className="text-left ml-4">
                                 <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">סיכום כלכלי:</div>
@@ -4178,85 +4227,11 @@ const formatDate = (value: string | null) => {
                 <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
                   סיכום תקופת חוזה - {selectedPeriodSummary.year_label}
                 </h2>
-                {isEditingPeriod ? (
-                  <div className="flex items-center gap-2 mt-2">
-                    <input
-                      type="date"
-                      value={editPeriodDates.start}
-                      onChange={(e) => setEditPeriodDates({ ...editPeriodDates, start: e.target.value })}
-                      className="text-sm rounded border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 dark:text-white"
-                    />
-                    <span className="text-gray-500">-</span>
-                    <input
-                      type="date"
-                      value={editPeriodDates.end}
-                      onChange={(e) => setEditPeriodDates({ ...editPeriodDates, end: e.target.value })}
-                      className="text-sm rounded border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 dark:text-white"
-                    />
-                  </div>
-                ) : (
-                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                    {formatDate(selectedPeriodSummary.start_date)} - {formatExclusiveEndDate(selectedPeriodSummary.end_date)}
-                  </p>
-                )}
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  {formatDate(selectedPeriodSummary.start_date)} - {formatDate(selectedPeriodSummary.end_date)}
+                </p>
               </div>
               <div className="flex items-center gap-2">
-                {isEditingPeriod ? (
-                  <>
-                    <button
-                      onClick={async () => {
-                        if (!id || !selectedPeriodSummary) return
-                        try {
-                          await ProjectAPI.updateContractPeriod(
-                            parseInt(id),
-                            selectedPeriodSummary.period_id,
-                            {
-                              start_date: editPeriodDates.start,
-                              end_date: editPeriodDates.end
-                            }
-                          )
-                          // Refresh data
-                          await loadContractPeriods()
-                          
-                          // Update summary object
-                          setSelectedPeriodSummary({
-                            ...selectedPeriodSummary,
-                            start_date: editPeriodDates.start,
-                            end_date: editPeriodDates.end
-                          })
-                          
-                          setIsEditingPeriod(false)
-                        } catch (err: any) {
-                          alert(err?.response?.data?.detail || 'שגיאה בעדכון תאריכים')
-                        }
-                      }}
-                      className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
-                    >
-                      שמור
-                    </button>
-                    <button
-                      onClick={() => setIsEditingPeriod(false)}
-                      className="px-3 py-1.5 bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors text-sm font-medium"
-                    >
-                      ביטול
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    onClick={() => {
-                      setEditPeriodDates({
-                        start: selectedPeriodSummary.start_date,
-                        end: selectedPeriodSummary.end_date
-                      })
-                      setIsEditingPeriod(true)
-                    }}
-                    className="px-3 py-1.5 bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors flex items-center gap-1 text-sm mr-2"
-                  >
-                    <Edit className="w-4 h-4" />
-                    ערוך תאריכים
-                  </button>
-                )}
-
                 <button
                   onClick={async () => {
                     try {
@@ -4365,7 +4340,7 @@ const formatDate = (value: string | null) => {
                               {budget.start_date ? formatDate(budget.start_date) : '-'}
                             </td>
                             <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">
-                              {budget.end_date ? formatExclusiveEndDate(budget.end_date) : '-'}
+                              {budget.end_date ? formatDate(budget.end_date) : '-'}
                             </td>
                             <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">
                               {budget.is_active ? 'כן' : 'לא'}
@@ -4813,15 +4788,6 @@ const formatDate = (value: string | null) => {
             return monthData.income > 0 || monthData.totalExpenses > 0
           }
           
-          // Helper function to get text size class based on number length
-          const getTextSizeClass = (value: number): string => {
-            const formatted = formatCurrency(value)
-            const length = formatted.length
-            if (length > 10) return 'text-[9px]'
-            if (length > 8) return 'text-[10px]'
-            return 'text-xs'
-          }
-          
           // Get monthly budget amount (the fixed amount collected from tenants each month)
           const monthlyBudgetAmount = Number(projectBudget?.budget_monthly || 0)
           
@@ -4883,13 +4849,11 @@ const formatDate = (value: string | null) => {
                         const hasTransactions = hasMonthTransactions(m.monthKey)
                         // Show if month has been reached OR if there are transactions for this month
                         const shouldShow = hasReached || hasTransactions
-                        const value = shouldShow && monthlyData[m.monthKey].expenses[category] 
-                          ? monthlyData[m.monthKey].expenses[category]
-                          : shouldShow ? 0 : null
-                        const textSizeClass = value !== null ? getTextSizeClass(value) : ''
                         return (
-                          <td key={monthIdx} className={`border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-1 py-1 text-center text-gray-900 dark:text-white ${textSizeClass}`}>
-                            {value !== null ? formatCurrency(value) : ''}
+                          <td key={monthIdx} className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-2 text-center text-gray-900 dark:text-white">
+                            {shouldShow && monthlyData[m.monthKey].expenses[category] 
+                              ? formatCurrency(monthlyData[m.monthKey].expenses[category])
+                              : shouldShow ? '0' : ''}
                           </td>
                         )
                       })}
@@ -4915,11 +4879,9 @@ const formatDate = (value: string | null) => {
                       const hasTransactions = hasMonthTransactions(m.monthKey)
                       // Show if month has been reached OR if there are transactions for this month
                       const shouldShow = hasReached || hasTransactions
-                      const value = shouldShow ? monthlyIncome[monthIdx] : null
-                      const textSizeClass = value !== null ? getTextSizeClass(value) : ''
                       return (
-                        <td key={monthIdx} className={`border border-gray-300 dark:border-gray-600 bg-pink-200 dark:bg-pink-900 px-1 py-1 text-center font-semibold text-gray-900 dark:text-white ${textSizeClass}`}>
-                          {value !== null ? formatCurrency(value) : ''}
+                        <td key={monthIdx} className="border border-gray-300 dark:border-gray-600 bg-pink-200 dark:bg-pink-900 px-1 py-1 text-center font-semibold text-gray-900 dark:text-white">
+                          {shouldShow ? formatCurrency(monthlyIncome[monthIdx]) : ''}
                         </td>
                       )
                     })}
@@ -4935,11 +4897,9 @@ const formatDate = (value: string | null) => {
                       const hasTransactions = hasMonthTransactions(m.monthKey)
                       // Show if month has been reached OR if there are transactions for this month
                       const shouldShow = hasReached || hasTransactions
-                      const value = shouldShow ? monthlyTotals[monthIdx] : null
-                      const textSizeClass = value !== null ? getTextSizeClass(value) : ''
                       return (
-                        <td key={monthIdx} className={`border border-gray-300 dark:border-gray-600 bg-yellow-200 dark:bg-yellow-900 px-1 py-1 text-center font-semibold text-gray-900 dark:text-white ${textSizeClass}`}>
-                          {value !== null ? formatCurrency(value) : ''}
+                        <td key={monthIdx} className="border border-gray-300 dark:border-gray-600 bg-yellow-200 dark:bg-yellow-900 px-1 py-1 text-center font-semibold text-gray-900 dark:text-white">
+                          {shouldShow ? formatCurrency(monthlyTotals[monthIdx]) : ''}
                         </td>
                       )
                     })}
@@ -4955,11 +4915,10 @@ const formatDate = (value: string | null) => {
                       const hasTransactions = hasMonthTransactions(m.monthKey)
                       // Show if month has been reached OR if there are transactions for this month
                       const shouldShow = hasReached || hasTransactions
-                      const balance = shouldShow ? monthlyIncome[monthIdx] - monthlyTotals[monthIdx] : null
-                      const textSizeClass = balance !== null ? getTextSizeClass(Math.abs(balance)) : ''
+                      const balance = monthlyIncome[monthIdx] - monthlyTotals[monthIdx]
                       return (
-                        <td key={monthIdx} className={`border border-gray-300 dark:border-gray-600 bg-blue-200 dark:bg-blue-900 px-1 py-1 text-center font-semibold text-gray-900 dark:text-white ${textSizeClass}`}>
-                          {balance !== null ? formatCurrency(balance) : ''}
+                        <td key={monthIdx} className="border border-gray-300 dark:border-gray-600 bg-blue-200 dark:bg-blue-900 px-1 py-1 text-center font-semibold text-gray-900 dark:text-white">
+                          {shouldShow ? formatCurrency(balance) : ''}
                         </td>
                       )
                     })}
@@ -4975,11 +4934,9 @@ const formatDate = (value: string | null) => {
                       const hasTransactions = hasMonthTransactions(m.monthKey)
                       // Show if month has been reached OR if there are transactions for this month
                       const shouldShow = hasReached || hasTransactions
-                      const value = shouldShow ? runningTotals[monthIdx] : null
-                      const textSizeClass = value !== null ? getTextSizeClass(Math.abs(value)) : ''
                       return (
-                        <td key={monthIdx} className={`border border-gray-300 dark:border-gray-600 bg-green-200 dark:bg-green-900 px-1 py-1 text-center font-semibold text-gray-900 dark:text-white ${textSizeClass}`}>
-                          {value !== null ? formatCurrency(value) : ''}
+                        <td key={monthIdx} className="border border-gray-300 dark:border-gray-600 bg-green-200 dark:bg-green-900 px-1 py-1 text-center font-semibold text-gray-900 dark:text-white">
+                          {shouldShow ? formatCurrency(runningTotals[monthIdx]) : ''}
                         </td>
                       )
                     })}
@@ -4990,6 +4947,95 @@ const formatDate = (value: string | null) => {
           )
         })()}
       </motion.div>
+
+      {/* Archive/Delete Choice Modal */}
+      <Modal
+        open={showArchiveDeleteModal}
+        onClose={() => setShowArchiveDeleteModal(false)}
+        title="מה תרצה לעשות?"
+      >
+        <div className="space-y-4">
+          <p className="text-gray-700 dark:text-gray-300">
+            בחר פעולה עבור הפרויקט "{projectName}":
+          </p>
+          <div className="flex gap-3">
+            <button
+              onClick={handleArchive}
+              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              ארכב
+            </button>
+            <button
+              onClick={handleDeleteChoice}
+              className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+            >
+              מחק לצמיתות
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Delete Confirmation Modal with Password */}
+      <Modal
+        open={showDeleteConfirmModal}
+        onClose={() => {
+          setShowDeleteConfirmModal(false)
+          setDeletePassword('')
+          setDeletePasswordError('')
+        }}
+        title="מחיקת פרויקט לצמיתות"
+      >
+        <div className="space-y-4">
+          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+            <p className="text-red-800 dark:text-red-200 font-semibold mb-2">
+              אזהרה: פעולה זו אינה הפיכה!
+            </p>
+            <p className="text-red-700 dark:text-red-300 text-sm">
+              הפרויקט "{projectName}" ימחק לצמיתות יחד עם כל העסקאות והקבצים שלו.
+              לא ניתן לשחזר את המידע לאחר המחיקה.
+            </p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              הזן סיסמה לאימות:
+            </label>
+            <input
+              type="password"
+              value={deletePassword}
+              onChange={(e) => {
+                setDeletePassword(e.target.value)
+                setDeletePasswordError('')
+              }}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+              placeholder="סיסמה"
+              autoFocus
+            />
+            {deletePasswordError && (
+              <p className="mt-1 text-sm text-red-600 dark:text-red-400">{deletePasswordError}</p>
+            )}
+          </div>
+          <div className="flex gap-3">
+            <button
+              onClick={() => {
+                setShowDeleteConfirmModal(false)
+                setDeletePassword('')
+                setDeletePasswordError('')
+              }}
+              className="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+              disabled={isDeleting}
+            >
+              ביטול
+            </button>
+            <button
+              onClick={handleDeleteConfirm}
+              disabled={isDeleting || !deletePassword}
+              className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isDeleting ? 'מוחק...' : 'מחק לצמיתות'}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }

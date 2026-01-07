@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { useAppDispatch, useAppSelector } from '../utils/hooks'
-import { archiveProject, createProject, fetchProjects, fetchProjectsWithArchived, restoreProject, updateProject } from '../store/slices/projectsSlice'
+import { archiveProject, createProject, fetchProjects, fetchProjectsWithArchived, restoreProject, updateProject, hardDeleteProject } from '../store/slices/projectsSlice'
 import { Link, useNavigate } from 'react-router-dom'
 import CategoryBarChart, { CategoryPoint } from '../components/charts/CategoryBarChart'
 import { fetchMe } from '../store/slices/authSlice'
@@ -38,6 +38,12 @@ export default function Dashboard() {
   const [editingId, setEditingId] = useState<number | null>(null)
   const [openCreate, setOpenCreate] = useState(false)
   const [projectCharts, setProjectCharts] = useState<Record<number, CategoryPoint[]>>({})
+  const [showArchiveDeleteModal, setShowArchiveDeleteModal] = useState(false)
+  const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false)
+  const [selectedProjectForAction, setSelectedProjectForAction] = useState<{ id: number; name: string } | null>(null)
+  const [deletePassword, setDeletePassword] = useState('')
+  const [deletePasswordError, setDeletePasswordError] = useState('')
+  const [isDeleting, setIsDeleting] = useState(false)
 
   useEffect(() => { if (!me) dispatch(fetchMe()) }, [dispatch, me])
   
@@ -123,9 +129,56 @@ export default function Dashboard() {
 
   const onCloseModal = () => { setOpenCreate(false); resetForm() }
 
+  const handleArchiveDeleteClick = (project: { id: number; name: string }) => {
+    setSelectedProjectForAction(project)
+    setShowArchiveDeleteModal(true)
+  }
+
+  const handleArchive = async () => {
+    if (!selectedProjectForAction) return
+    try {
+      await dispatch(archiveProject(selectedProjectForAction.id)).unwrap()
+      setShowArchiveDeleteModal(false)
+      setSelectedProjectForAction(null)
+      dispatch(fetchProjects())
+    } catch (err: any) {
+      alert('שגיאה בארכוב הפרויקט: ' + (err || 'Unknown error'))
+    }
+  }
+
+  const handleDeleteChoice = () => {
+    setShowArchiveDeleteModal(false)
+    setShowDeleteConfirmModal(true)
+  }
+
+  const handleDeleteConfirm = async () => {
+    if (!selectedProjectForAction) return
+    if (!deletePassword) {
+      setDeletePasswordError('נא להזין סיסמה')
+      return
+    }
+    
+    setIsDeleting(true)
+    setDeletePasswordError('')
+    
+    try {
+      await dispatch(hardDeleteProject({ id: selectedProjectForAction.id, password: deletePassword })).unwrap()
+      setShowDeleteConfirmModal(false)
+      setDeletePassword('')
+      setSelectedProjectForAction(null)
+      dispatch(fetchProjects())
+    } catch (err: any) {
+      setDeletePasswordError(err || 'סיסמה שגויה או שגיאה במחיקה')
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  // Legacy archive function - kept for backward compatibility if needed
   const archive = async (id: number) => {
-    if (confirm('האם לארכב את הפרויקט? ניתן לשחזר מאוחר יותר.')) {
-      await dispatch(archiveProject(id))
+    const project = items.find(p => p.id === id)
+    if (project) {
+      handleArchiveDeleteClick({ id, name: project.name || `פרויקט ${id}` })
     }
   }
 
@@ -133,7 +186,8 @@ export default function Dashboard() {
     await dispatch(restoreProject(id))
   }
 
-  const isAdmin = me?.role === 'Admin' || me?.role === 'ProjectManager'
+  const isAdmin = me?.role === 'Admin'
+  const canDelete = me?.role === 'Admin' // Only Admin can delete
 
   // Enhanced dashboard handlers
   const handleProjectClick = (project: ProjectWithFinance) => {
@@ -217,6 +271,98 @@ export default function Dashboard() {
         onSuccess={handleProjectSuccess}
         editingProject={editingProject}
       />
+
+      {/* Archive/Delete Choice Modal */}
+      <Modal
+        open={showArchiveDeleteModal}
+        onClose={() => {
+          setShowArchiveDeleteModal(false)
+          setSelectedProjectForAction(null)
+        }}
+        title="מה תרצה לעשות?"
+      >
+        <div className="space-y-4">
+          <p className="text-gray-700 dark:text-gray-300">
+            בחר פעולה עבור הפרויקט "{selectedProjectForAction?.name}":
+          </p>
+          <div className="flex gap-3">
+            <button
+              onClick={handleArchive}
+              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              ארכב
+            </button>
+            <button
+              onClick={handleDeleteChoice}
+              className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+            >
+              מחק לצמיתות
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Delete Confirmation Modal with Password */}
+      <Modal
+        open={showDeleteConfirmModal}
+        onClose={() => {
+          setShowDeleteConfirmModal(false)
+          setDeletePassword('')
+          setDeletePasswordError('')
+        }}
+        title="מחיקת פרויקט לצמיתות"
+      >
+        <div className="space-y-4">
+          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+            <p className="text-red-800 dark:text-red-200 font-semibold mb-2">
+              אזהרה: פעולה זו אינה הפיכה!
+            </p>
+            <p className="text-red-700 dark:text-red-300 text-sm">
+              הפרויקט "{selectedProjectForAction?.name}" ימחק לצמיתות יחד עם כל העסקאות והקבצים שלו.
+              לא ניתן לשחזר את המידע לאחר המחיקה.
+            </p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              הזן סיסמה לאימות:
+            </label>
+            <input
+              type="password"
+              value={deletePassword}
+              onChange={(e) => {
+                setDeletePassword(e.target.value)
+                setDeletePasswordError('')
+              }}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+              placeholder="סיסמה"
+              autoFocus
+            />
+            {deletePasswordError && (
+              <p className="mt-1 text-sm text-red-600 dark:text-red-400">{deletePasswordError}</p>
+            )}
+          </div>
+          <div className="flex gap-3">
+            <button
+              onClick={() => {
+                setShowDeleteConfirmModal(false)
+                setDeletePassword('')
+                setDeletePasswordError('')
+              }}
+              className="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+              disabled={isDeleting}
+            >
+              ביטול
+            </button>
+            <button
+              onClick={handleDeleteConfirm}
+              disabled={isDeleting || !deletePassword}
+              className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isDeleting ? 'מוחק...' : 'מחק לצמיתות'}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }

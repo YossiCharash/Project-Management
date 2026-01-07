@@ -66,9 +66,9 @@ export const updateProject = createAsyncThunk(
 
 export const hardDeleteProject = createAsyncThunk(
   'projects/hardDelete',
-  async (id: number, { rejectWithValue }) => {
+  async ({ id, password }: { id: number; password: string }, { rejectWithValue }) => {
     try {
-      await api.delete(`/projects/${id}`)
+      await api.delete(`/projects/${id}`, { data: { password } })
       return id
     } catch (e: any) {
       return rejectWithValue(e.response?.data?.detail ?? 'Delete failed')

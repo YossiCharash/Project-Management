@@ -5,11 +5,14 @@ import os
 from uuid import uuid4
 import csv
 import io
+from pydantic import BaseModel
 
 from backend.core.deps import DBSessionDep, require_roles, get_current_user, require_admin
 from backend.core.config import settings
+from backend.core.security import verify_password
 from backend.repositories.project_repository import ProjectRepository
 from backend.repositories.transaction_repository import TransactionRepository
+from backend.repositories.user_repository import UserRepository
 from backend.schemas.project import ProjectCreate, ProjectOut, ProjectUpdate
 from backend.schemas.recurring_transaction import RecurringTransactionTemplateCreate
 from backend.services.project_service import ProjectService, calculate_monthly_income_amount
@@ -22,6 +25,13 @@ from backend.services.audit_service import AuditService
 from backend.services.contract_period_service import ContractPeriodService
 from backend.models.user import UserRole
 from backend.models.project import Project
+from backend.models.archived_contract import ArchivedContract
+from backend.models.subproject import Subproject
+from backend.models.recurring_transaction import RecurringTransactionTemplate
+from backend.models.fund import Fund
+from backend.models.budget import Budget
+from backend.models.contract_period import ContractPeriod
+from sqlalchemy import delete
 
 router = APIRouter()
 
@@ -677,9 +687,27 @@ async def restore_project(project_id: int, db: DBSessionDep, user = Depends(requ
     return restored
 
 
+class DeleteProjectRequest(BaseModel):
+    password: str
+
+
 @router.delete("/{project_id}")
-async def hard_delete_project(project_id: int, db: DBSessionDep, user = Depends(require_admin())):
-    """Hard delete project - Admin only"""
+async def hard_delete_project(
+    project_id: int, 
+    delete_request: DeleteProjectRequest,
+    db: DBSessionDep, 
+    user = Depends(require_admin())
+):
+    """Hard delete project - Admin only, requires password verification"""
+    # Verify password
+    user_repo = UserRepository(db)
+    db_user = await user_repo.get_by_id(user.id)
+    if not db_user or not db_user.password_hash:
+        raise HTTPException(status_code=400, detail="User not found or uses OAuth login")
+    
+    if not verify_password(delete_request.password, db_user.password_hash):
+        raise HTTPException(status_code=401, detail="סיסמה שגויה")
+    
     proj_repo = ProjectRepository(db)
     project = await proj_repo.get_by_id(project_id)
     if not project:
@@ -688,8 +716,61 @@ async def hard_delete_project(project_id: int, db: DBSessionDep, user = Depends(
     # Store project details for audit log
     project_details = {'name': project.name}
     
-    # delete child transactions first
-    await TransactionRepository(db).delete_by_project(project_id)
+    # Get all transactions before deletion to delete their files
+    tx_repo = TransactionRepository(db)
+    transactions = await tx_repo.list_by_project(project_id)
+    
+    # Delete all transaction files from S3 (only if S3 is configured)
+    if settings.AWS_S3_BUCKET:
+        try:
+            s3_service = S3Service()
+            for tx in transactions:
+                if tx.file_path:
+                    try:
+                        s3_service.delete_file(tx.file_path)
+                    except Exception as e:
+                        # Log error but continue deletion
+                        print(f"Warning: Failed to delete transaction file {tx.file_path}: {e}")
+            
+            # Delete project contract file if exists
+            if project.contract_file_url:
+                try:
+                    s3_service.delete_file(project.contract_file_url)
+                except Exception as e:
+                    # Log error but continue deletion
+                    print(f"Warning: Failed to delete project contract file {project.contract_file_url}: {e}")
+        except (ValueError, Exception) as e:
+            # If S3Service initialization fails (e.g., S3 not configured), log but continue with database deletion
+            print(f"Warning: S3 service not available, skipping file deletion: {e}")
+    
+    # Delete all related records before deleting the project
+    # Order matters due to foreign key constraints
+    
+    # 1. Delete archived contracts
+    await db.execute(delete(ArchivedContract).where(ArchivedContract.project_id == project_id))
+    
+    # 2. Delete contract periods
+    await db.execute(delete(ContractPeriod).where(ContractPeriod.project_id == project_id))
+    
+    # 3. Delete budgets
+    await db.execute(delete(Budget).where(Budget.project_id == project_id))
+    
+    # 4. Delete recurring transaction templates
+    await db.execute(delete(RecurringTransactionTemplate).where(RecurringTransactionTemplate.project_id == project_id))
+    
+    # 5. Delete subprojects
+    await db.execute(delete(Subproject).where(Subproject.project_id == project_id))
+    
+    # 6. Delete fund
+    await db.execute(delete(Fund).where(Fund.project_id == project_id))
+    
+    # 7. Delete transactions
+    await tx_repo.delete_by_project(project_id)
+    
+    # Commit all deletions
+    await db.commit()
+    
+    # 8. Finally, delete the project itself
     await proj_repo.delete(project)
     
     # Log delete action
@@ -1720,10 +1801,6 @@ async def close_contract_year(
         # Parse date string to date object
         from datetime import datetime as dt
         end_date_obj = dt.strptime(end_date, "%Y-%m-%d").date()
-        
-        # Subtract one day from end_date ONLY if it's the 1st of the month (as per user requirement)
-        if end_date_obj.day == 1:
-            end_date_obj = end_date_obj - timedelta(days=1)
         
         service = ContractPeriodService(db)
         contract_period = await service.close_year_manually(
