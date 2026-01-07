@@ -152,6 +152,11 @@ export class ProjectAPI {
     return data
   }
 
+  // Update contract period dates
+  static async updateContractPeriod(projectId: number, periodId: number, dates: { start_date?: string, end_date?: string }): Promise<void> {
+    await api.put(`/projects/${projectId}/contract-periods/${periodId}`, dates)
+  }
+
   // Export contract period to CSV
   static async exportContractPeriodCSV(projectId: number, periodId: number): Promise<Blob> {
     const response = await api.get(`/projects/${projectId}/contract-periods/${periodId}/export-csv`, {

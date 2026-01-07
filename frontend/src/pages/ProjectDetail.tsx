@@ -200,6 +200,10 @@ export default function ProjectDetail() {
   const [subprojectsLoading, setSubprojectsLoading] = useState<boolean>(false)
   const [showEditProjectModal, setShowEditProjectModal] = useState(false)
   const [editingProject, setEditingProject] = useState<any | null>(null)
+  
+  // Contract Period Edit State
+  const [isEditingPeriod, setIsEditingPeriod] = useState(false)
+  const [editPeriodDates, setEditPeriodDates] = useState<{start: string, end: string}>({start: '', end: ''})
 
   const [filterType, setFilterType] = useState<'all' | 'Income' | 'Expense'>('all')
   const [filterExceptional, setFilterExceptional] = useState<'all' | 'only'>('all')
@@ -4174,11 +4178,85 @@ const formatDate = (value: string | null) => {
                 <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
                   סיכום תקופת חוזה - {selectedPeriodSummary.year_label}
                 </h2>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                  {formatDate(selectedPeriodSummary.start_date)} - {formatExclusiveEndDate(selectedPeriodSummary.end_date)}
-                </p>
+                {isEditingPeriod ? (
+                  <div className="flex items-center gap-2 mt-2">
+                    <input
+                      type="date"
+                      value={editPeriodDates.start}
+                      onChange={(e) => setEditPeriodDates({ ...editPeriodDates, start: e.target.value })}
+                      className="text-sm rounded border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 dark:text-white"
+                    />
+                    <span className="text-gray-500">-</span>
+                    <input
+                      type="date"
+                      value={editPeriodDates.end}
+                      onChange={(e) => setEditPeriodDates({ ...editPeriodDates, end: e.target.value })}
+                      className="text-sm rounded border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 dark:text-white"
+                    />
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                    {formatDate(selectedPeriodSummary.start_date)} - {formatExclusiveEndDate(selectedPeriodSummary.end_date)}
+                  </p>
+                )}
               </div>
               <div className="flex items-center gap-2">
+                {isEditingPeriod ? (
+                  <>
+                    <button
+                      onClick={async () => {
+                        if (!id || !selectedPeriodSummary) return
+                        try {
+                          await ProjectAPI.updateContractPeriod(
+                            parseInt(id),
+                            selectedPeriodSummary.period_id,
+                            {
+                              start_date: editPeriodDates.start,
+                              end_date: editPeriodDates.end
+                            }
+                          )
+                          // Refresh data
+                          await loadContractPeriods()
+                          
+                          // Update summary object
+                          setSelectedPeriodSummary({
+                            ...selectedPeriodSummary,
+                            start_date: editPeriodDates.start,
+                            end_date: editPeriodDates.end
+                          })
+                          
+                          setIsEditingPeriod(false)
+                        } catch (err: any) {
+                          alert(err?.response?.data?.detail || 'שגיאה בעדכון תאריכים')
+                        }
+                      }}
+                      className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                    >
+                      שמור
+                    </button>
+                    <button
+                      onClick={() => setIsEditingPeriod(false)}
+                      className="px-3 py-1.5 bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors text-sm font-medium"
+                    >
+                      ביטול
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setEditPeriodDates({
+                        start: selectedPeriodSummary.start_date,
+                        end: selectedPeriodSummary.end_date
+                      })
+                      setIsEditingPeriod(true)
+                    }}
+                    className="px-3 py-1.5 bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors flex items-center gap-1 text-sm mr-2"
+                  >
+                    <Edit className="w-4 h-4" />
+                    ערוך תאריכים
+                  </button>
+                )}
+
                 <button
                   onClick={async () => {
                     try {

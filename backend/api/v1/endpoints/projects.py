@@ -1,5 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Response, Form
-from datetime import date, timedelta
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Response, Form, Body
+from datetime import date, timedelta, datetime
 from typing import Optional
 import os
 from uuid import uuid4
@@ -1279,6 +1279,40 @@ async def get_contract_period_summary(
         raise HTTPException(status_code=400, detail="Contract period does not belong to this project")
     
     return summary
+
+
+@router.put("/{project_id}/contract-periods/{period_id}")
+async def update_contract_period(
+    project_id: int,
+    period_id: int,
+    start_date: Optional[str] = Body(None),
+    end_date: Optional[str] = Body(None),
+    db: DBSessionDep = None,
+    user = Depends(require_admin())
+):
+    """Update contract period dates (Admin only)"""
+    service = ContractPeriodService(db)
+    
+    # Parse dates
+    start_date_obj = None
+    if start_date:
+        try:
+            start_date_obj = datetime.strptime(start_date, "%Y-%m-%d").date()
+        except ValueError:
+             raise HTTPException(status_code=400, detail="Invalid start_date format. Use YYYY-MM-DD")
+
+    end_date_obj = None
+    if end_date:
+        try:
+            end_date_obj = datetime.strptime(end_date, "%Y-%m-%d").date()
+        except ValueError:
+             raise HTTPException(status_code=400, detail="Invalid end_date format. Use YYYY-MM-DD")
+
+    updated = await service.update_period_dates(period_id, start_date_obj, end_date_obj)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Contract period not found")
+        
+    return {"success": True}
 
 
 @router.get("/{project_id}/contract-periods/{period_id}/export-csv")
