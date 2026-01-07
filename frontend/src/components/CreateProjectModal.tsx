@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { Project, ProjectCreate, BudgetCreate, BudgetWithSpending } from '../types/api'
-import { ProjectAPI, BudgetAPI, CategoryAPI } from '../lib/apiClient'
+import { ProjectAPI, BudgetAPI, CategoryAPI, Category } from '../lib/apiClient'
 
 interface CreateProjectModalProps {
   isOpen: boolean
@@ -55,7 +55,7 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
   )
   
   // Available expense categories - loaded from API (only categories defined in settings)
-  const [expenseCategories, setExpenseCategories] = useState<string[]>([])
+  const [expenseCategories, setExpenseCategories] = useState<Category[]>([])
   
   // Determine if we should show minimal fields (parent project without parentProjectId)
   // A project is a parent project if:
@@ -100,9 +100,9 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
   const loadCategories = async () => {
     try {
       const categories = await CategoryAPI.getCategories()
-      // Extract only active category names from settings
-      const categoryNames = categories.filter(cat => cat.is_active).map(cat => cat.name)
-      setExpenseCategories(categoryNames)
+      // Keep only active categories with full object (id + name)
+      const activeCategories = categories.filter(cat => cat.is_active)
+      setExpenseCategories(activeCategories)
     } catch (err) {
       // If loading fails, set empty array (no categories available)
       console.error('Error loading categories:', err)
@@ -480,7 +480,7 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
       const validBudgets = categoryBudgets
         .filter(b => {
           // Validate budget has required fields
-          if (!b.category || !b.start_date) {
+          if (!b.category_id || !b.start_date) {
             return false
           }
           // Validate amount is positive
@@ -612,11 +612,13 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
     }
     const reservedCategories = new Set(existingBudgetCategories)
     categoryBudgets.forEach(b => {
-      if (b.category) {
-        reservedCategories.add(b.category)
+      // Find category name by id
+      const cat = expenseCategories.find(c => c.id === b.category_id)
+      if (cat) {
+        reservedCategories.add(cat.name)
       }
     })
-    const availableCategories = expenseCategories.filter(cat => !reservedCategories.has(cat))
+    const availableCategories = expenseCategories.filter(cat => !reservedCategories.has(cat.name))
     if (availableCategories.length === 0) {
       setError('לכל הקטגוריות כבר הוגדר תקציב. ניתן לערוך תקציבים קיימים מדף פרטי הפרויקט.')
       return
@@ -636,7 +638,7 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
     }
 
     const newBudget: BudgetCreate = {
-      category: availableCategories[0],
+      category_id: availableCategories[0].id,
       amount: 0,
       period_type: 'Annual',
       start_date: today,
@@ -668,8 +670,10 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
   const usedBudgetCategories = useMemo(() => {
     const reserved = new Set<string>(existingBudgetCategories)
     categoryBudgets.forEach(b => {
-      if (b.category) {
-        reserved.add(b.category)
+      // Find category name by id
+      const cat = expenseCategories.find(c => c.id === b.category_id)
+      if (cat) {
+        reserved.add(cat.name)
       }
     })
     return reserved
@@ -1184,25 +1188,26 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                         }
                         const reserved = new Set<string>(existingBudgetCategories)
                         categoryBudgets.forEach((b, i) => {
-                          if (i !== index && b.category) {
-                            reserved.add(b.category)
+                          if (i !== index && b.category_id) {
+                            const cat = expenseCategories.find(c => c.id === b.category_id)
+                            if (cat) reserved.add(cat.name)
                           }
                         })
                         const selectableCategories = expenseCategories.filter(
-                          cat => !reserved.has(cat) || cat === budget.category
+                          cat => !reserved.has(cat.name) || cat.id === budget.category_id
                         )
                         return (
                           <>
                             <select
-                              value={budget.category}
-                              onChange={(e) => updateCategoryBudget(index, 'category', e.target.value)}
+                              value={budget.category_id || ''}
+                              onChange={(e) => updateCategoryBudget(index, 'category_id', parseInt(e.target.value))}
                               className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                               required
                             >
                               <option value="">בחר קטגוריה</option>
                               {selectableCategories.map((cat) => (
-                                <option key={cat} value={cat}>
-                                  {cat}
+                                <option key={cat.id} value={cat.id}>
+                                  {cat.name}
                                 </option>
                               ))}
                             </select>

@@ -706,7 +706,7 @@ async def hard_delete_project(
         raise HTTPException(status_code=400, detail="User not found or uses OAuth login")
     
     if not verify_password(delete_request.password, db_user.password_hash):
-        raise HTTPException(status_code=401, detail="סיסמה שגויה")
+        raise HTTPException(status_code=400, detail="סיסמה שגויה")
     
     proj_repo = ProjectRepository(db)
     project = await proj_repo.get_by_id(project_id)

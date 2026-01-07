@@ -11,13 +11,17 @@ class BudgetBase(BaseModel):
     end_date: Optional[date] = Field(None, description="When budget period ends (for annual budgets)")
 
 
+class BudgetCreateWithoutProject(BaseModel):
+    """Budget creation without project_id - used when creating budgets as part of project creation"""
+    category_id: int = Field(..., description="Category ID")
+    amount: float = Field(..., gt=0, description="Total budget amount")
+    period_type: str = Field(default="Annual", description="'Annual' or 'Monthly'")
+    start_date: Optional[date] = Field(None, description="When budget period starts")
+    end_date: Optional[date] = Field(None, description="When budget period ends (for annual budgets)")
+
+
 class BudgetCreate(BudgetBase):
     project_id: int
-
-
-class BudgetCreateWithoutProject(BudgetBase):
-    """Budget creation without project_id - used when creating budgets as part of project creation"""
-    pass
 
 
 class BudgetUpdate(BaseModel):

@@ -65,7 +65,7 @@ export interface Transaction {
 }
 
 export interface BudgetCreate {
-  category: string
+  category_id: number
   amount: number
   period_type?: 'Annual' | 'Monthly'
   start_date: string
